@@ -1,0 +1,12 @@
+data/
+configs/
+examples/
+helper_scripts/
+logs/
+models/
+unused_datasets/
+venv/
+
+IMPROVEMENT_PLAN.md
+src.7z
+src2.7z
