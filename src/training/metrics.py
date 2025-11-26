@@ -7,9 +7,9 @@ import torch.nn as nn
 from typing import Dict, Tuple, Optional, List
 import numpy as np
 from dataclasses import dataclass, field
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

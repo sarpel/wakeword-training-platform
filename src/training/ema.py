@@ -5,10 +5,9 @@ Maintains shadow copy of model weights for more stable inference
 import torch
 import torch.nn as nn
 from typing import Optional
-import logging
-from copy import deepcopy
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class EMA:

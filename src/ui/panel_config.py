@@ -17,9 +17,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.config.defaults import WakewordConfig, get_default_config
 from src.config.presets import get_preset, list_presets
 from src.config.validator import ConfigValidator
-from src.config.logger import get_logger
+from src.config.logger import get_data_logger
+from src.exceptions import WakewordException
 
-logger = get_logger("config")
+logger = get_data_logger()
 
 # Global state for current configuration
 _current_config = None
@@ -95,10 +96,10 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 gr.Markdown("### NPY Precomputed Features")
                 gr.Markdown("**Performance**: 40-60% faster training for large datasets")
                 with gr.Row():
-                    use_precomputed_features = gr.Checkbox(
-                        label="Use Precomputed NPY Features",
+                    use_precomputed_features_for_training = gr.Checkbox(
+                        label="Use Precomputed NPY Features for Training",
                         value=True,
-                        info="Load features from .npy files instead of computing on-the-fly"
+                        info="Load features from .npy files instead of computing on-the-fly. This is ignored during augmentation."
                     )
                     npy_cache_features = gr.Checkbox(
                         label="Cache NPY Features in RAM",
@@ -320,7 +321,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
             # Data
             sample_rate, audio_duration, n_mfcc, n_fft, hop_length, n_mels,
             # NPY Features
-            use_precomputed_features, npy_cache_features, fallback_to_audio,
+            use_precomputed_features_for_training, npy_cache_features, fallback_to_audio,
             npy_feature_dir, npy_feature_type,
             # Training
             batch_size, epochs, learning_rate, early_stopping,
@@ -361,7 +362,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     n_fft=int(params[3]),
                     hop_length=int(params[4]),
                     n_mels=int(params[5]),
-                    use_precomputed_features=bool(params[6]),
+                    use_precomputed_features_for_training=bool(params[6]),
                     npy_cache_features=bool(params[7]),
                     fallback_to_audio=bool(params[8]),
                     npy_feature_dir=str(params[9]),
@@ -418,7 +419,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 config.data.hop_length,
                 config.data.n_mels,
                 # NPY Features
-                config.data.use_precomputed_features,
+                config.data.use_precomputed_features_for_training,
                 config.data.npy_cache_features,
                 config.data.fallback_to_audio,
                 config.data.npy_feature_dir,
@@ -615,6 +616,11 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
 
                 return status, gr.update(value=report, visible=True)
 
+            except WakewordException as e:
+                error_msg = f"❌ Configuration Error: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                return error_msg, gr.update(value=f"Actionable suggestion: Please check your configuration for the following error: {e}", visible=True)
             except Exception as e:
                 error_msg = f"Error validating configuration: {str(e)}"
                 logger.error(error_msg)

@@ -6,14 +6,14 @@ import torch
 import numpy as np
 from pathlib import Path
 from typing import List, Dict, Optional, Callable
-import logging
+import structlog
 from tqdm import tqdm
 
 from src.data.audio_utils import AudioProcessor
 from src.data.feature_extraction import FeatureExtractor
 from src.config.defaults import DataConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class BatchFeatureExtractor:

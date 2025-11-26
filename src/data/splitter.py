@@ -18,7 +18,9 @@ from src.data.audio_utils import AudioValidator, scan_audio_files
 from src.data.file_cache import FileCache
 from src.config.logger import get_data_logger
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class DatasetScanner:
@@ -28,10 +30,8 @@ class DatasetScanner:
         'positive': 'positive',
         'negative': 'negative',
         'hard_negative': 'hard_negative',
-        # Note: 'background' and 'rirs' are NOT included here
-        # They are used only for augmentation, loaded separately by AudioAugmentation
-        # 'background': 'background',
-        # 'rirs': 'rirs'
+        'background': 'background',
+        'rirs': 'rirs'
     }
 
     def __init__(self, dataset_root: Path, use_cache: bool = True, max_workers: int = None):
@@ -394,8 +394,8 @@ class DatasetSplitter:
         test_ratio: float = 0.15,
         random_seed: int = 42,
         stratify: bool = True,
-        npy_source_dir: Path = Path("data/raw/npy"),
-        npy_output_dir: Path = Path("data/npy")
+        npy_source_dir: Path = Path("data") / "raw" / "npy",
+        npy_output_dir: Path = Path("data") / "npy"
     ) -> Dict:
         """
         Split datasets into train/val/test and organize NPY files
@@ -713,7 +713,7 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Example usage
-    test_root = Path("data/raw")
+    test_root = Path("data") / "raw"
 
     if test_root.exists():
         scanner = DatasetScanner(test_root)

@@ -6,9 +6,9 @@ import random
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def set_seed(seed: int = 42, deterministic: bool = True):

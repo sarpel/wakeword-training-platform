@@ -7,9 +7,9 @@ import librosa
 import numpy as np
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AudioValidator:
@@ -66,7 +66,7 @@ class AudioValidator:
         except Exception as e:
             error_msg = f"Error validating {file_path.name}: {str(e)}"
             logger.debug(error_msg)
-            return False, None, error_msg
+            raise DataLoadError(error_msg) from e
 
     @staticmethod
     def load_audio(
@@ -103,7 +103,7 @@ class AudioValidator:
 
         except Exception as e:
             logger.error(f"Error loading {file_path}: {e}")
-            raise
+            raise AudioProcessingError(f"Failed to load audio file: {file_path}") from e
 
     @staticmethod
     def get_audio_stats(audio: np.ndarray, sr: int) -> Dict:

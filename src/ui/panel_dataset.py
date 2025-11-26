@@ -18,16 +18,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.data.splitter import DatasetScanner, DatasetSplitter
 from src.data.health_checker import DatasetHealthChecker
 from src.data.npy_extractor import NpyExtractor
-import logging
+from src.exceptions import WakewordException
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Global state for panel
 _current_scanner = None
 _current_dataset_info = None
 
 
-def create_dataset_panel() -> gr.Blocks:
+def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
     """
     Create Panel 1: Dataset Management
 
@@ -45,7 +46,7 @@ def create_dataset_panel() -> gr.Blocks:
                     label="Dataset Root Directory",
                     placeholder="C:/path/to/datasets or data/raw",
                     lines=1,
-                    value="data/raw"  # Default value
+                    value=str(Path(data_root) / "raw")  # Default value
                 )
 
                 gr.Markdown("**Expected Structure:**")
@@ -154,7 +155,7 @@ def create_dataset_panel() -> gr.Blocks:
                         )
                         extract_output_dir = gr.Textbox(
                             label="Output Directory (Before Splitting)",
-                            value="data/raw/npy",
+                            value=str(Path(data_root) / "raw" / "npy"),
                             info="Temporary location before splitting into train/val/test"
                         )
                         batch_extract_button = gr.Button(
@@ -242,7 +243,7 @@ def create_dataset_panel() -> gr.Blocks:
 
                 # Save manifest
                 progress(0.99, desc="Saving manifest...")
-                manifest_path = Path("data/splits/dataset_manifest.json")
+                manifest_path = Path(root_path).parent / "splits" / "dataset_manifest.json"
                 scanner.save_manifest(manifest_path)
 
                 logger.info("Dataset scan complete")
@@ -262,6 +263,15 @@ def create_dataset_panel() -> gr.Blocks:
                     health_report_text
                 )
 
+            except WakewordException as e:
+                error_msg = f"❌ Data Error: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                return (
+                    {"error": error_msg},
+                    f"❌ Error: {str(e)}",
+                    f"Actionable suggestion: Please check your dataset for the following error: {e}"
+                )
             except Exception as e:
                 error_msg = f"Error scanning datasets: {str(e)}"
                 logger.error(error_msg)
@@ -314,7 +324,7 @@ def create_dataset_panel() -> gr.Blocks:
 
                 # Save splits
                 progress(0.7, desc="Saving splits...")
-                output_dir = Path("data/splits")
+                output_dir = Path(root_path).parent / "splits"
                 splitter.save_splits(output_dir)
 
                 # Get split statistics
@@ -348,6 +358,14 @@ def create_dataset_panel() -> gr.Blocks:
                     report_text
                 )
 
+            except WakewordException as e:
+                error_msg = f"❌ Data Error: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                return (
+                    f"❌ Error: {str(e)}",
+                    f"Actionable suggestion: Please check your dataset for the following error: {e}"
+                )
             except Exception as e:
                 error_msg = f"Error splitting datasets: {str(e)}"
                 logger.error(error_msg)
@@ -466,6 +484,11 @@ def create_dataset_panel() -> gr.Blocks:
 
                 return report_text
 
+            except WakewordException as e:
+                error_msg = f"❌ Data Error: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                return f"❌ Error: {str(e)}\n\nActionable suggestion: Please check your dataset for the following error: {e}"
             except Exception as e:
                 error_msg = f"Error during batch extraction: {str(e)}"
                 logger.error(error_msg)

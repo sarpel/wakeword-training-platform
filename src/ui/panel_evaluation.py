@@ -14,20 +14,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
-import logging
-import time
-import threading
+import structlog
 
-from src.evaluation import (
-    ModelEvaluator,
-    EvaluationResult,
-    load_model_for_evaluation,
-    MicrophoneInference,
-    SimulatedMicrophoneInference
-)
-from src.data.dataset import WakewordDataset
+from src.exceptions import WakewordException
+from src.evaluation.evaluator import ModelEvaluator, EvaluationResult, load_model_for_evaluation
+from src.evaluation.inference import MicrophoneInference
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class EvaluationState:
@@ -138,6 +131,11 @@ def load_model(model_path: str) -> str:
         logger.info("Model loaded successfully")
         return status
 
+    except WakewordException as e:
+        error_msg = f"❌ Model Error: {str(e)}"
+        logger.error(error_msg)
+        logger.exception(e)
+        return f"{error_msg}\n\nActionable suggestion: Please check your model for the following error: {e}"
     except Exception as e:
         error_msg = f"❌ Failed to load model: {str(e)}"
         logger.error(error_msg)
@@ -244,6 +242,11 @@ def evaluate_uploaded_files(
 
         return df, log_msg
 
+    except WakewordException as e:
+        error_msg = f"❌ Evaluation Error: {str(e)}"
+        logger.error(error_msg)
+        logger.exception(e)
+        return None, f"{error_msg}\n\nActionable suggestion: Please check your audio files for the following error: {e}"
     except Exception as e:
         error_msg = f"❌ Evaluation failed: {str(e)}"
         logger.error(error_msg)
@@ -288,6 +291,10 @@ def export_results_to_csv() -> str:
 
         return f"✅ Results exported to: {filepath}"
 
+    except WakewordException as e:
+        error_msg = f"❌ Export Error: {str(e)}"
+        logger.error(error_msg)
+        return error_msg
     except Exception as e:
         error_msg = f"❌ Export failed: {str(e)}"
         logger.error(error_msg)
@@ -337,6 +344,10 @@ def start_microphone():
 
         return "🟢 Recording... Speak your wakeword!", 0.0, None, ""
 
+    except WakewordException as e:
+        error_msg = f"❌ Microphone Error: {str(e)}"
+        logger.error(error_msg)
+        return error_msg, 0.0, None, f"{error_msg}\n\nActionable suggestion: Please check your microphone for the following error: {e}"
     except Exception as e:
         error_msg = f"❌ Failed to start microphone: {str(e)}"
         logger.error(error_msg)
@@ -367,6 +378,10 @@ def stop_microphone():
 
         return "🔴 Not Detecting", 0.0, None, "\n".join(eval_state.mic_history)
 
+    except WakewordException as e:
+        error_msg = f"❌ Microphone Error: {str(e)}"
+        logger.error(error_msg)
+        return error_msg, 0.0, None, f"{error_msg}\n\nActionable suggestion: Please check your microphone for the following error: {e}"
     except Exception as e:
         error_msg = f"❌ Failed to stop microphone: {str(e)}"
         logger.error(error_msg)
@@ -428,7 +443,7 @@ def get_microphone_status() -> Tuple:
     # return fig
 
 
-def evaluate_test_set(test_split_path: str, threshold: float, target_fah: float, use_advanced_metrics: bool) -> Tuple:
+def evaluate_test_set(data_root: str, test_split_path: str, threshold: float, target_fah: float, use_advanced_metrics: bool) -> Tuple:
     """
     Evaluate on test dataset
 
@@ -447,7 +462,7 @@ def evaluate_test_set(test_split_path: str, threshold: float, target_fah: float,
     try:
         # Default to data/splits/test.json if not provided
         if not test_split_path or test_split_path.strip() == "":
-            test_split_path = "data/splits/test.json"
+            test_split_path = str(Path(data_root) / "splits" / "test.json")
 
         test_path = Path(test_split_path)
 
@@ -541,6 +556,11 @@ def evaluate_test_set(test_split_path: str, threshold: float, target_fah: float,
 
         return metrics_dict, conf_matrix_plot, roc_plot, advanced_metrics_dict
 
+    except WakewordException as e:
+        error_msg = f"❌ Test Set Error: {str(e)}"
+        logger.error(error_msg)
+        logger.exception(e)
+        return {"status": f"{error_msg}\n\nActionable suggestion: Please check your test set for the following error: {e}"}, None, None, {}
     except Exception as e:
         error_msg = f"❌ Test set evaluation failed: {str(e)}"
         logger.error(error_msg)
@@ -652,9 +672,12 @@ def create_roc_curve_plot(test_dataset) -> plt.Figure:
         return fig
 
 
-def create_evaluation_panel() -> gr.Blocks:
+def create_evaluation_panel(state: gr.State) -> gr.Blocks:
     """
     Create Panel 4: Model Evaluation
+
+    Args:
+        state: Gradio State containing shared application data (config, etc.)
 
     Returns:
         Gradio Blocks interface
@@ -888,8 +911,14 @@ def create_evaluation_panel() -> gr.Blocks:
         )
 
         evaluate_testset_btn.click(
-            fn=evaluate_test_set,
-            inputs=[test_split_path, test_threshold_slider, target_fah_slider, use_advanced_metrics],
+            fn=lambda test_split_path, threshold, target_fah, use_advanced_metrics, config_state: evaluate_test_set(
+                config_state.get('config').data.data_root if config_state.get('config') else "data",
+                test_split_path, 
+                threshold, 
+                target_fah, 
+                use_advanced_metrics
+            ),
+            inputs=[test_split_path, test_threshold_slider, target_fah_slider, use_advanced_metrics, state],
             outputs=[test_metrics, confusion_matrix, roc_curve, advanced_metrics]
         )
 
@@ -898,5 +927,6 @@ def create_evaluation_panel() -> gr.Blocks:
 
 if __name__ == "__main__":
     # Test the panel
-    demo = create_evaluation_panel()
+    demo_state = gr.State(value={'config': None})
+    demo = create_evaluation_panel(demo_state)
     demo.launch()

@@ -9,19 +9,19 @@ from typing import Optional, Callable, Tuple
 import threading
 import queue
 import time
-import logging
+import structlog
 
 try:
     import sounddevice as sd
 except ImportError:
     sd = None
-    logging.warning("sounddevice not installed. Microphone inference not available.")
+    structlog.warning("sounddevice not installed. Microphone inference not available.")
 
 from src.data.audio_utils import AudioProcessor
 from src.data.feature_extraction import FeatureExtractor
 from src.config.cuda_utils import enforce_cuda
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class MicrophoneInference:
@@ -205,9 +205,6 @@ class MicrophoneInference:
                     logits = self.model(features)
                 # Convert to float32 immediately after inference to ensure compatibility
                 logits = logits.float()
-
-                # FIX: Swap logits because model was trained with reversed class order
-                logits = logits[:, [1, 0]]
 
             # Get prediction
             probabilities = torch.softmax(logits, dim=1)

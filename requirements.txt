@@ -7,9 +7,9 @@
 # Core Deep Learning (PyTorch 2.1.2 - Stable with CUDA 11.8)
 # ============================================================================
 # For CUDA 11.8 (NVIDIA GPUs):
-torch==2.1.2+cu118
-torchaudio==2.1.2+cu118
-torchvision==0.16.2+cu118
+#torch==2.1.2+cu118
+#torchaudio==2.1.2+cu118
+#torchvision==0.16.2+cu118
 
 # For CPU only (no GPU):
 # torch==2.1.2
@@ -22,7 +22,7 @@ torchvision==0.16.2+cu118
 # ============================================================================
 # UI Framework
 # ============================================================================
-gradio==4.27.0              # Web interface framework
+gradio==4.44.1              # Web interface framework
 websockets==10.4            # WebSocket support for Gradio
 
 # ============================================================================
@@ -58,10 +58,13 @@ onnxruntime-gpu==1.15.1     # ONNX inference engine (GPU)
 # ============================================================================
 # Training Utilities
 # ============================================================================
+pydantic==2.5.3             # Data validation and settings management
 tqdm==4.65.0                # Progress bars
 pyyaml==6.0.1               # Configuration files (YAML)
 tensorboard==2.13.0         # Training visualization
 protobuf==3.20.3            # Protocol buffers (TensorBoard dependency)
+wandb==0.16.0               # Experiment tracking
+optuna==3.4.0               # Hyperparameter optimization
 
 # ============================================================================
 # Audio Augmentation
@@ -73,6 +76,7 @@ scipy==1.10.1               # Scientific computing (audio processing)
 # ============================================================================
 psutil==5.9.5               # System and process utilities (GPU monitoring)
 colorama==0.4.6             # Colored terminal output
+structlog==23.2.0           # Structured logging
 
 # ============================================================================
 # Development Tools (Optional - for development only)
@@ -82,6 +86,9 @@ pytest-cov==4.1.0           # Test coverage reporting
 black==23.7.0               # Code formatter
 flake8==6.1.0               # Code linter
 isort==5.12.0               # Import sorting
+mypy==1.6.1                 # Static type checker
+
+huggingface-hub==0.19.4
 
 # ============================================================================
 # Production Features (Included in Core)

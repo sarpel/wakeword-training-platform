@@ -8,14 +8,15 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import json
-import logging
+import structlog
 
+from src.data.balanced_sampler import create_balanced_sampler_from_dataset
+from src.data.cmvn import compute_cmvn_from_dataset, CMVN
 from src.data.audio_utils import AudioProcessor
-from src.data.augmentation import AudioAugmentation
 from src.data.feature_extraction import FeatureExtractor
-from src.data.cmvn import CMVN
+from src.data.augmentation import AudioAugmentation
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class WakewordDataset(Dataset):
@@ -42,7 +43,7 @@ class WakewordDataset(Dataset):
         n_fft: int = 400,
         hop_length: int = 160,
         # NEW: NPY feature parameters
-        use_precomputed_features: bool = True,
+        use_precomputed_features_for_training: bool = True,
         npy_cache_features: bool = True,
         fallback_to_audio: bool = False,
         # CMVN parameters
@@ -67,7 +68,7 @@ class WakewordDataset(Dataset):
             n_mfcc: Number of MFCC coefficients
             n_fft: FFT window size
             hop_length: Hop length for STFT
-            use_precomputed_features: Enable loading from .npy files
+            use_precomputed_features_for_training: Enable loading from .npy files
             npy_cache_features: Cache loaded .npy features in RAM
             fallback_to_audio: If NPY missing, load raw audio
             cmvn_path: Path to CMVN stats.json file
@@ -81,7 +82,7 @@ class WakewordDataset(Dataset):
         self.device = 'cpu'  # Always CPU for dataset operations
 
         # NEW: NPY feature parameters
-        self.use_precomputed_features = use_precomputed_features
+        self.use_precomputed_features_for_training = use_precomputed_features_for_training
         self.npy_cache_features = npy_cache_features
         self.fallback_to_audio = fallback_to_audio
 
@@ -260,7 +261,7 @@ class WakewordDataset(Dataset):
         label = self.label_map[category]
 
         # NEW: Try loading from NPY first if enabled
-        if self.use_precomputed_features:
+        if self.use_precomputed_features_for_training:
             features = self._load_from_npy(file_info, idx)
 
             if features is not None:
@@ -385,13 +386,12 @@ class WakewordDataset(Dataset):
 
 
 def load_dataset_splits(
-    splits_dir: Path,
+    data_root: Path,
     sample_rate: int = 16000,
     audio_duration: float = 1.5,
     augment_train: bool = True,
     cache_audio: bool = False,
     augmentation_config: Optional[Dict] = None,
-    data_root: Optional[Path] = None,
     device: str = 'cpu',  # Dataset operations always on CPU
     feature_type: str = 'mel',
     n_mels: int = 64,
@@ -399,7 +399,7 @@ def load_dataset_splits(
     n_fft: int = 400,
     hop_length: int = 160,
     # NEW: NPY feature parameters
-    use_precomputed_features: bool = True,
+    use_precomputed_features_for_training: bool = True,
     npy_cache_features: bool = True,
     fallback_to_audio: bool = False,
     # CMVN parameters
@@ -410,20 +410,19 @@ def load_dataset_splits(
     Load train, validation, and test datasets
 
     Args:
-        splits_dir: Directory containing split manifests
+        data_root: Root directory containing data
         sample_rate: Target sample rate
         audio_duration: Target audio duration
         augment_train: Apply augmentation to training set
         cache_audio: Cache loaded audio in memory
         augmentation_config: Configuration for augmentation
-        data_root: Root directory containing data (for finding background/rir folders)
         device: Device for feature extraction (always 'cpu' for dataset pipeline)
         feature_type: Feature type ('mel' or 'mfcc')
         n_mels: Number of mel filterbanks
         n_mfcc: Number of MFCC coefficients
         n_fft: FFT window size
         hop_length: Hop length for STFT
-        use_precomputed_features: Enable loading from .npy files
+        use_precomputed_features_for_training: Enable loading from .npy files
         npy_cache_features: Cache loaded .npy features in RAM
         fallback_to_audio: If NPY missing, load raw audio
         cmvn_path: Path to CMVN stats.json file
@@ -432,19 +431,14 @@ def load_dataset_splits(
     Returns:
         Tuple of (train_dataset, val_dataset, test_dataset)
     """
-    splits_dir = Path(splits_dir)
+    splits_dir = data_root / "splits"
 
     # Force CPU for dataset operations
     device = 'cpu'
 
     # Determine background noise and RIR directories
-    background_noise_dir = None
-    rir_dir = None
-
-    if data_root:
-        data_root = Path(data_root)
-        background_noise_dir = data_root / "raw" / "background"
-        rir_dir = data_root / "raw" / "rirs"
+    background_noise_dir = data_root / "raw" / "background"
+    rir_dir = data_root / "raw" / "rirs"
 
     train_dataset = WakewordDataset(
         manifest_path=splits_dir / "train.json",
@@ -461,7 +455,7 @@ def load_dataset_splits(
         n_mfcc=n_mfcc,
         n_fft=n_fft,
         hop_length=hop_length,
-        use_precomputed_features=use_precomputed_features,
+        use_precomputed_features_for_training=use_precomputed_features_for_training,
         npy_cache_features=npy_cache_features,
         fallback_to_audio=fallback_to_audio,
         cmvn_path=cmvn_path,
@@ -480,7 +474,7 @@ def load_dataset_splits(
         n_mfcc=n_mfcc,
         n_fft=n_fft,
         hop_length=hop_length,
-        use_precomputed_features=use_precomputed_features,
+        use_precomputed_features_for_training=use_precomputed_features_for_training,
         npy_cache_features=npy_cache_features,
         fallback_to_audio=fallback_to_audio,
         cmvn_path=cmvn_path,
@@ -499,7 +493,7 @@ def load_dataset_splits(
         n_mfcc=n_mfcc,
         n_fft=n_fft,
         hop_length=hop_length,
-        use_precomputed_features=use_precomputed_features,
+        use_precomputed_features_for_training=use_precomputed_features_for_training,
         npy_cache_features=npy_cache_features,
         fallback_to_audio=fallback_to_audio,
         cmvn_path=cmvn_path,
@@ -520,11 +514,11 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # This would test if splits exist
-    splits_dir = Path("data/splits")
+    data_root = Path("data")
 
-    if splits_dir.exists() and (splits_dir / "train.json").exists():
+    if (data_root / "splits").exists() and (data_root / "splits" / "train.json").exists():
         try:
-            train_ds, val_ds, test_ds = load_dataset_splits(splits_dir)
+            train_ds, val_ds, test_ds = load_dataset_splits(data_root)
             print(f"Train dataset: {len(train_ds)} samples")
             print(f"Val dataset: {len(val_ds)} samples")
             print(f"Test dataset: {len(test_ds)} samples")

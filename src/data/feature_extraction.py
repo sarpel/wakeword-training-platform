@@ -6,9 +6,9 @@ import torch
 import torchaudio
 import torchaudio.transforms as T
 from typing import Literal, Optional
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class FeatureExtractor:
@@ -143,11 +143,12 @@ class FeatureExtractor:
             # Compute MFCC
             mfcc = self.mfcc_transform(waveform)  # (batch, n_mfcc, time)
 
-            features = mfcc
+            # Add channel dimension for consistency with CNN models
+            features = mfcc.unsqueeze(1)  # (batch, 1, n_mfcc, time)
 
             # If input was 1D, remove batch dimension
             if squeeze_output:
-                features = features.squeeze(0)  # (n_mfcc, time)
+                features = features.squeeze(0)  # (1, n_mfcc, time)
 
         else:
             raise ValueError(f"Unknown feature type: {self.feature_type}")
@@ -170,7 +171,7 @@ class FeatureExtractor:
         if self.feature_type == 'mel':
             return (1, self.n_mels, time_steps)  # (channels, freq, time)
         elif self.feature_type == 'mfcc':
-            return (self.n_mfcc, time_steps)  # (coeffs, time)
+            return (1, self.n_mfcc, time_steps)  # (channels, coeffs, time)
 
 
 if __name__ == "__main__":

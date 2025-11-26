@@ -12,9 +12,9 @@ from torch.optim.lr_scheduler import (
     LambdaLR
 )
 from typing import Optional, Dict, Any, Tuple
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class WarmupScheduler:

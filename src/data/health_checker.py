@@ -4,9 +4,9 @@ Analyzes dataset quality and provides recommendations
 """
 from typing import Dict, List, Tuple
 from collections import Counter
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class DatasetHealthChecker:

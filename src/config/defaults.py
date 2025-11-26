@@ -5,12 +5,14 @@ Defines basic and advanced training hyperparameters
 from typing import Dict, Any, List
 from dataclasses import dataclass, asdict, field
 import yaml
+import copy
 from pathlib import Path
 
 
 @dataclass
 class DataConfig:
     """Data processing configuration"""
+    data_root: str = "data"
     # Audio parameters
     sample_rate: int = 16000  # Hz
     audio_duration: float = 1.5  # seconds
@@ -24,7 +26,7 @@ class DataConfig:
     normalize_audio: bool = True
 
     # NEW: NPY feature parameters
-    use_precomputed_features: bool = True  # Enable NPY loading
+    use_precomputed_features_for_training: bool = True  # Enable NPY loading
     npy_feature_dir: str = "data/npy"       # Directory with split .npy files (train/val/test)
     npy_feature_type: str = "mel"           # mel, mfcc (must match extraction)
     npy_cache_features: bool = True         # Cache loaded features in RAM
@@ -224,6 +226,11 @@ class WakewordConfig:
             config_dict = yaml.safe_load(f)
 
         return cls.from_dict(config_dict)
+
+    def copy(self) -> 'WakewordConfig':
+        """Create a deep copy of the configuration"""
+        return copy.deepcopy(self)
+
 
 
 def get_default_config() -> WakewordConfig:

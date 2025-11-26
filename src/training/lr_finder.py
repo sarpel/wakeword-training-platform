@@ -7,12 +7,12 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Optional, Tuple
-import logging
 from pathlib import Path
+from typing import Optional, Tuple
 from tqdm import tqdm
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LRFinder:

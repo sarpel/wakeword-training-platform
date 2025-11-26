@@ -17,19 +17,21 @@ import queue
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
-import logging
+import structlog
+import pandas as pd
 
-from src.config.defaults import WakewordConfig
-from src.config.cuda_utils import get_cuda_validator
-from src.data.dataset import load_dataset_splits
-from src.data.balanced_sampler import create_balanced_sampler_from_dataset
-from src.data.cmvn import compute_cmvn_from_dataset, CMVN
-from src.models.architectures import create_model
-from src.training.trainer import Trainer
-from src.training.metrics import MetricResults
 from src.training.lr_finder import LRFinder
-
-logger = logging.getLogger(__name__)
+from src.exceptions import WakewordException
+from src.training.checkpoint_manager import CheckpointManager
+from src.training.wandb_callback import WandbCallback
+from src.training.hpo import run_hpo
+from src.training.trainer import Trainer
+from src.config.defaults import WakewordConfig
+from src.data.dataset import WakewordDataset, load_dataset_splits
+from src.data.balanced_sampler import create_balanced_sampler_from_dataset
+from src.data.cmvn import compute_cmvn_from_dataset
+from src.models.architectures import create_model
+from src.config.cuda_utils import get_cuda_validator
 
 
 class TrainingState:
@@ -267,11 +269,17 @@ def training_worker():
         training_state.add_log(f"Best val acc: {training_state.best_val_acc:.2%}")
         training_state.add_log(f"Model saved to: {training_state.best_model_path}")
 
+    except WakewordException as e:
+        training_state.add_log(f"ERROR: {str(e)}\n\nActionable suggestion: Please check your configuration and data for the following error: {e}")
+        logger.exception("Training failed")
     except Exception as e:
         training_state.add_log(f"ERROR: {str(e)}")
         logger.exception("Training failed")
     finally:
         training_state.is_training = False
+        training_state.train_loader = None
+        training_state.val_loader = None
+        torch.cuda.empty_cache()
 
 
 def start_training(
@@ -283,7 +291,9 @@ def start_training(
     sampler_ratio_pos: int,
     sampler_ratio_neg: int,
     sampler_ratio_hard: int,
-    run_lr_finder: bool
+    run_lr_finder: bool,
+    use_wandb: bool,
+    wandb_project: str
 ) -> Tuple:
     """Start training with current configuration and advanced features"""
     if training_state.is_training:
@@ -309,7 +319,8 @@ def start_training(
         training_state.add_log("Initializing training...")
 
         # Check if dataset splits exist
-        splits_dir = Path("data/splits")
+        data_root = Path(config.data.data_root)
+        splits_dir = data_root / "splits"
         if not splits_dir.exists() or not (splits_dir / "train.json").exists():
             return (
                 "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.",
@@ -336,47 +347,67 @@ def start_training(
         # Handle CMVN
         cmvn_path = None
         if use_cmvn:
-            cmvn_path = Path("data/cmvn_stats.json")
+            cmvn_path = data_root / "cmvn_stats.json"
             if not cmvn_path.exists():
                 training_state.add_log("Computing CMVN statistics (first time only)...")
                 # Load datasets temporarily without CMVN to compute stats
                 temp_train_ds, _, _ = load_dataset_splits(
-                    splits_dir=splits_dir,
-                    sample_rate=config.data.sample_rate,
-                    audio_duration=config.data.audio_duration,
-                    augment_train=False,
-                    data_root=Path("data"),
+                    data_root=data_root,
                     device='cuda',
                     feature_type=feature_type,
                     n_mels=config.data.n_mels,
                     n_mfcc=config.data.n_mfcc,
                     n_fft=config.data.n_fft,
                     hop_length=config.data.hop_length,
-                    use_precomputed_features=config.data.use_precomputed_features,
+                    use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
                     apply_cmvn=False
                 )
                 compute_cmvn_from_dataset(temp_train_ds, cmvn_path, max_samples=1000)
                 training_state.add_log(f"✅ CMVN stats saved to {cmvn_path}")
 
-        train_ds, val_ds, test_ds = load_dataset_splits(
-            splits_dir=splits_dir,
+        training_state.add_log("IMPORTANT: Forcing augmentation for training by disabling precomputed features.")
+        
+        train_ds = WakewordDataset(
+            manifest_path=splits_dir / "train.json",
             sample_rate=config.data.sample_rate,
             audio_duration=config.data.audio_duration,
-            augment_train=True,
+            augment=True,
             augmentation_config=aug_config,
-            data_root=Path("data"),
+            background_noise_dir=data_root / "raw" / "background",
+            rir_dir=data_root / "raw" / "rirs",
             device='cuda',
             feature_type=feature_type,
             n_mels=config.data.n_mels,
             n_mfcc=config.data.n_mfcc,
             n_fft=config.data.n_fft,
             hop_length=config.data.hop_length,
-            use_precomputed_features=config.data.use_precomputed_features,
+            use_precomputed_features_for_training=False,  # Force augmentation
+            npy_cache_features=config.data.npy_cache_features,
+            fallback_to_audio=True, # IMPORTANT
+            cmvn_path=cmvn_path,
+            apply_cmvn=use_cmvn
+        )
+
+        val_ds = WakewordDataset(
+            manifest_path=splits_dir / "val.json",
+            sample_rate=config.data.sample_rate,
+            audio_duration=config.data.audio_duration,
+            augment=False,
+            device='cuda',
+            feature_type=feature_type,
+            n_mels=config.data.n_mels,
+            n_mfcc=config.data.n_mfcc,
+            n_fft=config.data.n_fft,
+            hop_length=config.data.hop_length,
+            use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
             npy_cache_features=config.data.npy_cache_features,
             fallback_to_audio=config.data.fallback_to_audio,
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn
         )
+
+        # test_ds is not used in training, so we don't load it here to save memory
+        test_ds = None
 
         training_state.add_log(f"Loaded {len(train_ds)} training samples")
         training_state.add_log(f"Loaded {len(val_ds)} validation samples")
@@ -477,6 +508,7 @@ def start_training(
         # Create checkpoint directory
         checkpoint_dir = Path("models/checkpoints")
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint_manager = CheckpointManager(checkpoint_dir)
 
         training_state.add_log("Initializing trainer...")
 
@@ -486,7 +518,7 @@ def start_training(
             train_loader=training_state.train_loader,
             val_loader=training_state.val_loader,
             config=config,
-            checkpoint_dir=checkpoint_dir,
+            checkpoint_manager=checkpoint_manager,
             device='cuda',
             use_ema=use_ema,
             ema_decay=ema_decay if use_ema else 0.999
@@ -494,6 +526,14 @@ def start_training(
 
         if use_ema:
             training_state.add_log(f"✅ EMA enabled (decay: {ema_decay:.4f} → 0.9995)")
+
+        if use_wandb:
+            try:
+                wandb_callback = WandbCallback(project_name=wandb_project, config=config.to_dict())
+                training_state.trainer.add_callback(wandb_callback)
+                training_state.add_log("✅ W&B logging enabled")
+            except ImportError:
+                training_state.add_log("⚠️ W&B not installed. Skipping W&B logging.")
 
         # Reset history
         training_state.history = {
@@ -522,6 +562,14 @@ def start_training(
             create_metrics_plot()
         )
 
+    except WakewordException as e:
+        error_msg = f"❌ Failed to start training: {str(e)}"
+        training_state.add_log(f"{error_msg}\n\nActionable suggestion: Please check your configuration and data for the following error: {e}")
+        logger.exception("Failed to start training")
+        return (
+            error_msg,
+            "0/0", "0/0", None, None, None
+        )
     except Exception as e:
         error_msg = f"❌ Failed to start training: {str(e)}"
         training_state.add_log(error_msg)
@@ -601,6 +649,53 @@ def get_training_status() -> Tuple:
         round(training_state.best_val_acc * 100, 2),
         training_state.best_model_path
     )
+
+
+def start_hpo(config_state: Dict, n_trials: int, study_name: str) -> Tuple[str, pd.DataFrame]:
+    """Start hyperparameter optimization."""
+    if training_state.is_training:
+        return "⚠️ Training already in progress", None
+
+    try:
+        if 'config' not in config_state or config_state['config'] is None:
+            return "❌ No configuration loaded. Please configure in Panel 2 first.", None
+
+        config = config_state['config']
+        data_root = Path(config.data.data_root)
+        splits_dir = data_root / "splits"
+
+        if not splits_dir.exists() or not (splits_dir / "train.json").exists():
+            return "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.", None
+
+        train_ds, val_ds, _ = load_dataset_splits(
+            data_root=data_root,
+            sample_rate=config.data.sample_rate,
+            audio_duration=config.data.audio_duration,
+            augment_train=True,
+            augmentation_config=config.augmentation.to_dict(),
+            device='cuda',
+            feature_type=config.data.feature_type,
+            n_mels=config.data.n_mels,
+            n_mfcc=config.data.n_mfcc,
+            n_fft=config.data.n_fft,
+            hop_length=config.data.hop_length,
+            use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
+            npy_cache_features=config.data.npy_cache_features,
+            fallback_to_audio=config.data.fallback_to_audio,
+            cmvn_path=data_root / "cmvn_stats.json",
+            apply_cmvn=True,
+        )
+
+        train_loader = DataLoader(train_ds, batch_size=config.training.batch_size, shuffle=True)
+        val_loader = DataLoader(val_ds, batch_size=config.training.batch_size, shuffle=False)
+
+        study = run_hpo(config, train_loader, val_loader, n_trials, study_name)
+
+        df = study.trials_dataframe()
+        return f"✅ HPO study '{study_name}' complete!", df
+
+    except Exception as e:
+        return f"❌ HPO failed: {e}", None
 
 
 def create_training_panel(state: gr.State) -> gr.Blocks:
@@ -687,11 +782,38 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     )
                     gr.Markdown("*Note: LR Finder runs before training starts and may take a few minutes*")
 
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("#### 📈 Experiment Tracking (Weights & Biases)")
+                    use_wandb = gr.Checkbox(
+                        label="Enable W&B Logging",
+                        value=False,
+                        info="Log metrics, parameters, and model artifacts to Weights & Biases."
+                    )
+                    wandb_project = gr.Textbox(
+                        label="W&B Project Name",
+                        value="wakeword-training",
+                        info="The name of the project in Weights & Biases."
+                    )
+
         gr.Markdown("---")
 
-        with gr.Row():
-            start_training_btn = gr.Button("▶️ Start Training", variant="primary", scale=2)
-            stop_training_btn = gr.Button("⏹️ Stop Training", variant="stop", scale=1)
+        with gr.Tabs():
+            with gr.TabItem("🧠 Training"):
+                with gr.Row():
+                    start_training_btn = gr.Button("▶️ Start Training", variant="primary", scale=2)
+                    stop_training_btn = gr.Button("⏹️ Stop Training", variant="stop", scale=1)
+            with gr.TabItem("🔬 Hyperparameter Optimization"):
+                with gr.Row():
+                    hpo_status = gr.Textbox(label="HPO Status", value="Ready to start HPO", interactive=False)
+                with gr.Row():
+                    n_trials = gr.Slider(minimum=10, maximum=200, value=50, step=10, label="Number of Trials")
+                    study_name = gr.Textbox(label="Study Name", value="wakeword-hpo")
+                with gr.Row():
+                    start_hpo_btn = gr.Button("🚀 Start HPO Study", variant="primary")
+                with gr.Row():
+                    hpo_results = gr.DataFrame(headers=["Trial", "Value", "Params"])
+
 
         gr.Markdown("---")
 
@@ -793,7 +915,9 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 sampler_ratio_pos,
                 sampler_ratio_neg,
                 sampler_ratio_hard,
-                run_lr_finder
+                run_lr_finder,
+                use_wandb,
+                wandb_project
             ],
             outputs=[
                 training_status,
@@ -808,6 +932,12 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         stop_training_btn.click(
             fn=stop_training,
             outputs=[training_status]
+        )
+
+        start_hpo_btn.click(
+            fn=start_hpo,
+            inputs=[state, n_trials, study_name],
+            outputs=[hpo_status, hpo_results]
         )
 
         # Auto-refresh for live updates

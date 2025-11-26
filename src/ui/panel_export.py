@@ -10,16 +10,9 @@ import torch
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 import pandas as pd
-import logging
-import time
+import structlog
 
-from src.export import (
-    export_model_to_onnx,
-    validate_onnx_model,
-    benchmark_onnx_model
-)
-
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ExportState:

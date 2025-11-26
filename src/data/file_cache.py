@@ -7,9 +7,9 @@ import hashlib
 from pathlib import Path
 from typing import Dict, Optional, Any
 from datetime import datetime
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class FileCache:

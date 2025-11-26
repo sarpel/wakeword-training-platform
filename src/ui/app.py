@@ -2,10 +2,15 @@
 Main Gradio Application
 Wakeword Training Platform with 6 panels
 """
+import warnings
+# Suppress specific warnings
+warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
+
 import gradio as gr
 import sys
 import asyncio
 from pathlib import Path
+import structlog
 
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -15,7 +20,7 @@ if sys.platform.startswith("win"):
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config.cuda_utils import enforce_cuda, get_cuda_validator
-from src.config.logger import get_logger
+from src.config.logger import setup_logging, get_data_logger
 from src.ui.panel_dataset import create_dataset_panel
 from src.ui.panel_config import create_config_panel
 from src.ui.panel_training import create_training_panel
@@ -91,7 +96,7 @@ def create_app() -> gr.Blocks:
         Gradio Blocks app
     """
     # Validate CUDA
-    logger = get_logger("app")
+    logger = get_data_logger("app")
     logger.info("Starting Wakeword Training Platform")
 
     cuda_validator = enforce_cuda()
@@ -141,7 +146,7 @@ def create_app() -> gr.Blocks:
                 panel_training = create_training_panel(global_state)
 
             with gr.TabItem("🎯 4. Evaluation", id=4):
-                panel_evaluation = create_evaluation_panel()
+                panel_evaluation = create_evaluation_panel(global_state)
 
             with gr.TabItem("📦 5. ONNX Export", id=5):
                 panel_export = create_export_panel()
@@ -175,9 +180,9 @@ def launch_app(
         share: Create public share link
         inbrowser: Open browser automatically
     """
-    logger = get_logger("app")
-
-    # Suppress Windows asyncio connection errors
+    # Setup logging
+    setup_logging()
+    logger = get_data_logger("app")
     suppress_windows_asyncio_errors()
 
     # Find available port if not specified

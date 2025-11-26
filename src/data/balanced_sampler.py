@@ -6,9 +6,9 @@ import numpy as np
 import torch
 from torch.utils.data import Sampler
 from typing import List, Dict, Optional
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class BalancedBatchSampler(Sampler):

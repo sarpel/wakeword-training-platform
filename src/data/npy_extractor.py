@@ -6,11 +6,11 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Callable
 from tqdm import tqdm
-import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import structlog
 import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class NpyExtractor:

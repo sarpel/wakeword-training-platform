@@ -7,11 +7,9 @@ import torch.nn as nn
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple, Any
 from dataclasses import dataclass
-import logging
-import json
-import shutil
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -53,6 +51,70 @@ class CheckpointManager:
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Checkpoint manager initialized: {self.checkpoint_dir}")
+
+    def save_checkpoint(
+        self,
+        trainer: "Trainer",
+        epoch: int,
+        val_loss: float,
+        val_metrics: Any,
+        improved: bool
+    ):
+        """
+        Save checkpoint
+
+        Args:
+            trainer: Trainer instance
+            epoch: Current epoch
+            val_loss: Validation loss
+            val_metrics: Validation metrics
+            improved: Whether model improved
+        """
+        # Prepare checkpoint dictionary
+        checkpoint = {
+            'epoch': epoch,
+            'global_step': trainer.state.global_step,
+            'model_state_dict': trainer.model.state_dict(),
+            'optimizer_state_dict': trainer.optimizer.state_dict(),
+            'val_loss': val_loss,
+            'val_metrics': {
+                'accuracy': val_metrics.accuracy,
+                'f1_score': val_metrics.f1_score,
+                'fpr': val_metrics.fpr,
+                'fnr': val_metrics.fnr
+            },
+            'config': trainer.config.to_dict()
+        }
+
+        if trainer.ema is not None:
+            checkpoint['ema_state_dict'] = trainer.ema.state_dict()
+
+        # Save best model
+        if improved:
+            best_path = self.checkpoint_dir / "best_model.pt"
+            torch.save(checkpoint, best_path)
+            logger.info(f"Saved best model: {best_path} (F1: {val_metrics.f1_score:.4f})")
+
+        # Save epoch checkpoint
+        should_save = False
+        freq = trainer.checkpoint_frequency
+
+        if freq == "every_epoch":
+            should_save = True
+        elif freq == "every_5_epochs":
+            should_save = (epoch + 1) % 5 == 0
+        elif freq == "every_10_epochs":
+            should_save = (epoch + 1) % 10 == 0
+        # "best_only" is handled by 'improved' check above
+
+        if should_save:
+            filename = f"checkpoint_epoch_{epoch+1:03d}.pt"
+            path = self.checkpoint_dir / filename
+            torch.save(checkpoint, path)
+            logger.info(f"Saved checkpoint: {path}")
+
+            # Cleanup
+            self.cleanup_old_checkpoints(keep_n=5)
 
     def list_checkpoints(self) -> List[CheckpointInfo]:
         """

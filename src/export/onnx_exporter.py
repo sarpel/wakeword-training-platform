@@ -8,18 +8,9 @@ from pathlib import Path
 from typing import Tuple, Dict, Optional, List, Any
 from dataclasses import dataclass
 import time
-import logging
-import numpy as np
+import structlog
 
-try:
-    import onnx
-    import onnxruntime as ort
-except ImportError:
-    onnx = None
-    ort = None
-    logging.warning("ONNX/ONNXRuntime not installed. Export functionality limited.")
-
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

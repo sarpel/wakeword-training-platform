@@ -6,9 +6,9 @@ import torch
 import numpy as np
 from typing import Optional, Tuple
 from collections import deque
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class StreamingDetector:
