@@ -91,9 +91,70 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
         gr.Markdown("---")
 
+        # MOVED: NPY Feature Management to be BEFORE Splitting
+        with gr.Row():
+            gr.Markdown("### ⚡ NPY Feature Management (Optional but Recommended)")
+
+        with gr.Tabs():
+            # Tab 1: Batch Feature Extraction
+            with gr.TabItem("⚡ Batch Feature Extraction"):
+                gr.Markdown("**Performance**: Extract features NOW to speed up training by 40-60%.")
+
+                with gr.Row():
+                    with gr.Column():
+                        extract_feature_type = gr.Dropdown(
+                            label="Feature Type",
+                            choices=["mel", "mfcc"],
+                            value="mel",
+                            info="Type of features to extract"
+                        )
+                        extract_batch_size = gr.Slider(
+                            minimum=16, maximum=128, value=32, step=16,
+                            label="Batch Size (GPU)",
+                            info="Higher = faster but uses more memory"
+                        )
+                        extract_output_dir = gr.Textbox(
+                            label="Output Directory (Source for Splitter)",
+                            value=str(Path(data_root) / "raw" / "npy"),
+                            info="Temporary location. Splitter will move these to data/npy/train|val|test"
+                        )
+                        batch_extract_button = gr.Button(
+                            "⚡ Extract All Features to NPY",
+                            variant="primary"
+                        )
+
+                    with gr.Column():
+                        batch_extraction_log = gr.Textbox(
+                            label="Batch Extraction Log",
+                            lines=12,
+                            value="Ready to extract features...\n\nRECOMMENDED WORKFLOW:\n1. 🔍 Scan Datasets (Top)\n2. ⚡ Extract Features (Here)\n3. ✂️ Split Datasets (Below)\n\nThis ensures NPY files are correctly included in your data splits.",
+                            interactive=False
+                        )
+
+            # Tab 2: Analyze Existing NPY Files
+            with gr.TabItem("📦 Analyze Existing NPY"):
+                with gr.Row():
+                    with gr.Column():
+                        npy_folder = gr.Textbox(
+                            label=".npy Files Directory",
+                            placeholder="Path to .npy files (or leave empty to scan dataset_root/npy)",
+                            lines=1
+                        )
+                        analyze_button = gr.Button("🔍 Analyze .npy Files", variant="secondary")
+
+                    with gr.Column():
+                        analysis_log = gr.Textbox(
+                            label="Analysis Report",
+                            lines=12,
+                            value="Analyze existing .npy files...",
+                            interactive=False
+                        )
+
+        gr.Markdown("---")
+
         with gr.Row():
             with gr.Column():
-                gr.Markdown("### Train/Test/Validation Split")
+                gr.Markdown("### ✂️ Train/Test/Validation Split")
 
                 gr.Markdown("**Industry Standard Ratios:** Train: 70%, Val: 15%, Test: 15%")
 
@@ -116,8 +177,8 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 split_button = gr.Button("✂️ Split Datasets", variant="primary")
                 split_status = gr.Textbox(
                     label="Split Status",
-                    value="Scan datasets first",
-                    lines=2,
+                    value="Step 1: Scan Datasets\nStep 2: (Optional) Extract NPY\nStep 3: Split Datasets",
+                    lines=3,
                     interactive=False
                 )
 
@@ -131,64 +192,6 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 )
 
         gr.Markdown("---")
-
-        with gr.Row():
-            gr.Markdown("### NPY Feature Management")
-
-        with gr.Tabs():
-            # Tab 1: Batch Feature Extraction
-            with gr.TabItem("⚡ Batch Feature Extraction"):
-                gr.Markdown("**Performance**: Extract features once, train 40-60% faster!")
-
-                with gr.Row():
-                    with gr.Column():
-                        extract_feature_type = gr.Dropdown(
-                            label="Feature Type",
-                            choices=["mel", "mfcc"],
-                            value="mel",
-                            info="Type of features to extract"
-                        )
-                        extract_batch_size = gr.Slider(
-                            minimum=16, maximum=128, value=32, step=16,
-                            label="Batch Size (GPU)",
-                            info="Higher = faster but uses more memory"
-                        )
-                        extract_output_dir = gr.Textbox(
-                            label="Output Directory (Before Splitting)",
-                            value=str(Path(data_root) / "raw" / "npy"),
-                            info="Temporary location before splitting into train/val/test"
-                        )
-                        batch_extract_button = gr.Button(
-                            "⚡ Extract All Features to NPY",
-                            variant="primary"
-                        )
-
-                    with gr.Column():
-                        batch_extraction_log = gr.Textbox(
-                            label="Batch Extraction Log",
-                            lines=12,
-                            value="Ready to extract features...\n\nWorkflow:\n1. Scan datasets first\n2. Configure feature type\n3. Click 'Extract All Features'\n4. Enable NPY in Panel 2 config",
-                            interactive=False
-                        )
-
-            # Tab 2: Analyze Existing NPY Files
-            with gr.TabItem("📦 Analyze Existing NPY"):
-                with gr.Row():
-                    with gr.Column():
-                        npy_folder = gr.Textbox(
-                            label=".npy Files Directory",
-                            placeholder="Path to .npy files (or leave empty to scan dataset_root/npy)",
-                            lines=1
-                        )
-                        analyze_button = gr.Button("🔍 Analyze .npy Files", variant="secondary")
-
-                    with gr.Column():
-                        analysis_log = gr.Textbox(
-                            label="Analysis Report",
-                            lines=12,
-                            value="Analyze existing .npy files...",
-                            interactive=False
-                        )
 
         # Event handlers with full implementation
         def scan_datasets_handler(root_path: str, skip_val: bool, progress=gr.Progress()) -> Tuple[dict, str, str]:
@@ -287,6 +290,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             train: float,
             val: float,
             test: float,
+            npy_source: str,  # Added npy_source input
             progress=gr.Progress()
         ) -> Tuple[str, str]:
             """Split datasets into train/val/test"""
@@ -313,13 +317,29 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 progress(0.1, desc="Initializing splitter...")
                 splitter = DatasetSplitter(_current_dataset_info)
 
+                # Determine npy source directory
+                npy_source_path = Path(npy_source) if npy_source else Path(root_path) / "npy"
+                if not npy_source_path.exists():
+                     # Fallback to default if custom path doesn't exist or wasn't provided
+                     npy_source_path = Path(root_path) / "npy" 
+                     # Note: In the UI default is data/raw/npy, here root_path is data/raw usually
+                     # Let's be safer and rely on the input if it looks valid, otherwise check standard location
+                
+                # If the input npy_source is actually "data/raw/npy" (from the UI default), we use that.
+                if npy_source:
+                     npy_source_path = Path(npy_source)
+                else:
+                     # Default fallback relative to data root
+                     npy_source_path = Path(root_path) / "npy"
+
                 progress(0.2, desc="Splitting datasets...")
                 splits = splitter.split_datasets(
                     train_ratio=train,
                     val_ratio=val,
                     test_ratio=test,
                     random_seed=42,
-                    stratify=True
+                    stratify=True,
+                    npy_source_dir=npy_source_path # Explicitly pass the source path
                 )
 
                 # Save splits
@@ -556,7 +576,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
         split_button.click(
             fn=split_datasets_handler,
-            inputs=[dataset_root, train_ratio, val_ratio, test_ratio],
+            inputs=[dataset_root, train_ratio, val_ratio, test_ratio, extract_output_dir], # Added extract_output_dir
             outputs=[split_status, health_report]
         )
 

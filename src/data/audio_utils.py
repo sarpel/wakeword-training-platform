@@ -8,6 +8,7 @@ import numpy as np
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any
 import structlog
+from src.exceptions import AudioProcessingError, DataLoadError
 
 logger = structlog.get_logger(__name__)
 
@@ -133,19 +134,25 @@ class AudioValidator:
     @staticmethod
     def check_audio_quality(metadata: Dict) -> Dict[str, Any]:
         """
-        Check audio quality and return warnings
+        Check audio quality and return warnings/exclusion flags
 
         Args:
             metadata: Audio metadata
 
         Returns:
-            Dictionary with quality check results
+            Dictionary with quality check results and exclusion status
         """
         warnings = []
         quality_score = 100.0
+        should_exclude = False
+        exclude_reason = None
 
         # Check sample rate
-        if metadata['sample_rate'] < 8000:
+        if metadata['sample_rate'] < 4000:
+            should_exclude = True
+            exclude_reason = f"Extremely low sample rate: {metadata['sample_rate']}Hz"
+            quality_score = 0
+        elif metadata['sample_rate'] < 8000:
             warnings.append(f"Very low sample rate: {metadata['sample_rate']}Hz")
             quality_score -= 30
         elif metadata['sample_rate'] < 16000:
@@ -154,24 +161,31 @@ class AudioValidator:
 
         # Check duration
         if metadata['duration'] < 0.4:
-            warnings.append(f"Very short duration: {metadata['duration']:.2f}s")
-            quality_score -= 20
-        elif metadata['duration'] < 0.5:
-            warnings.append(f"Short duration: {metadata['duration']:.2f}s (1-2s typical)")
-            quality_score -= 5
+            should_exclude = True
+            exclude_reason = f"Too short: {metadata['duration']:.2f}s (min 0.4s)"
+            quality_score = 0
+        elif metadata['duration'] > 10.0:
+             should_exclude = True
+             exclude_reason = f"Too long: {metadata['duration']:.2f}s (max 10s)"
+             quality_score = 0
+        elif metadata['duration'] < 0.6:
+            warnings.append(f"Short duration: {metadata['duration']:.2f}s (0.6s+ recommended)")
+            quality_score -= 10
         elif metadata['duration'] > 4.0:
-            warnings.append(f"Long duration: {metadata['duration']:.2f}s (may need trimming)")
+            warnings.append(f"Long duration: {metadata['duration']:.2f}s (may contain silence/multiple words)")
             quality_score -= 5
 
-        # Check channels
+        # Check channels (Informational only, not a quality penalty)
         if metadata['channels'] > 1:
-            warnings.append(f"Stereo audio detected ({metadata['channels']} channels), will convert to mono")
-            quality_score -= 5
+            # Stereo is handled automatically, so we don't penalize score, just note it if needed
+            pass
 
         return {
             'quality_score': max(0, quality_score),
             'warnings': warnings,
-            'is_acceptable': quality_score >= 50
+            'is_acceptable': quality_score >= 50 and not should_exclude,
+            'should_exclude': should_exclude,
+            'exclude_reason': exclude_reason
         }
 
 

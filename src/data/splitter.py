@@ -191,6 +191,7 @@ class DatasetScanner:
             'files': [],
             'corrupted': [],
             'quality_warnings': [],
+            'excluded_files': [],  # New list for excluded files
             'cached_files': 0
         }
 
@@ -221,29 +222,42 @@ class DatasetScanner:
                     is_valid, metadata, error = future.result()
 
                     if is_valid:
-                        result['valid_files'] += 1
-                        result['total_duration'] += metadata['duration']
-                        result['sample_rates'][metadata['sample_rate']] += 1
-                        result['formats'][metadata['format']] += 1
-
-                        # Check if from cache
-                        if metadata.get('_cached_at'):
-                            result['cached_files'] += 1
-
                         # Check quality
                         quality = self.validator.check_audio_quality(metadata)
-                        if quality['warnings']:
-                            result['quality_warnings'].extend(quality['warnings'])
+                        
+                        if quality.get('should_exclude', False):
+                            # Exclude file
+                            reason = quality.get('exclude_reason', 'Quality check failed')
+                            result['excluded_files'].append({
+                                'path': str(file_path),
+                                'reason': reason
+                            })
+                            # Print exclusion warning in RED
+                            print(f"\033[91m[EXCLUDED] {file_path.name}: {reason}\033[0m")
+                        
+                        else:
+                            # Valid file
+                            result['valid_files'] += 1
+                            result['total_duration'] += metadata['duration']
+                            result['sample_rates'][metadata['sample_rate']] += 1
+                            result['formats'][metadata['format']] += 1
 
-                        # Add to file list
-                        result['files'].append({
-                            'path': metadata['path'],
-                            'filename': metadata['filename'],
-                            'duration': metadata['duration'],
-                            'sample_rate': metadata['sample_rate'],
-                            'channels': metadata['channels'],
-                            'quality_score': quality['quality_score']
-                        })
+                            # Check if from cache
+                            if metadata.get('_cached_at'):
+                                result['cached_files'] += 1
+
+                            if quality['warnings']:
+                                result['quality_warnings'].extend(quality['warnings'])
+
+                            # Add to file list
+                            result['files'].append({
+                                'path': metadata['path'],
+                                'filename': metadata['filename'],
+                                'duration': metadata['duration'],
+                                'sample_rate': metadata['sample_rate'],
+                                'channels': metadata['channels'],
+                                'quality_score': quality['quality_score']
+                            })
                     else:
                         result['corrupted_files'] += 1
                         result['corrupted'].append({
