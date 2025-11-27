@@ -505,6 +505,12 @@ class DatasetSplitter:
                 logger.warning(f"No files in category: {category}")
                 continue
 
+            # Skip augmentation categories (background, rirs)
+            # These are used for augmentation, not as direct training samples
+            if category in ['background', 'rirs']:
+                logger.info(f"Skipping augmentation category '{category}' for splitting")
+                continue
+
             files = data['files']
             logger.info(f"Splitting {len(files)} files from {category}")
 

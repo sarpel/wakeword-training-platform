@@ -108,6 +108,17 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             value="mel",
                             info="Type of features to extract"
                         )
+                        extract_sample_rate = gr.Number(
+                            label="Sample Rate",
+                            value=16000,
+                            precision=0,
+                            info="Target sample rate (must match training config)"
+                        )
+                        extract_duration = gr.Number(
+                            label="Audio Duration (s)",
+                            value=1.5,
+                            info="Target duration (must match training config)"
+                        )
                         extract_batch_size = gr.Slider(
                             minimum=16, maximum=128, value=32, step=16,
                             label="Batch Size (GPU)",
@@ -421,6 +432,8 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
         def batch_extract_handler(
             root_path: str,
             feature_type: str,
+            sample_rate: int,
+            audio_duration: float,
             batch_size: int,
             output_dir: str,
             progress=gr.Progress()
@@ -443,8 +456,8 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 progress(0.05, desc="Initializing batch extractor...")
                 config = DataConfig(
                     feature_type=feature_type,
-                    sample_rate=16000,
-                    audio_duration=1.5,
+                    sample_rate=int(sample_rate),
+                    audio_duration=float(audio_duration),
                     n_mels=64,
                     n_mfcc=40,
                     n_fft=400,
@@ -704,7 +717,14 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
         batch_extract_button.click(
             fn=batch_extract_handler,
-            inputs=[dataset_root, extract_feature_type, extract_batch_size, extract_output_dir],
+            inputs=[
+                dataset_root, 
+                extract_feature_type, 
+                extract_sample_rate, 
+                extract_duration, 
+                extract_batch_size, 
+                extract_output_dir
+            ],
             outputs=[batch_extraction_log]
         )
 
