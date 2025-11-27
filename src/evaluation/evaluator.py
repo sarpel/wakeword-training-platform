@@ -2,33 +2,26 @@
 Model Evaluator for File-Based and Test Set Evaluation
 GPU-accelerated batch evaluation with comprehensive metrics
 """
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import structlog
 import torch
 import torch.nn as nn
-from pathlib import Path
-from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional, Any
-import numpy as np
-import time
-import structlog
+
+from src.config.cuda_utils import enforce_cuda
+from src.data.audio_utils import AudioProcessor
+from src.data.feature_extraction import FeatureExtractor
+from src.training.metrics import MetricsCalculator, MetricResults
+from src.evaluation.file_evaluator import evaluate_file, evaluate_files
+from src.evaluation.dataset_evaluator import evaluate_dataset, get_roc_curve_data
+from src.evaluation.advanced_evaluator import evaluate_with_advanced_metrics
+from src.evaluation.types import EvaluationResult
 
 logger = structlog.get_logger(__name__)
-
-class MetricResults:
-    accuracy: float
-    precision: float
-    recall: float
-    f1: float
-    loss: float = 0.0
-    confusion_matrix: Any = None
-
-@dataclass
-class EvaluationResult:
-    """Single file evaluation result"""
-    filename: str
-    prediction: str  # "Positive" or "Negative"
-    confidence: float
-    latency_ms: float
-    logits: np.ndarray
 
 
 class ModelEvaluator:
@@ -41,12 +34,12 @@ class ModelEvaluator:
         model: nn.Module,
         sample_rate: int = 16000,
         audio_duration: float = 1.5,
-        device: str = 'cuda',
-        feature_type: str = 'mel',
+        device: str = "cuda",
+        feature_type: str = "mel",
         n_mels: int = 64,
         n_mfcc: int = 0,
         n_fft: int = 400,
-        hop_length: int = 160
+        hop_length: int = 160,
     ):
         """
         Initialize model evaluator
@@ -76,13 +69,12 @@ class ModelEvaluator:
 
         # Audio processor
         self.audio_processor = AudioProcessor(
-            target_sr=sample_rate,
-            target_duration=audio_duration
+            target_sr=sample_rate, target_duration=audio_duration
         )
 
         # Normalize feature type (handle legacy 'mel_spectrogram')
-        if feature_type == 'mel_spectrogram':
-            feature_type = 'mel'
+        if feature_type == "mel_spectrogram":
+            feature_type = "mel"
 
         # Feature extractor
         self.feature_extractor = FeatureExtractor(
@@ -92,7 +84,7 @@ class ModelEvaluator:
             n_mfcc=n_mfcc,
             n_fft=n_fft,
             hop_length=hop_length,
-            device=device
+            device=device,
         )
 
         # Metrics calculator
@@ -100,27 +92,40 @@ class ModelEvaluator:
 
         logger.info(f"ModelEvaluator initialized on {device}")
 
-    def evaluate_file(self, audio_path: Path, threshold: float = 0.5) -> EvaluationResult:
+    def evaluate_file(
+        self, audio_path: Path, threshold: float = 0.5
+    ) -> EvaluationResult:
         return evaluate_file(self, audio_path, threshold)
 
-    def evaluate_files(self, audio_paths: List[Path], threshold: float = 0.5, batch_size: int = 32) -> List[EvaluationResult]:
+    def evaluate_files(
+        self, audio_paths: List[Path], threshold: float = 0.5, batch_size: int = 32
+    ) -> List[EvaluationResult]:
         return evaluate_files(self, audio_paths, threshold, batch_size)
 
-    def evaluate_dataset(self, dataset, threshold: float = 0.5, batch_size: int = 32) -> Tuple[MetricResults, List[EvaluationResult]]:
+    def evaluate_dataset(
+        self, dataset, threshold: float = 0.5, batch_size: int = 32
+    ) -> Tuple[MetricResults, List[EvaluationResult]]:
         return evaluate_dataset(self, dataset, threshold, batch_size)
 
-    def get_roc_curve_data(self, dataset, batch_size: int = 32) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def get_roc_curve_data(
+        self, dataset, batch_size: int = 32
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return get_roc_curve_data(self, dataset, batch_size)
 
-    def evaluate_with_advanced_metrics(self, dataset, total_seconds: float, target_fah: float = 1.0, batch_size: int = 32) -> Dict:
-        return evaluate_with_advanced_metrics(self, dataset, total_seconds, target_fah, batch_size)
-
-    
+    def evaluate_with_advanced_metrics(
+        self,
+        dataset,
+        total_seconds: float,
+        target_fah: float = 1.0,
+        batch_size: int = 32,
+    ) -> Dict:
+        return evaluate_with_advanced_metrics(
+            self, dataset, total_seconds, target_fah, batch_size
+        )
 
 
 def load_model_for_evaluation(
-    checkpoint_path: Path,
-    device: str = 'cuda'
+    checkpoint_path: Path, device: str = "cuda"
 ) -> Tuple[nn.Module, Dict]:
     """
     Load trained model from checkpoint
@@ -138,10 +143,10 @@ def load_model_for_evaluation(
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
     # Get config
-    if 'config' not in checkpoint:
+    if "config" not in checkpoint:
         raise ValueError("Checkpoint does not contain configuration")
 
-    config_data = checkpoint['config']
+    config_data = checkpoint["config"]
 
     # Convert config dict to WakewordConfig object if needed
     from src.config.defaults import WakewordConfig
@@ -161,11 +166,11 @@ def load_model_for_evaluation(
         architecture=config.model.architecture,
         num_classes=config.model.num_classes,
         pretrained=False,
-        dropout=config.model.dropout
+        dropout=config.model.dropout,
     )
 
     # Load weights
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.load_state_dict(checkpoint["model_state_dict"])
 
     # Move to device and set eval mode
     model.to(device)
@@ -175,10 +180,10 @@ def load_model_for_evaluation(
 
     # Get additional info
     info = {
-        'epoch': checkpoint.get('epoch', 0),
-        'val_loss': checkpoint.get('val_loss', 0.0),
-        'val_metrics': checkpoint.get('val_metrics', {}),
-        'config': config
+        "epoch": checkpoint.get("epoch", 0),
+        "val_loss": checkpoint.get("val_loss", 0.0),
+        "val_metrics": checkpoint.get("val_metrics", {}),
+        "config": config,
     }
 
     return model, info
@@ -201,13 +206,13 @@ if __name__ == "__main__":
             # Create evaluator
             evaluator = ModelEvaluator(
                 model=model,
-                sample_rate=info['config'].data.sample_rate,
-                audio_duration=info['config'].data.audio_duration,
-                feature_type=info['config'].data.feature_type,
-                n_mels=info['config'].data.n_mels,
-                n_mfcc=info['config'].data.n_mfcc,
-                n_fft=info['config'].data.n_fft,
-                hop_length=info['config'].data.hop_length
+                sample_rate=info["config"].data.sample_rate,
+                audio_duration=info["config"].data.audio_duration,
+                feature_type=info["config"].data.feature_type,
+                n_mels=info["config"].data.n_mels,
+                n_mfcc=info["config"].data.n_mfcc,
+                n_fft=info["config"].data.n_fft,
+                hop_length=info["config"].data.hop_length,
             )
 
             print(f"✅ Evaluator created")

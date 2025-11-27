@@ -2,13 +2,14 @@
 .npy File Extractor and Processor
 Handles loading, validation, and conversion of .npy feature files
 """
-import numpy as np
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Callable
-from tqdm import tqdm
-import structlog
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
+
+import numpy as np
+import structlog
+from tqdm import tqdm
 
 logger = structlog.get_logger(__name__)
 
@@ -17,11 +18,11 @@ class NpyExtractor:
     """Extract and process .npy feature files"""
 
     SUPPORTED_SHAPES = {
-        'raw_audio': 1,        # (N, samples)
-        'spectrogram': 2,      # (N, freq_bins, time_steps)
-        'mfcc': 2,             # (N, n_mfcc, time_steps)
-        'features_2d': 2,      # Generic 2D features
-        'features_3d': 3,      # Generic 3D features
+        "raw_audio": 1,  # (N, samples)
+        "spectrogram": 2,  # (N, freq_bins, time_steps)
+        "mfcc": 2,  # (N, n_mfcc, time_steps)
+        "features_2d": 2,  # Generic 2D features
+        "features_3d": 3,  # Generic 3D features
     }
 
     def __init__(self, max_workers: int = None):
@@ -64,7 +65,9 @@ class NpyExtractor:
         logger.info(f"Found {len(npy_files)} .npy files in {directory}")
         return sorted(npy_files)
 
-    def validate_npy_file(self, file_path: Path) -> Tuple[bool, Optional[Dict], Optional[str]]:
+    def validate_npy_file(
+        self, file_path: Path
+    ) -> Tuple[bool, Optional[Dict], Optional[str]]:
         """
         Validate .npy file and extract metadata
 
@@ -76,23 +79,23 @@ class NpyExtractor:
         """
         try:
             # Load array (memory-mapped for efficiency)
-            data = np.load(str(file_path), mmap_mode='r')
+            data = np.load(str(file_path), mmap_mode="r")
 
             # Get metadata
             metadata = {
-                'path': str(file_path),
-                'filename': file_path.name,
-                'shape': data.shape,
-                'ndim': data.ndim,
-                'dtype': str(data.dtype),
-                'size': data.size,
-                'nbytes': data.nbytes,
-                'nbytes_mb': data.nbytes / (1024 ** 2)
+                "path": str(file_path),
+                "filename": file_path.name,
+                "shape": data.shape,
+                "ndim": data.ndim,
+                "dtype": str(data.dtype),
+                "size": data.size,
+                "nbytes": data.nbytes,
+                "nbytes_mb": data.nbytes / (1024**2),
             }
 
             # Determine feature type
             feature_type = self._infer_feature_type(data.shape, data.ndim)
-            metadata['inferred_type'] = feature_type
+            metadata["inferred_type"] = feature_type
 
             # Basic validation
             if data.size == 0:
@@ -138,9 +141,9 @@ class NpyExtractor:
     def extract_and_convert(
         self,
         npy_files: List[Path],
-        output_format: str = 'audio',
+        output_format: str = "audio",
         target_sr: int = 16000,
-        progress_callback: Optional[Callable] = None
+        progress_callback: Optional[Callable] = None,
     ) -> Dict:
         """
         Extract and convert .npy files with parallel processing
@@ -155,14 +158,16 @@ class NpyExtractor:
             Dictionary with extraction results
         """
         results = {
-            'total_files': len(npy_files),
-            'valid_files': 0,
-            'invalid_files': 0,
-            'files': [],
-            'errors': []
+            "total_files": len(npy_files),
+            "valid_files": 0,
+            "invalid_files": 0,
+            "files": [],
+            "errors": [],
         }
 
-        logger.info(f"Extracting {len(npy_files)} .npy files with {self.max_workers} workers...")
+        logger.info(
+            f"Extracting {len(npy_files)} .npy files with {self.max_workers} workers..."
+        )
 
         completed = 0
 
@@ -182,30 +187,26 @@ class NpyExtractor:
                     is_valid, metadata, error = future.result()
 
                     if is_valid:
-                        results['valid_files'] += 1
-                        results['files'].append(metadata)
+                        results["valid_files"] += 1
+                        results["files"].append(metadata)
                     else:
-                        results['invalid_files'] += 1
-                        results['errors'].append({
-                            'path': str(file_path),
-                            'error': error
-                        })
+                        results["invalid_files"] += 1
+                        results["errors"].append(
+                            {"path": str(file_path), "error": error}
+                        )
 
                 except Exception as e:
                     logger.error(f"Error processing {file_path}: {e}")
-                    results['invalid_files'] += 1
-                    results['errors'].append({
-                        'path': str(file_path),
-                        'error': str(e)
-                    })
+                    results["invalid_files"] += 1
+                    results["errors"].append({"path": str(file_path), "error": str(e)})
 
                 # Update progress
                 if progress_callback:
                     msg = f"{completed}/{len(npy_files)} files"
                     progress_callback(completed, len(npy_files), msg)
 
-        self.extracted_files = results['files']
-        self.errors = results['errors']
+        self.extracted_files = results["files"]
+        self.errors = results["errors"]
 
         logger.info(
             f"Extraction complete: {results['valid_files']} valid, "
@@ -222,7 +223,7 @@ class NpyExtractor:
             Dictionary with statistics
         """
         if not self.extracted_files:
-            return {'status': 'No files extracted yet'}
+            return {"status": "No files extracted yet"}
 
         # Count feature types
         feature_types = {}
@@ -230,25 +231,25 @@ class NpyExtractor:
         total_size_mb = 0.0
 
         for file_info in self.extracted_files:
-            feature_type = file_info['inferred_type']
-            dtype = file_info['dtype']
+            feature_type = file_info["inferred_type"]
+            dtype = file_info["dtype"]
 
             feature_types[feature_type] = feature_types.get(feature_type, 0) + 1
             dtypes[dtype] = dtypes.get(dtype, 0) + 1
-            total_size_mb += file_info['nbytes_mb']
+            total_size_mb += file_info["nbytes_mb"]
 
         return {
-            'total_files': len(self.extracted_files),
-            'total_size_mb': round(total_size_mb, 2),
-            'feature_types': feature_types,
-            'dtypes': dtypes,
-            'avg_size_mb': round(total_size_mb / len(self.extracted_files), 2) if self.extracted_files else 0
+            "total_files": len(self.extracted_files),
+            "total_size_mb": round(total_size_mb, 2),
+            "feature_types": feature_types,
+            "dtypes": dtypes,
+            "avg_size_mb": round(total_size_mb / len(self.extracted_files), 2)
+            if self.extracted_files
+            else 0,
         }
 
     def load_npy_batch(
-        self,
-        file_path: Path,
-        max_samples: Optional[int] = None
+        self, file_path: Path, max_samples: Optional[int] = None
     ) -> Tuple[np.ndarray, Dict]:
         """
         Load .npy file into memory
@@ -269,9 +270,9 @@ class NpyExtractor:
                 data = data[:max_samples]
 
             metadata = {
-                'shape': data.shape,
-                'dtype': str(data.dtype),
-                'loaded_samples': data.shape[0] if data.ndim >= 1 else 1
+                "shape": data.shape,
+                "dtype": str(data.dtype),
+                "loaded_samples": data.shape[0] if data.ndim >= 1 else 1,
             }
 
             return data, metadata
@@ -281,10 +282,7 @@ class NpyExtractor:
             raise
 
     def convert_to_audio(
-        self,
-        features: np.ndarray,
-        feature_type: str,
-        target_sr: int = 16000
+        self, features: np.ndarray, feature_type: str, target_sr: int = 16000
     ) -> np.ndarray:
         """
         Convert features back to audio (if possible)
@@ -299,7 +297,7 @@ class NpyExtractor:
 
         Note: Only works for raw audio, not for extracted features like MFCC
         """
-        if 'raw_audio' in feature_type:
+        if "raw_audio" in feature_type:
             # Already audio
             return features
 
@@ -309,7 +307,9 @@ class NpyExtractor:
             f"Cannot convert {feature_type} to audio without information loss. "
             "Use raw audio files for training instead."
         )
-        raise NotImplementedError(f"Conversion from {feature_type} to audio not implemented")
+        raise NotImplementedError(
+            f"Conversion from {feature_type} to audio not implemented"
+        )
 
     def generate_report(self) -> str:
         """
@@ -320,8 +320,8 @@ class NpyExtractor:
         """
         stats = self.get_statistics()
 
-        if stats.get('status'):
-            return stats['status']
+        if stats.get("status"):
+            return stats["status"]
 
         report = []
         report.append("=" * 60)
@@ -336,13 +336,13 @@ class NpyExtractor:
 
         report.append("Feature Types:")
         report.append("-" * 60)
-        for feature_type, count in stats['feature_types'].items():
+        for feature_type, count in stats["feature_types"].items():
             report.append(f"  {feature_type}: {count} files")
         report.append("")
 
         report.append("Data Types:")
         report.append("-" * 60)
-        for dtype, count in stats['dtypes'].items():
+        for dtype, count in stats["dtypes"].items():
             report.append(f"  {dtype}: {count} files")
         report.append("")
 
@@ -364,7 +364,7 @@ class NpyExtractor:
         npy_files: List[Path],
         expected_shape: Tuple[int, int, int],
         delete_invalid: bool = False,
-        progress_callback: Optional[Callable] = None
+        progress_callback: Optional[Callable] = None,
     ) -> Dict:
         """
         Validate NPY files against a specific expected shape
@@ -379,28 +379,30 @@ class NpyExtractor:
             Dictionary with validation results
         """
         results = {
-            'total_files': len(npy_files),
-            'valid_count': 0,
-            'mismatch_count': 0,
-            'error_count': 0,
-            'deleted_count': 0,
-            'mismatches': []
+            "total_files": len(npy_files),
+            "valid_count": 0,
+            "mismatch_count": 0,
+            "error_count": 0,
+            "deleted_count": 0,
+            "mismatches": [],
         }
 
-        logger.info(f"Validating shapes for {len(npy_files)} files against {expected_shape}")
+        logger.info(
+            f"Validating shapes for {len(npy_files)} files against {expected_shape}"
+        )
 
         for i, file_path in enumerate(npy_files):
             try:
                 # Load metadata only (fast)
                 # We can read just the header to get the shape without loading the whole array
                 # But np.load(mmap_mode='r') is already efficient for this
-                data = np.load(str(file_path), mmap_mode='r')
+                data = np.load(str(file_path), mmap_mode="r")
                 shape = data.shape
-                
+
                 # Convert to tuple for comparison (handle 3D vs 2D)
                 # Dataset expects (channels, freq, time), usually (1, 64, 151)
                 # Loaded data might be (1, 64, 151) or just (64, 151) if squeezed
-                
+
                 is_match = False
                 if shape == expected_shape:
                     is_match = True
@@ -408,32 +410,38 @@ class NpyExtractor:
                     # Handle missing channel dim: expected (1, 64, 151), got (64, 151)
                     if shape == expected_shape[1:]:
                         is_match = True
-                
+
                 if is_match:
-                    results['valid_count'] += 1
+                    results["valid_count"] += 1
                 else:
-                    results['mismatch_count'] += 1
-                    results['mismatches'].append({
-                        'path': str(file_path),
-                        'actual': shape,
-                        'expected': expected_shape
-                    })
-                    
+                    results["mismatch_count"] += 1
+                    results["mismatches"].append(
+                        {
+                            "path": str(file_path),
+                            "actual": shape,
+                            "expected": expected_shape,
+                        }
+                    )
+
                     if delete_invalid:
                         try:
                             # Close mmap before deleting (Windows issue)
                             del data
                             file_path.unlink()
-                            results['deleted_count'] += 1
+                            results["deleted_count"] += 1
                         except Exception as e:
                             logger.error(f"Failed to delete {file_path}: {e}")
 
             except Exception as e:
-                results['error_count'] += 1
+                results["error_count"] += 1
                 logger.error(f"Error validating {file_path}: {e}")
 
             if progress_callback and i % 100 == 0:
-                progress_callback(i, len(npy_files), f"Validating shapes... ({results['mismatch_count']} mismatches)")
+                progress_callback(
+                    i,
+                    len(npy_files),
+                    f"Validating shapes... ({results['mismatch_count']} mismatches)",
+                )
 
         return results
 
@@ -447,8 +455,12 @@ if __name__ == "__main__":
     print("NPY Extractor initialized successfully")
 
     # Test with example data
-    test_data = np.random.randn(100, 40, 50)  # Example: 100 samples, 40 MFCC, 50 time steps
+    test_data = np.random.randn(
+        100, 40, 50
+    )  # Example: 100 samples, 40 MFCC, 50 time steps
     print(f"\nTest data shape: {test_data.shape}")
-    print(f"Inferred type: {extractor._infer_feature_type(test_data.shape, test_data.ndim)}")
+    print(
+        f"Inferred type: {extractor._infer_feature_type(test_data.shape, test_data.ndim)}"
+    )
 
     print("\nNPY Extractor test complete")

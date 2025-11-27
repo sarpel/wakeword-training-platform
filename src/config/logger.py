@@ -3,9 +3,11 @@ Logging Infrastructure for Wakeword Training Platform using structlog
 """
 import logging
 import sys
-import structlog
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import structlog
+
 
 def setup_logging(log_level: str = "INFO") -> None:
     """Set up structlog logging for the entire application."""
@@ -28,6 +30,7 @@ def setup_logging(log_level: str = "INFO") -> None:
         cache_logger_on_first_use=True,
     )
 
+
 def get_data_logger(name: str = "data") -> structlog.stdlib.BoundLogger:
     """
     Get a structlog logger instance for dataset or data operations.
@@ -39,6 +42,9 @@ def get_data_logger(name: str = "data") -> structlog.stdlib.BoundLogger:
         A structlog logger instance.
     """
     return structlog.get_logger(name)
+
+
+get_logger = structlog.get_logger
 
 if __name__ == "__main__":
     setup_logging()

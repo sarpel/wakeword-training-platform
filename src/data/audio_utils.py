@@ -2,12 +2,14 @@
 Audio Utilities for Wakeword Training Platform
 File validation, loading, and basic processing
 """
-import soundfile as sf
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+
 import librosa
 import numpy as np
-from pathlib import Path
-from typing import Tuple, Optional, Dict, Any
+import soundfile as sf
 import structlog
+
 from src.exceptions import AudioProcessingError, DataLoadError
 
 logger = structlog.get_logger(__name__)
@@ -16,7 +18,7 @@ logger = structlog.get_logger(__name__)
 class AudioValidator:
     """Validates audio files and extracts metadata"""
 
-    SUPPORTED_FORMATS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a'}
+    SUPPORTED_FORMATS = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
 
     def __init__(self):
         self.valid_files = []
@@ -37,7 +39,9 @@ class AudioValidator:
         return file_path.suffix.lower() in AudioValidator.SUPPORTED_FORMATS
 
     @staticmethod
-    def validate_audio_file(file_path: Path) -> Tuple[bool, Optional[Dict], Optional[str]]:
+    def validate_audio_file(
+        file_path: Path,
+    ) -> Tuple[bool, Optional[Dict], Optional[str]]:
         """
         Validate audio file and extract metadata
 
@@ -52,14 +56,14 @@ class AudioValidator:
             info = sf.info(str(file_path))
 
             metadata = {
-                'path': str(file_path),
-                'filename': file_path.name,
-                'format': file_path.suffix.lower(),
-                'sample_rate': info.samplerate,
-                'channels': info.channels,
-                'duration': info.duration,
-                'frames': info.frames,
-                'subtype': info.subtype,
+                "path": str(file_path),
+                "filename": file_path.name,
+                "format": file_path.suffix.lower(),
+                "sample_rate": info.samplerate,
+                "channels": info.channels,
+                "duration": info.duration,
+                "frames": info.frames,
+                "subtype": info.subtype,
             }
 
             return True, metadata, None
@@ -75,7 +79,7 @@ class AudioValidator:
         target_sr: int = 16000,
         mono: bool = True,
         duration: Optional[float] = None,
-        offset: float = 0.0
+        offset: float = 0.0,
     ) -> Tuple[np.ndarray, int]:
         """
         Load audio file with resampling and mono conversion
@@ -97,7 +101,7 @@ class AudioValidator:
                 sr=target_sr,
                 mono=mono,
                 duration=duration,
-                offset=offset
+                offset=offset,
             )
 
             return audio, sr
@@ -119,16 +123,16 @@ class AudioValidator:
             Dictionary of statistics
         """
         return {
-            'duration': len(audio) / sr,
-            'samples': len(audio),
-            'sample_rate': sr,
-            'rms': float(np.sqrt(np.mean(audio**2))),
-            'max_amplitude': float(np.max(np.abs(audio))),
-            'min_value': float(np.min(audio)),
-            'max_value': float(np.max(audio)),
-            'mean': float(np.mean(audio)),
-            'std': float(np.std(audio)),
-            'zero_crossing_rate': float(np.mean(librosa.zero_crossings(audio))),
+            "duration": len(audio) / sr,
+            "samples": len(audio),
+            "sample_rate": sr,
+            "rms": float(np.sqrt(np.mean(audio**2))),
+            "max_amplitude": float(np.max(np.abs(audio))),
+            "min_value": float(np.min(audio)),
+            "max_value": float(np.max(audio)),
+            "mean": float(np.mean(audio)),
+            "std": float(np.std(audio)),
+            "zero_crossing_rate": float(np.mean(librosa.zero_crossings(audio))),
         }
 
     @staticmethod
@@ -147,45 +151,57 @@ class AudioValidator:
         should_exclude = False
         exclude_reason = None
 
+        # Determine context from path
+        is_rir = "rirs" in str(metadata.get("path", "")).lower()
+
         # Check sample rate
-        if metadata['sample_rate'] < 4000:
+        if metadata["sample_rate"] < 4000:
             should_exclude = True
             exclude_reason = f"Extremely low sample rate: {metadata['sample_rate']}Hz"
             quality_score = 0
-        elif metadata['sample_rate'] < 8000:
+        elif metadata["sample_rate"] < 8000:
             warnings.append(f"Very low sample rate: {metadata['sample_rate']}Hz")
             quality_score -= 30
-        elif metadata['sample_rate'] < 16000:
-            warnings.append(f"Low sample rate: {metadata['sample_rate']}Hz (16kHz recommended)")
+        elif metadata["sample_rate"] < 16000:
+            warnings.append(
+                f"Low sample rate: {metadata['sample_rate']}Hz (16kHz recommended)"
+            )
             quality_score -= 10
 
         # Check duration
-        if metadata['duration'] < 0.4:
+        # RIRs are naturally short (impulses), so we allow down to 0.1s
+        min_duration = 0.1 if is_rir else 0.4
+        
+        if metadata["duration"] < min_duration:
             should_exclude = True
-            exclude_reason = f"Too short: {metadata['duration']:.2f}s (min 0.4s)"
+            exclude_reason = f"Too short: {metadata['duration']:.2f}s (min {min_duration}s)"
             quality_score = 0
-        elif metadata['duration'] > 10.0:
-             should_exclude = True
-             exclude_reason = f"Too long: {metadata['duration']:.2f}s (max 10s)"
-             quality_score = 0
-        elif metadata['duration'] < 0.6:
-            warnings.append(f"Short duration: {metadata['duration']:.2f}s (0.6s+ recommended)")
+        elif metadata["duration"] > 10.0:
+            should_exclude = True
+            exclude_reason = f"Too long: {metadata['duration']:.2f}s (max 10s)"
+            quality_score = 0
+        elif metadata["duration"] < 0.6:
+            warnings.append(
+                f"Short duration: {metadata['duration']:.2f}s (0.6s+ recommended)"
+            )
             quality_score -= 10
-        elif metadata['duration'] > 4.0:
-            warnings.append(f"Long duration: {metadata['duration']:.2f}s (may contain silence/multiple words)")
+        elif metadata["duration"] > 4.0:
+            warnings.append(
+                f"Long duration: {metadata['duration']:.2f}s (may contain silence/multiple words)"
+            )
             quality_score -= 5
 
         # Check channels (Informational only, not a quality penalty)
-        if metadata['channels'] > 1:
+        if metadata["channels"] > 1:
             # Stereo is handled automatically, so we don't penalize score, just note it if needed
             pass
 
         return {
-            'quality_score': max(0, quality_score),
-            'warnings': warnings,
-            'is_acceptable': quality_score >= 50 and not should_exclude,
-            'should_exclude': should_exclude,
-            'exclude_reason': exclude_reason
+            "quality_score": max(0, quality_score),
+            "warnings": warnings,
+            "is_acceptable": quality_score >= 50 and not should_exclude,
+            "should_exclude": should_exclude,
+            "exclude_reason": exclude_reason,
         }
 
 
@@ -204,11 +220,7 @@ class AudioProcessor:
         self.target_duration = target_duration
         self.target_samples = int(target_sr * target_duration)
 
-    def process_audio(
-        self,
-        file_path: Path,
-        pad_mode: str = 'constant'
-    ) -> np.ndarray:
+    def process_audio(self, file_path: Path, pad_mode: str = "constant") -> np.ndarray:
         """
         Load and process audio file to standard format
 
@@ -221,9 +233,7 @@ class AudioProcessor:
         """
         # Load audio
         audio, sr = AudioValidator.load_audio(
-            file_path,
-            target_sr=self.target_sr,
-            mono=True
+            file_path, target_sr=self.target_sr, mono=True
         )
 
         # Normalize length
@@ -252,19 +262,21 @@ class AudioProcessor:
         elif current_samples > self.target_samples:
             # Trim from center
             start = (current_samples - self.target_samples) // 2
-            return audio[start:start + self.target_samples]
+            return audio[start : start + self.target_samples]
         else:
             # Pad
             pad_amount = self.target_samples - current_samples
             pad_left = pad_amount // 2
             pad_right = pad_amount - pad_left
 
-            if pad_mode == 'constant':
-                return np.pad(audio, (pad_left, pad_right), mode='constant')
+            if pad_mode == "constant":
+                return np.pad(audio, (pad_left, pad_right), mode="constant")
             else:
                 return np.pad(audio, (pad_left, pad_right), mode=pad_mode)
 
-    def _normalize_amplitude(self, audio: np.ndarray, target_level: float = 0.3) -> np.ndarray:
+    def _normalize_amplitude(
+        self, audio: np.ndarray, target_level: float = 0.3
+    ) -> np.ndarray:
         """
         Normalize audio amplitude
 
@@ -320,6 +332,7 @@ def scan_audio_files(directory: Path, recursive: bool = True) -> list:
 if __name__ == "__main__":
     # Test audio utilities
     import sys
+
     from src.config.logger import get_logger
 
     test_logger = get_logger("audio_utils_test")

@@ -2,15 +2,16 @@
 Learning Rate Finder
 Implements LR range test to find optimal learning rate
 """
+from pathlib import Path
+from typing import Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import structlog
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import numpy as np
-import matplotlib.pyplot as plt
-from pathlib import Path
-from typing import Optional, Tuple
 from tqdm import tqdm
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -27,7 +28,7 @@ class LRFinder:
         model: nn.Module,
         optimizer: torch.optim.Optimizer,
         criterion: nn.Module,
-        device: str = 'cuda'
+        device: str = "cuda",
     ):
         """
         Initialize LR Finder
@@ -58,7 +59,7 @@ class LRFinder:
         end_lr: float = 1e-2,
         num_iter: int = 200,
         smooth_f: float = 0.05,
-        diverge_th: float = 5.0
+        diverge_th: float = 5.0,
     ) -> Tuple[list, list]:
         """
         Run LR range test
@@ -92,10 +93,10 @@ class LRFinder:
 
         # Set initial LR
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] = start_lr
+            param_group["lr"] = start_lr
 
         # Tracking
-        best_loss = float('inf')
+        best_loss = float("inf")
         smoothed_loss = 0
 
         # Iterate
@@ -134,7 +135,7 @@ class LRFinder:
             self.optimizer.step()
 
             # Get current LR
-            current_lr = self.optimizer.param_groups[0]['lr']
+            current_lr = self.optimizer.param_groups[0]["lr"]
 
             # Smooth loss
             if iteration == 0:
@@ -151,14 +152,13 @@ class LRFinder:
             self.losses.append(smoothed_loss)
 
             # Update progress bar
-            pbar.set_postfix({
-                'lr': f'{current_lr:.2e}',
-                'loss': f'{smoothed_loss:.4f}'
-            })
+            pbar.set_postfix(
+                {"lr": f"{current_lr:.2e}", "loss": f"{smoothed_loss:.4f}"}
+            )
 
             # Increase LR
             for param_group in self.optimizer.param_groups:
-                param_group['lr'] *= lr_mult
+                param_group["lr"] *= lr_mult
 
         logger.info(f"LR finder complete: {len(self.learning_rates)} iterations")
 
@@ -169,10 +169,7 @@ class LRFinder:
         return self.learning_rates, self.losses
 
     def plot(
-        self,
-        skip_start: int = 10,
-        skip_end: int = 5,
-        save_path: Optional[Path] = None
+        self, skip_start: int = 10, skip_end: int = 5, save_path: Optional[Path] = None
     ):
         """
         Plot LR vs Loss
@@ -187,17 +184,19 @@ class LRFinder:
             return
 
         # Prepare data
-        lrs = np.array(self.learning_rates[skip_start:-skip_end if skip_end > 0 else None])
-        losses = np.array(self.losses[skip_start:-skip_end if skip_end > 0 else None])
+        lrs = np.array(
+            self.learning_rates[skip_start : -skip_end if skip_end > 0 else None]
+        )
+        losses = np.array(self.losses[skip_start : -skip_end if skip_end > 0 else None])
 
         # Create plot
         fig, ax = plt.subplots(figsize=(10, 6))
 
         ax.plot(lrs, losses)
-        ax.set_xscale('log')
-        ax.set_xlabel('Learning Rate', fontsize=12)
-        ax.set_ylabel('Loss', fontsize=12)
-        ax.set_title('Learning Rate Finder', fontsize=14)
+        ax.set_xscale("log")
+        ax.set_xlabel("Learning Rate", fontsize=12)
+        ax.set_ylabel("Loss", fontsize=12)
+        ax.set_title("Learning Rate Finder", fontsize=14)
         ax.grid(True, alpha=0.3)
 
         # Find steepest decline
@@ -206,7 +205,12 @@ class LRFinder:
         min_grad_idx = grad.argmin()
 
         suggested_lr = lrs[min_grad_idx]
-        ax.axvline(suggested_lr, color='r', linestyle='--', label=f'Suggested LR: {suggested_lr:.2e}')
+        ax.axvline(
+            suggested_lr,
+            color="r",
+            linestyle="--",
+            label=f"Suggested LR: {suggested_lr:.2e}",
+        )
         ax.legend()
 
         plt.tight_layout()
@@ -217,11 +221,7 @@ class LRFinder:
 
         plt.show()
 
-    def suggest_lr(
-        self,
-        skip_start: int = 10,
-        skip_end: int = 5
-    ) -> float:
+    def suggest_lr(self, skip_start: int = 10, skip_end: int = 5) -> float:
         """
         Suggest optimal learning rate
 
@@ -239,8 +239,10 @@ class LRFinder:
             return 0.001
 
         # Prepare data
-        lrs = np.array(self.learning_rates[skip_start:-skip_end if skip_end > 0 else None])
-        losses = np.array(self.losses[skip_start:-skip_end if skip_end > 0 else None])
+        lrs = np.array(
+            self.learning_rates[skip_start : -skip_end if skip_end > 0 else None]
+        )
+        losses = np.array(self.losses[skip_start : -skip_end if skip_end > 0 else None])
 
         # Find steepest descent
         grad = np.gradient(losses)
@@ -258,10 +260,10 @@ def find_lr(
     train_loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
-    device: str = 'cuda',
+    device: str = "cuda",
     start_lr: float = 1e-6,
     end_lr: float = 1e-2,
-    num_iter: int = 200
+    num_iter: int = 200,
 ) -> float:
     """
     Convenience function to find optimal learning rate
@@ -282,10 +284,7 @@ def find_lr(
     lr_finder = LRFinder(model, optimizer, criterion, device)
 
     lr_finder.range_test(
-        train_loader,
-        start_lr=start_lr,
-        end_lr=end_lr,
-        num_iter=num_iter
+        train_loader, start_lr=start_lr, end_lr=end_lr, num_iter=num_iter
     )
 
     suggested_lr = lr_finder.suggest_lr()
@@ -299,13 +298,9 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Create dummy model and data
-    model = nn.Sequential(
-        nn.Linear(10, 50),
-        nn.ReLU(),
-        nn.Linear(50, 2)
-    )
+    model = nn.Sequential(nn.Linear(10, 50), nn.ReLU(), nn.Linear(50, 2))
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
 
     print(f"Using device: {device}")
@@ -331,10 +326,7 @@ if __name__ == "__main__":
     lr_finder = LRFinder(model, optimizer, criterion, device)
 
     lrs, losses = lr_finder.range_test(
-        train_loader,
-        start_lr=1e-6,
-        end_lr=1e-2,
-        num_iter=100
+        train_loader, start_lr=1e-6, end_lr=1e-2, num_iter=100
     )
 
     print(f"\nResults:")

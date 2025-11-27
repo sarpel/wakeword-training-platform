@@ -3,11 +3,12 @@ Corpus-level Cepstral Mean Variance Normalization (CMVN)
 Implements global normalization statistics with persistence
 """
 import json
-import torch
-import numpy as np
 from pathlib import Path
-from typing import Optional, Dict, Tuple
+from typing import Dict, Optional, Tuple
+
+import numpy as np
 import structlog
+import torch
 
 logger = structlog.get_logger(__name__)
 
@@ -20,11 +21,7 @@ class CMVN:
     consistent normalization to train/val/test splits.
     """
 
-    def __init__(
-        self,
-        stats_path: Optional[Path] = None,
-        eps: float = 1e-8
-    ):
+    def __init__(self, stats_path: Optional[Path] = None, eps: float = 1e-8):
         """
         Initialize CMVN
 
@@ -46,9 +43,7 @@ class CMVN:
             logger.info(f"Loaded CMVN stats from {self.stats_path}")
 
     def compute_stats(
-        self,
-        features_list: list,
-        save: bool = True
+        self, features_list: list, save: bool = True
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Compute global mean and std from feature list
@@ -82,16 +77,16 @@ class CMVN:
 
             if sum_features is None:
                 sum_features = features.sum(dim=1)
-                sum_squared = (features ** 2).sum(dim=1)
+                sum_squared = (features**2).sum(dim=1)
             else:
                 sum_features += features.sum(dim=1)
-                sum_squared += (features ** 2).sum(dim=1)
+                sum_squared += (features**2).sum(dim=1)
 
             total_frames += num_frames
 
         # Compute global statistics
         self.mean = sum_features / total_frames
-        variance = (sum_squared / total_frames) - (self.mean ** 2)
+        variance = (sum_squared / total_frames) - (self.mean**2)
         self.std = torch.sqrt(variance.clamp(min=self.eps))
         self.count = total_frames
 
@@ -193,13 +188,13 @@ class CMVN:
 
         # Convert to lists for JSON serialization
         stats_dict = {
-            'mean': self.mean.cpu().numpy().tolist(),
-            'std': self.std.cpu().numpy().tolist(),
-            'count': self.count,
-            'eps': self.eps
+            "mean": self.mean.cpu().numpy().tolist(),
+            "std": self.std.cpu().numpy().tolist(),
+            "count": self.count,
+            "eps": self.eps,
         }
 
-        with open(save_path, 'w') as f:
+        with open(save_path, "w") as f:
             json.dump(stats_dict, f, indent=2)
 
         logger.info(f"CMVN stats saved to {save_path}")
@@ -219,13 +214,13 @@ class CMVN:
         if not load_path.exists():
             raise FileNotFoundError(f"Stats file not found: {load_path}")
 
-        with open(load_path, 'r') as f:
+        with open(load_path, "r") as f:
             stats_dict = json.load(f)
 
-        self.mean = torch.tensor(stats_dict['mean'], dtype=torch.float32)
-        self.std = torch.tensor(stats_dict['std'], dtype=torch.float32)
-        self.count = stats_dict['count']
-        self.eps = stats_dict.get('eps', 1e-8)
+        self.mean = torch.tensor(stats_dict["mean"], dtype=torch.float32)
+        self.std = torch.tensor(stats_dict["std"], dtype=torch.float32)
+        self.count = stats_dict["count"]
+        self.eps = stats_dict.get("eps", 1e-8)
 
         logger.info(f"CMVN stats loaded from {load_path}")
         logger.info(f"  Feature dim: {self.mean.shape[0]}")
@@ -233,9 +228,7 @@ class CMVN:
 
 
 def compute_cmvn_from_dataset(
-    dataset,
-    stats_path: Path,
-    max_samples: Optional[int] = None
+    dataset, stats_path: Path, max_samples: Optional[int] = None
 ) -> CMVN:
     """
     Compute CMVN statistics from a PyTorch dataset
@@ -284,7 +277,9 @@ if __name__ == "__main__":
         features = torch.randn(feature_dim, time_steps) + (i * 0.1)
         features_list.append(features)
 
-    print(f"Created {num_utterances} dummy feature tensors ({feature_dim}x{time_steps})")
+    print(
+        f"Created {num_utterances} dummy feature tensors ({feature_dim}x{time_steps})"
+    )
 
     # Compute CMVN stats
     cmvn = CMVN(stats_path=Path("test_cmvn_stats.json"))

@@ -2,11 +2,12 @@
 Loss Functions for Wakeword Detection
 Includes: Cross Entropy with Label Smoothing, Focal Loss
 """
+import logging
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class LabelSmoothingCrossEntropy(nn.Module):
         self,
         smoothing: float = 0.1,
         weight: Optional[torch.Tensor] = None,
-        reduction: str = 'mean'
+        reduction: str = "mean",
     ):
         """
         Initialize Label Smoothing Cross Entropy Loss
@@ -56,7 +57,9 @@ class LabelSmoothingCrossEntropy(nn.Module):
         target_one_hot = F.one_hot(target, num_classes).float()
 
         # Apply label smoothing
-        smooth_target = target_one_hot * self.confidence + (1 - target_one_hot) * (self.smoothing / (num_classes - 1))
+        smooth_target = target_one_hot * self.confidence + (1 - target_one_hot) * (
+            self.smoothing / (num_classes - 1)
+        )
 
         # Calculate loss
         loss = -torch.sum(smooth_target * log_probs, dim=-1)
@@ -67,11 +70,11 @@ class LabelSmoothingCrossEntropy(nn.Module):
             loss = loss * weight
 
         # Apply reduction
-        if self.reduction == 'none':
+        if self.reduction == "none":
             return loss
-        elif self.reduction == 'mean':
+        elif self.reduction == "mean":
             return loss.mean()
-        elif self.reduction == 'sum':
+        elif self.reduction == "sum":
             return loss.sum()
         else:
             raise ValueError(f"Invalid reduction: {self.reduction}")
@@ -88,7 +91,7 @@ class FocalLoss(nn.Module):
         alpha: float = 0.25,
         gamma: float = 2.0,
         weight: Optional[torch.Tensor] = None,
-        reduction: str = 'mean'
+        reduction: str = "mean",
     ):
         """
         Initialize Focal Loss
@@ -103,7 +106,9 @@ class FocalLoss(nn.Module):
 
         # Guard: Don't use both alpha and class_weights simultaneously
         if alpha is not None and weight is not None:
-            logger.warning("Both alpha and class_weights provided. Using class_weights only, ignoring alpha.")
+            logger.warning(
+                "Both alpha and class_weights provided. Using class_weights only, ignoring alpha."
+            )
             self.alpha = None
             self.weight = weight
         else:
@@ -135,7 +140,7 @@ class FocalLoss(nn.Module):
         focal_weight = (1 - pt) ** self.gamma
 
         # Calculate cross entropy
-        ce_loss = F.cross_entropy(pred, target, reduction='none')
+        ce_loss = F.cross_entropy(pred, target, reduction="none")
 
         # Apply focal weight
         loss = focal_weight * ce_loss
@@ -146,7 +151,7 @@ class FocalLoss(nn.Module):
                 alpha_t = torch.where(
                     target == 1,
                     torch.tensor(self.alpha, device=target.device),
-                    torch.tensor(1 - self.alpha, device=target.device)
+                    torch.tensor(1 - self.alpha, device=target.device),
                 )
             else:
                 # Alpha is a tensor of class weights
@@ -159,11 +164,11 @@ class FocalLoss(nn.Module):
             loss = loss * weight
 
         # Apply reduction
-        if self.reduction == 'none':
+        if self.reduction == "none":
             return loss
-        elif self.reduction == 'mean':
+        elif self.reduction == "mean":
             return loss.mean()
-        elif self.reduction == 'sum':
+        elif self.reduction == "sum":
             return loss.sum()
         else:
             raise ValueError(f"Invalid reduction: {self.reduction}")
@@ -176,7 +181,7 @@ def create_loss_function(
     focal_alpha: float = 0.25,
     focal_gamma: float = 2.0,
     class_weights: Optional[torch.Tensor] = None,
-    device: str = 'cuda'
+    device: str = "cuda",
 ) -> nn.Module:
     """
     Factory function to create loss functions
@@ -205,19 +210,14 @@ def create_loss_function(
     if loss_name == "cross_entropy":
         if label_smoothing > 0:
             return LabelSmoothingCrossEntropy(
-                smoothing=label_smoothing,
-                weight=class_weights,
-                reduction='mean'
+                smoothing=label_smoothing, weight=class_weights, reduction="mean"
             )
         else:
-            return nn.CrossEntropyLoss(weight=class_weights, reduction='mean')
+            return nn.CrossEntropyLoss(weight=class_weights, reduction="mean")
 
     elif loss_name == "focal_loss":
         return FocalLoss(
-            alpha=focal_alpha,
-            gamma=focal_gamma,
-            weight=class_weights,
-            reduction='mean'
+            alpha=focal_alpha, gamma=focal_gamma, weight=class_weights, reduction="mean"
         )
 
     else:
@@ -272,7 +272,7 @@ if __name__ == "__main__":
 
     # Test factory function
     print("\n4. Testing factory function...")
-    loss_fn = create_loss_function('cross_entropy', label_smoothing=0.1, device=device)
+    loss_fn = create_loss_function("cross_entropy", label_smoothing=0.1, device=device)
     loss_value = loss_fn(pred, target)
     print(f"  Loss value: {loss_value.item():.4f}")
     print(f"  ✅ Factory function works")

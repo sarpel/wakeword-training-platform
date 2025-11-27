@@ -2,12 +2,13 @@
 Metrics Tracking for Wakeword Detection
 Includes: Accuracy, Precision, Recall, F1, FPR, FNR, Confusion Matrix
 """
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import structlog
 import torch
 import torch.nn as nn
-from typing import Dict, Tuple, Optional, List
-import numpy as np
-from dataclasses import dataclass, field
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -15,6 +16,7 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class MetricResults:
     """Container for metric calculation results"""
+
     accuracy: float
     precision: float
     recall: float
@@ -47,19 +49,19 @@ class MetricResults:
     def to_dict(self) -> Dict[str, float]:
         """Convert to dictionary"""
         return {
-            'accuracy': self.accuracy,
-            'precision': self.precision,
-            'recall': self.recall,
-            'f1_score': self.f1_score,
-            'fpr': self.fpr,
-            'fnr': self.fnr,
-            'true_positives': self.true_positives,
-            'true_negatives': self.true_negatives,
-            'false_positives': self.false_positives,
-            'false_negatives': self.false_negatives,
-            'total_samples': self.total_samples,
-            'positive_samples': self.positive_samples,
-            'negative_samples': self.negative_samples
+            "accuracy": self.accuracy,
+            "precision": self.precision,
+            "recall": self.recall,
+            "f1_score": self.f1_score,
+            "fpr": self.fpr,
+            "fnr": self.fnr,
+            "true_positives": self.true_positives,
+            "true_negatives": self.true_negatives,
+            "false_positives": self.false_positives,
+            "false_negatives": self.false_negatives,
+            "total_samples": self.total_samples,
+            "positive_samples": self.positive_samples,
+            "negative_samples": self.negative_samples,
         }
 
 
@@ -69,7 +71,7 @@ class MetricsCalculator:
     Optimized for GPU operations
     """
 
-    def __init__(self, device: str = 'cuda'):
+    def __init__(self, device: str = "cuda"):
         """
         Initialize metrics calculator
 
@@ -79,10 +81,7 @@ class MetricsCalculator:
         self.device = device
 
     def calculate(
-        self,
-        predictions: torch.Tensor,
-        targets: torch.Tensor,
-        threshold: float = 0.5
+        self, predictions: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5
     ) -> MetricResults:
         """
         Calculate all metrics from predictions and targets
@@ -126,7 +125,11 @@ class MetricsCalculator:
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
 
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        f1 = (
+            2 * (precision * recall) / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
 
         # False Positive Rate (FPR): FP / (FP + TN)
         # How often we incorrectly activate on negative samples
@@ -149,14 +152,11 @@ class MetricsCalculator:
             false_negatives=fn,
             total_samples=total,
             positive_samples=positive_samples,
-            negative_samples=negative_samples
+            negative_samples=negative_samples,
         )
 
     def confusion_matrix(
-        self,
-        predictions: torch.Tensor,
-        targets: torch.Tensor,
-        num_classes: int = 2
+        self, predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 2
     ) -> torch.Tensor:
         """
         Calculate confusion matrix
@@ -176,7 +176,9 @@ class MetricsCalculator:
             pred_classes = predictions.long()
 
         # Create confusion matrix
-        conf_matrix = torch.zeros(num_classes, num_classes, dtype=torch.long, device=self.device)
+        conf_matrix = torch.zeros(
+            num_classes, num_classes, dtype=torch.long, device=self.device
+        )
 
         for t, p in zip(targets, pred_classes):
             conf_matrix[t.long(), p.long()] += 1
@@ -190,7 +192,7 @@ class MetricsTracker:
     Accumulates predictions and targets for accurate metric calculation
     """
 
-    def __init__(self, device: str = 'cuda'):
+    def __init__(self, device: str = "cuda"):
         """
         Initialize metrics tracker
 
@@ -232,11 +234,19 @@ class MetricsTracker:
         if not self.all_predictions:
             logger.warning("No predictions accumulated, returning zero metrics")
             return MetricResults(
-                accuracy=0.0, precision=0.0, recall=0.0, f1_score=0.0,
-                fpr=0.0, fnr=0.0,
-                true_positives=0, true_negatives=0,
-                false_positives=0, false_negatives=0,
-                total_samples=0, positive_samples=0, negative_samples=0
+                accuracy=0.0,
+                precision=0.0,
+                recall=0.0,
+                f1_score=0.0,
+                fpr=0.0,
+                fnr=0.0,
+                true_positives=0,
+                true_negatives=0,
+                false_positives=0,
+                false_negatives=0,
+                total_samples=0,
+                positive_samples=0,
+                negative_samples=0,
             )
 
         # Concatenate all batches
@@ -266,7 +276,7 @@ class MetricsTracker:
         """Get history of all epoch metrics"""
         return self.epoch_metrics
 
-    def get_best_epoch(self, metric: str = 'f1_score') -> Tuple[int, MetricResults]:
+    def get_best_epoch(self, metric: str = "f1_score") -> Tuple[int, MetricResults]:
         """
         Get epoch with best metric value
 
@@ -280,12 +290,16 @@ class MetricsTracker:
             return 0, None
 
         # For FPR and FNR, lower is better
-        if metric in ['fpr', 'fnr']:
-            best_idx = min(range(len(self.epoch_metrics)),
-                          key=lambda i: getattr(self.epoch_metrics[i], metric))
+        if metric in ["fpr", "fnr"]:
+            best_idx = min(
+                range(len(self.epoch_metrics)),
+                key=lambda i: getattr(self.epoch_metrics[i], metric),
+            )
         else:
-            best_idx = max(range(len(self.epoch_metrics)),
-                          key=lambda i: getattr(self.epoch_metrics[i], metric))
+            best_idx = max(
+                range(len(self.epoch_metrics)),
+                key=lambda i: getattr(self.epoch_metrics[i], metric),
+            )
 
         return best_idx, self.epoch_metrics[best_idx]
 
@@ -308,11 +322,13 @@ class MetricsTracker:
         summary += "\n" + "=" * 80 + "\n"
 
         # Best metrics
-        best_acc_epoch, best_acc = self.get_best_epoch('accuracy')
-        best_f1_epoch, best_f1 = self.get_best_epoch('f1_score')
-        best_fpr_epoch, best_fpr = self.get_best_epoch('fpr')
+        best_acc_epoch, best_acc = self.get_best_epoch("accuracy")
+        best_f1_epoch, best_f1 = self.get_best_epoch("f1_score")
+        best_fpr_epoch, best_fpr = self.get_best_epoch("fpr")
 
-        summary += f"\nBest Accuracy: {best_acc.accuracy:.4f} (Epoch {best_acc_epoch+1})"
+        summary += (
+            f"\nBest Accuracy: {best_acc.accuracy:.4f} (Epoch {best_acc_epoch+1})"
+        )
         summary += f"\nBest F1 Score: {best_f1.f1_score:.4f} (Epoch {best_f1_epoch+1})"
         summary += f"\nBest FPR (lowest): {best_fpr.fpr:.4f} (Epoch {best_fpr_epoch+1})"
 
@@ -351,9 +367,9 @@ class MetricMonitor:
 
         # Trim to window size
         if len(self.batch_losses) > self.window_size:
-            self.batch_losses = self.batch_losses[-self.window_size:]
+            self.batch_losses = self.batch_losses[-self.window_size :]
         if len(self.batch_accuracies) > self.window_size:
-            self.batch_accuracies = self.batch_accuracies[-self.window_size:]
+            self.batch_accuracies = self.batch_accuracies[-self.window_size :]
 
     def get_running_averages(self) -> Dict[str, float]:
         """
@@ -363,11 +379,11 @@ class MetricMonitor:
             Dictionary with running averages
         """
         if not self.batch_losses:
-            return {'loss': 0.0, 'accuracy': 0.0}
+            return {"loss": 0.0, "accuracy": 0.0}
 
         return {
-            'loss': np.mean(self.batch_losses),
-            'accuracy': np.mean(self.batch_accuracies)
+            "loss": np.mean(self.batch_losses),
+            "accuracy": np.mean(self.batch_accuracies),
         }
 
     def reset(self):
@@ -377,9 +393,7 @@ class MetricMonitor:
 
 
 def calculate_class_weights(
-    dataset_stats: Dict[str, int],
-    method: str = 'balanced',
-    device: str = 'cuda'
+    dataset_stats: Dict[str, int], method: str = "balanced", device: str = "cuda"
 ) -> torch.Tensor:
     """
     Calculate class weights for imbalanced datasets
@@ -392,8 +406,8 @@ def calculate_class_weights(
     Returns:
         Class weights tensor
     """
-    positive_count = dataset_stats.get('positive', 0)
-    negative_count = dataset_stats.get('negative', 0)
+    positive_count = dataset_stats.get("positive", 0)
+    negative_count = dataset_stats.get("negative", 0)
 
     if positive_count == 0 or negative_count == 0:
         logger.warning("Zero samples in one class, returning equal weights")
@@ -401,17 +415,17 @@ def calculate_class_weights(
 
     total = positive_count + negative_count
 
-    if method == 'balanced':
+    if method == "balanced":
         # sklearn-style: n_samples / (n_classes * class_count)
         weight_positive = total / (2 * positive_count)
         weight_negative = total / (2 * negative_count)
 
-    elif method == 'inverse':
+    elif method == "inverse":
         # Simple inverse frequency
         weight_positive = negative_count / positive_count
         weight_negative = 1.0
 
-    elif method == 'sqrt_inverse':
+    elif method == "sqrt_inverse":
         # Square root of inverse frequency (less extreme)
         weight_positive = np.sqrt(negative_count / positive_count)
         weight_negative = 1.0
@@ -422,7 +436,9 @@ def calculate_class_weights(
     # Class 0 (negative), Class 1 (positive)
     weights = torch.tensor([weight_negative, weight_positive], device=device)
 
-    logger.info(f"Calculated class weights ({method}): Negative={weight_negative:.4f}, Positive={weight_positive:.4f}")
+    logger.info(
+        f"Calculated class weights ({method}): Negative={weight_negative:.4f}, Positive={weight_positive:.4f}"
+    )
 
     return weights
 
@@ -443,10 +459,9 @@ if __name__ == "__main__":
     predictions = torch.randn(batch_size, num_classes).to(device)
 
     # Simulate targets (80 negative, 20 positive - imbalanced)
-    targets = torch.cat([
-        torch.zeros(80, dtype=torch.long),
-        torch.ones(20, dtype=torch.long)
-    ]).to(device)
+    targets = torch.cat(
+        [torch.zeros(80, dtype=torch.long), torch.ones(20, dtype=torch.long)]
+    ).to(device)
 
     # Shuffle targets
     perm = torch.randperm(batch_size)
@@ -503,7 +518,7 @@ if __name__ == "__main__":
     tracker.save_epoch_metrics(epoch2_metrics)
 
     print(f"\n  Epoch history: {len(tracker.get_epoch_history())} epochs")
-    best_epoch, best_metrics = tracker.get_best_epoch('f1_score')
+    best_epoch, best_metrics = tracker.get_best_epoch("f1_score")
     print(f"  Best epoch: {best_epoch + 1} with F1={best_metrics.f1_score:.4f}")
     print(f"  ✅ MetricsTracker works")
 
@@ -518,14 +533,16 @@ if __name__ == "__main__":
         monitor.update_batch(loss, acc)
 
     running_avg = monitor.get_running_averages()
-    print(f"  Running averages: Loss={running_avg['loss']:.4f}, Acc={running_avg['accuracy']:.4f}")
+    print(
+        f"  Running averages: Loss={running_avg['loss']:.4f}, Acc={running_avg['accuracy']:.4f}"
+    )
     print(f"  ✅ MetricMonitor works")
 
     # Test class weights calculation
     print("\n5. Testing class weights calculation...")
-    dataset_stats = {'positive': 20, 'negative': 180}
+    dataset_stats = {"positive": 20, "negative": 180}
 
-    for method in ['balanced', 'inverse', 'sqrt_inverse']:
+    for method in ["balanced", "inverse", "sqrt_inverse"]:
         weights = calculate_class_weights(dataset_stats, method=method, device=device)
         print(f"  {method}: {weights}")
 

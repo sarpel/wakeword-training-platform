@@ -1,5 +1,6 @@
 import wandb
 
+
 class WandbCallback:
     """A callback to log training metrics to Weights & Biases."""
 
@@ -12,7 +13,9 @@ class WandbCallback:
         """
         wandb.init(project=project_name, config=config)
 
-    def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: dict) -> None:
+    def on_epoch_end(
+        self, epoch: int, train_loss: float, val_loss: float, val_metrics: dict
+    ) -> None:
         """Logs metrics at the end of an epoch."""
         wandb.log(
             {

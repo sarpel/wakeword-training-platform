@@ -1,16 +1,19 @@
-from typing import Tuple, List
-import torch
+from typing import List, Tuple
+import time
+from pathlib import Path
+
 import numpy as np
 import structlog
-from .evaluator import EvaluationResult, MetricResults
+import torch
+
+from src.evaluation.types import EvaluationResult
+from src.training.metrics import MetricResults
 
 logger = structlog.get_logger(__name__)
 
+
 def evaluate_dataset(
-    evaluator,
-    dataset,
-    threshold: float = 0.5,
-    batch_size: int = 32
+    evaluator, dataset, threshold: float = 0.5, batch_size: int = 32
 ) -> Tuple[MetricResults, List[EvaluationResult]]:
     """
     Evaluate entire dataset with ground truth labels
@@ -43,7 +46,7 @@ def evaluate_dataset(
         shuffle=False,
         num_workers=0,  # Single process for evaluation
         pin_memory=True,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
     )
 
     all_predictions = []
@@ -82,28 +85,33 @@ def evaluate_dataset(
             for i, (confidence, pred_class, logit, meta) in enumerate(
                 zip(confidences, predicted_classes, logits.cpu().numpy(), metadata)
             ):
-                results.append(EvaluationResult(
-                    filename=Path(meta['path']).name if 'path' in meta else f"sample_{batch_idx}_{i}",
-                    prediction="Positive" if pred_class == 1 else "Negative",
-                    confidence=float(confidence),
-                    latency_ms=batch_latency,
-                    logits=logit
-                ))
+                results.append(
+                    EvaluationResult(
+                        filename=Path(meta["path"]).name
+                        if "path" in meta
+                        else f"sample_{batch_idx}_{i}",
+                        prediction="Positive" if pred_class == 1 else "Negative",
+                        confidence=float(confidence),
+                        latency_ms=batch_latency,
+                        logits=logit,
+                    )
+                )
 
     # Calculate overall metrics
     all_preds = torch.cat(all_predictions, dim=0)
     all_targs = torch.cat(all_targets, dim=0)
 
-    metrics = evaluator.metrics_calculator.calculate(all_preds, all_targs, threshold=threshold)
+    metrics = evaluator.metrics_calculator.calculate(
+        all_preds, all_targs, threshold=threshold
+    )
 
     logger.info(f"Evaluation complete: {metrics}")
 
     return metrics, results
 
+
 def get_roc_curve_data(
-    evaluator,
-    dataset,
-    batch_size: int = 32
+    evaluator, dataset, batch_size: int = 32
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Calculate ROC curve data
@@ -135,7 +143,7 @@ def get_roc_curve_data(
         shuffle=False,
         num_workers=0,
         pin_memory=True,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
     )
 
     all_confidences = []

@@ -2,11 +2,12 @@
 Streaming Wakeword Detector
 Implements sliding window, voting, hysteresis, and lockout for real-time detection
 """
-import torch
-import numpy as np
-from typing import Optional, Tuple
 from collections import deque
+from typing import Optional, Tuple
+
+import numpy as np
 import structlog
+import torch
 
 logger = structlog.get_logger(__name__)
 
@@ -29,7 +30,7 @@ class StreamingDetector:
         hysteresis: float = 0.1,
         lockout_ms: int = 1500,
         vote_window: int = 5,
-        vote_threshold: int = 3
+        vote_threshold: int = 3,
     ):
         """
         Initialize streaming detector
@@ -43,7 +44,11 @@ class StreamingDetector:
             vote_threshold: Number of votes needed for detection
         """
         self.threshold_on = threshold_on
-        self.threshold_off = threshold_off if threshold_off is not None else max(threshold_on - hysteresis, 0)
+        self.threshold_off = (
+            threshold_off
+            if threshold_off is not None
+            else max(threshold_on - hysteresis, 0)
+        )
         self.lockout_ms = lockout_ms
         self.vote_window = vote_window
         self.vote_threshold = vote_threshold
@@ -59,11 +64,7 @@ class StreamingDetector:
             f"lockout={lockout_ms}ms, vote={vote_threshold}/{vote_window}"
         )
 
-    def step(
-        self,
-        score: float,
-        timestamp_ms: int
-    ) -> bool:
+    def step(self, score: float, timestamp_ms: int) -> bool:
         """
         Process one detection score
 
@@ -117,7 +118,7 @@ class SlidingWindowProcessor:
         self,
         window_duration_s: float = 1.0,
         hop_duration_s: float = 0.1,
-        sample_rate: int = 16000
+        sample_rate: int = 16000,
     ):
         """
         Initialize sliding window processor
@@ -137,10 +138,7 @@ class SlidingWindowProcessor:
             f"hop={hop_duration_s}s ({self.hop_size} samples)"
         )
 
-    def extract_windows(
-        self,
-        audio: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def extract_windows(self, audio: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Extract overlapping windows from audio
 
@@ -189,7 +187,7 @@ def process_audio_stream(
     vote_window: int = 5,
     vote_threshold: int = 3,
     lockout_ms: int = 1500,
-    device: str = 'cuda'
+    device: str = "cuda",
 ) -> Tuple[list, list]:
     """
     Process audio stream and detect wakewords
@@ -215,14 +213,14 @@ def process_audio_stream(
     window_processor = SlidingWindowProcessor(
         window_duration_s=window_duration_s,
         hop_duration_s=hop_duration_s,
-        sample_rate=sample_rate
+        sample_rate=sample_rate,
     )
 
     detector = StreamingDetector(
         threshold_on=threshold,
         vote_window=vote_window,
         vote_threshold=vote_threshold,
-        lockout_ms=lockout_ms
+        lockout_ms=lockout_ms,
     )
 
     # Extract windows
@@ -279,21 +277,18 @@ if __name__ == "__main__":
     print("\n1. Testing StreamingDetector...")
 
     detector = StreamingDetector(
-        threshold_on=0.7,
-        vote_window=5,
-        vote_threshold=3,
-        lockout_ms=1500
+        threshold_on=0.7, vote_window=5, vote_threshold=3, lockout_ms=1500
     )
 
     # Simulate scores
     test_scores = [
-        (0, 0.3),    # No detection
+        (0, 0.3),  # No detection
         (100, 0.4),
         (200, 0.8),  # Vote 1
         (300, 0.9),  # Vote 2
-        (400, 0.85), # Vote 3 -> DETECTION
+        (400, 0.85),  # Vote 3 -> DETECTION
         (500, 0.9),  # In lockout
-        (1000, 0.95), # In lockout
+        (1000, 0.95),  # In lockout
         (2000, 0.8),  # Out of lockout, but buffer reset
     ]
 
@@ -312,9 +307,7 @@ if __name__ == "__main__":
     print("\n2. Testing SlidingWindowProcessor...")
 
     processor = SlidingWindowProcessor(
-        window_duration_s=1.0,
-        hop_duration_s=0.1,
-        sample_rate=16000
+        window_duration_s=1.0, hop_duration_s=0.1, sample_rate=16000
     )
 
     # Create dummy audio (5 seconds)
@@ -340,22 +333,24 @@ if __name__ == "__main__":
         threshold_off=0.5,
         vote_window=3,
         vote_threshold=2,
-        lockout_ms=500
+        lockout_ms=500,
     )
 
     # Scores that cross both thresholds
     hyst_scores = [
-        (0, 0.8),    # Above on_threshold
+        (0, 0.8),  # Above on_threshold
         (100, 0.75),  # Above on_threshold -> ACTIVATE
-        (600, 0.6),   # Between thresholds (stays active)
-        (700, 0.4),   # Below off_threshold
-        (800, 0.3),   # Below off_threshold -> DEACTIVATE
+        (600, 0.6),  # Between thresholds (stays active)
+        (700, 0.4),  # Below off_threshold
+        (800, 0.3),  # Below off_threshold -> DEACTIVATE
     ]
 
     for timestamp_ms, score in hyst_scores:
         detected = detector_hyst.step(score, timestamp_ms)
         state = "ACTIVE" if detector_hyst.is_active else "INACTIVE"
-        print(f"  t={timestamp_ms}ms, score={score:.2f}, state={state}, detected={detected}")
+        print(
+            f"  t={timestamp_ms}ms, score={score:.2f}, state={state}, detected={detected}"
+        )
 
     print(f"  ✅ Hysteresis test passed")
 

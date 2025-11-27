@@ -3,13 +3,15 @@ Main Gradio Application
 Wakeword Training Platform with 6 panels
 """
 import warnings
+
 # Suppress specific warnings
 warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 
-import gradio as gr
-import sys
 import asyncio
+import sys
 from pathlib import Path
+
+import gradio as gr
 import structlog
 
 if sys.platform.startswith("win"):
@@ -20,13 +22,13 @@ if sys.platform.startswith("win"):
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config.cuda_utils import enforce_cuda, get_cuda_validator
-from src.config.logger import setup_logging, get_data_logger
-from src.ui.panel_dataset import create_dataset_panel
+from src.config.logger import get_data_logger, setup_logging
 from src.ui.panel_config import create_config_panel
-from src.ui.panel_training import create_training_panel
+from src.ui.panel_dataset import create_dataset_panel
+from src.ui.panel_docs import create_docs_panel
 from src.ui.panel_evaluation import create_evaluation_panel
 from src.ui.panel_export import create_export_panel
-from src.ui.panel_docs import create_docs_panel
+from src.ui.panel_training import create_training_panel
 
 
 def suppress_windows_asyncio_errors():
@@ -37,15 +39,19 @@ def suppress_windows_asyncio_errors():
     shutdown already-closed sockets (common with WebSocket disconnects).
     This handler suppresses these specific harmless errors to keep terminal clean.
     """
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
+
         def handle_exception(loop, context):
             # Check if this is the specific harmless error
-            exception = context.get('exception')
+            exception = context.get("exception")
             if isinstance(exception, ConnectionResetError):
                 # Check if it's from _ProactorBasePipeTransport
-                message = context.get('message', '')
-                if '_ProactorBasePipeTransport' in message or \
-                   '_call_connection_lost' in str(context.get('source_traceback', '')):
+                message = context.get("message", "")
+                if (
+                    "_ProactorBasePipeTransport" in message
+                    or "_call_connection_lost"
+                    in str(context.get("source_traceback", ""))
+                ):
                     # Silently ignore this error
                     return
 
@@ -79,7 +85,7 @@ def find_available_port(start_port: int = 7860, end_port: int = 7870) -> int:
     for port in range(start_port, end_port + 1):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('', port))
+                s.bind(("", port))
                 return port
         except OSError:
             continue
@@ -110,27 +116,30 @@ def create_app() -> gr.Blocks:
         .gradio-container {
             max-width: 1400px !important;
         }
-        """
+        """,
     ) as app:
-
         # Global state for sharing data between panels
-        global_state = gr.State(value={'config': None})
+        global_state = gr.State(value={"config": None})
 
         # Header
-        gr.Markdown("""
+        gr.Markdown(
+            """
         # 🎙️ Wakeword Training Platform
         ### GPU-Accelerated Custom Wakeword Detection Model Training
 
         Complete pipeline from dataset management to model deployment.
-        """)
+        """
+        )
 
         # Display GPU info
         gpu_info = cuda_validator.get_device_info()
-        gr.Markdown(f"""
+        gr.Markdown(
+            f"""
         **GPU Status**: ✅ {gpu_info['device_count']} GPU(s) available |
         **CUDA Version**: {gpu_info['cuda_version']} |
         **Active Device**: {gpu_info['devices'][0]['name']} ({gpu_info['devices'][0]['total_memory_gb']} GB)
-        """)
+        """
+        )
 
         gr.Markdown("---")
 
@@ -156,10 +165,12 @@ def create_app() -> gr.Blocks:
 
         # Footer
         gr.Markdown("---")
-        gr.Markdown("""
+        gr.Markdown(
+            """
         **Wakeword Training Platform v1.0** | Reliability-focused implementation |
         GPU-accelerated with PyTorch & CUDA
-        """)
+        """
+        )
 
     logger.info("Application created successfully")
     return app
@@ -169,7 +180,7 @@ def launch_app(
     server_name: str = "0.0.0.0",
     server_port: int = None,
     share: bool = False,
-    inbrowser: bool = True
+    inbrowser: bool = True,
 ):
     """
     Launch the Gradio application
@@ -205,7 +216,7 @@ def launch_app(
             inbrowser=inbrowser,
             show_error=True,
             show_api=False,
-            quiet=False
+            quiet=False,
         )
     except OSError as e:
         if "address already in use" in str(e).lower():
@@ -220,7 +231,7 @@ def launch_app(
                     share=share,
                     inbrowser=inbrowser,
                     show_error=True,
-                    quiet=False
+                    quiet=False,
                 )
             else:
                 logger.error("No available ports found in range 7860-7870")

@@ -2,14 +2,15 @@
 Audio Data Augmentation Pipeline
 GPU-accelerated augmentation using torchaudio and torch operations
 """
+import random
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+import numpy as np
+import structlog
 import torch
 import torchaudio
 import torchaudio.transforms as T
-import numpy as np
-from pathlib import Path
-from typing import Optional, Tuple, List
-import random
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -35,7 +36,7 @@ class AudioAugmentation:
         rir_dry_wet_max: float = 0.7,
         # Background noise and RIR paths
         background_noise_files: Optional[List[Path]] = None,
-        rir_files: Optional[List[Path]] = None
+        rir_files: Optional[List[Path]] = None,
     ):
         """
         Initialize augmentation pipeline
@@ -54,7 +55,7 @@ class AudioAugmentation:
             rir_files: List of RIR file paths
         """
         self.sample_rate = sample_rate
-        self.device = 'cpu'  # Always CPU for audio augmentation
+        self.device = "cpu"  # Always CPU for audio augmentation
 
         # Time domain parameters
         self.time_stretch_range = time_stretch_range
@@ -109,7 +110,9 @@ class AudioAugmentation:
             except Exception as e:
                 logger.warning(f"Failed to load background noise {noise_file}: {e}")
 
-    def _validate_rir(self, waveform: torch.Tensor, file_path: Path) -> Tuple[bool, Optional[str]]:
+    def _validate_rir(
+        self, waveform: torch.Tensor, file_path: Path
+    ) -> Tuple[bool, Optional[str]]:
         """
         Validate RIR quality
 
@@ -128,7 +131,7 @@ class AudioAugmentation:
             return False, f"Invalid duration: {duration:.2f}s (expected 0.1-5.0s)"
 
         # Energy check
-        energy = torch.sum(waveform ** 2).item()
+        energy = torch.sum(waveform**2).item()
         if energy < 1e-6:
             return False, "RIR has near-zero energy (silent)"
 
@@ -172,11 +175,15 @@ class AudioAugmentation:
                 is_valid, warning_msg = self._validate_rir(waveform, rir_file)
 
                 if not is_valid:
-                    logger.warning(f"Skipping invalid RIR {rir_file.name}: {warning_msg}")
+                    logger.warning(
+                        f"Skipping invalid RIR {rir_file.name}: {warning_msg}"
+                    )
                     continue
 
                 if warning_msg:
-                    logger.debug(f"RIR quality warning for {rir_file.name}: {warning_msg}")
+                    logger.debug(
+                        f"RIR quality warning for {rir_file.name}: {warning_msg}"
+                    )
                     warning_count += 1
 
                 # Normalize
@@ -191,7 +198,9 @@ class AudioAugmentation:
             except Exception as e:
                 logger.warning(f"Failed to load RIR {rir_file}: {e}")
 
-        logger.info(f"Loaded {valid_count} valid RIRs ({warning_count} with quality warnings)")
+        logger.info(
+            f"Loaded {valid_count} valid RIRs ({warning_count} with quality warnings)"
+        )
 
     def time_stretch(self, waveform: torch.Tensor) -> torch.Tensor:
         """
@@ -212,10 +221,7 @@ class AudioAugmentation:
 
         # Resample to new length
         stretched = torch.nn.functional.interpolate(
-            waveform.unsqueeze(0),
-            size=new_length,
-            mode='linear',
-            align_corners=False
+            waveform.unsqueeze(0), size=new_length, mode="linear", align_corners=False
         ).squeeze(0)
 
         # Pad or trim to original length
@@ -250,24 +256,22 @@ class AudioAugmentation:
         stretched = torch.nn.functional.interpolate(
             waveform.unsqueeze(0),
             size=int(waveform.shape[-1] / shift_rate),
-            mode='linear',
-            align_corners=False
+            mode="linear",
+            align_corners=False,
         ).squeeze(0)
 
         # Resample back to original rate
         pitch_shifted = torch.nn.functional.interpolate(
             stretched.unsqueeze(0),
             size=waveform.shape[-1],
-            mode='linear',
-            align_corners=False
+            mode="linear",
+            align_corners=False,
         ).squeeze(0)
 
         return pitch_shifted
 
     def add_background_noise(
-        self,
-        waveform: torch.Tensor,
-        snr_db: Optional[float] = None
+        self, waveform: torch.Tensor, snr_db: Optional[float] = None
     ) -> torch.Tensor:
         """
         Add background noise to audio
@@ -289,12 +293,12 @@ class AudioAugmentation:
             # Random segment if noise is longer than waveform
             if noise.shape[-1] > waveform.shape[-1]:
                 start = random.randint(0, noise.shape[-1] - waveform.shape[-1])
-                noise = noise[:, start:start + waveform.shape[-1]]
+                noise = noise[:, start : start + waveform.shape[-1]]
             else:
                 # Repeat if noise is shorter
                 repeats = (waveform.shape[-1] // noise.shape[-1]) + 1
                 noise = noise.repeat(1, repeats)
-                noise = noise[:, :waveform.shape[-1]]
+                noise = noise[:, : waveform.shape[-1]]
 
         # Ensure same shape
         if noise.shape[0] != waveform.shape[0]:
@@ -305,8 +309,8 @@ class AudioAugmentation:
             snr_db = random.uniform(*self.noise_snr_range)
 
         # Calculate signal and noise power
-        signal_power = torch.mean(waveform ** 2)
-        noise_power = torch.mean(noise ** 2)
+        signal_power = torch.mean(waveform**2)
+        noise_power = torch.mean(noise**2)
 
         # Calculate scaling factor for desired SNR
         snr_linear = 10 ** (snr_db / 10)
@@ -322,7 +326,9 @@ class AudioAugmentation:
 
         return noisy_waveform
 
-    def apply_rir(self, waveform: torch.Tensor, dry_wet_ratio: Optional[float] = None) -> torch.Tensor:
+    def apply_rir(
+        self, waveform: torch.Tensor, dry_wet_ratio: Optional[float] = None
+    ) -> torch.Tensor:
         """
         Apply Room Impulse Response (RIR) with dry/wet mixing
 
@@ -344,7 +350,7 @@ class AudioAugmentation:
         rir = random.choice(self.rirs)
 
         # Store original energy
-        original_energy = torch.mean(waveform ** 2)
+        original_energy = torch.mean(waveform**2)
 
         # Convolve with RIR to create wet signal
         # Convert to 1D for convolution
@@ -355,17 +361,17 @@ class AudioAugmentation:
         wet_signal = torch.nn.functional.conv1d(
             waveform_1d.unsqueeze(0).unsqueeze(0),
             rir_1d.unsqueeze(0).unsqueeze(0),
-            padding=rir_1d.shape[0] // 2
+            padding=rir_1d.shape[0] // 2,
         )
 
         # Trim to original length
-        wet_signal = wet_signal.squeeze(0)[:, :waveform.shape[-1]]
+        wet_signal = wet_signal.squeeze(0)[:, : waveform.shape[-1]]
 
         # Remove DC offset
         wet_signal = wet_signal - torch.mean(wet_signal)
 
         # Energy normalization: restore original energy to wet signal
-        wet_energy = torch.mean(wet_signal ** 2)
+        wet_energy = torch.mean(wet_signal**2)
         if wet_energy > 1e-8:
             wet_signal = wet_signal * torch.sqrt(original_energy / (wet_energy + 1e-8))
 
@@ -396,7 +402,7 @@ class AudioAugmentation:
             Augmented waveform
         """
         # Ensure waveform is on CPU
-        if waveform.device.type != 'cpu':
+        if waveform.device.type != "cpu":
             waveform = waveform.cpu()
 
         # Apply augmentations randomly
@@ -430,7 +436,7 @@ class SpecAugment:
         freq_mask_param: int = 15,
         time_mask_param: int = 35,
         n_freq_masks: int = 2,
-        n_time_masks: int = 2
+        n_time_masks: int = 2,
     ):
         """
         Initialize SpecAugment
@@ -483,7 +489,7 @@ if __name__ == "__main__":
         pitch_shift_range=(-2, 2),
         background_noise_prob=0.5,
         noise_snr_range=(5.0, 20.0),
-        rir_prob=0.25
+        rir_prob=0.25,
     )
 
     # Test with random audio

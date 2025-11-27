@@ -1,15 +1,19 @@
 from typing import Dict
-import torch
+
 import structlog
+import torch
+
+from src.training.advanced_metrics import calculate_comprehensive_metrics
 
 logger = structlog.get_logger(__name__)
+
 
 def evaluate_with_advanced_metrics(
     evaluator,
     dataset,
     total_seconds: float,
     target_fah: float = 1.0,
-    batch_size: int = 32
+    batch_size: int = 32,
 ) -> Dict:
     """
     Evaluate dataset with comprehensive production metrics
@@ -39,7 +43,7 @@ def evaluate_with_advanced_metrics(
         shuffle=False,
         num_workers=0,
         pin_memory=True,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
     )
 
     all_logits = []
@@ -69,7 +73,7 @@ def evaluate_with_advanced_metrics(
         logits=all_logits,
         labels=all_targets,
         total_seconds=total_seconds,
-        target_fah=target_fah
+        target_fah=target_fah,
     )
 
     logger.info("Advanced evaluation complete:")

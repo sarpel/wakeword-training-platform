@@ -2,19 +2,21 @@
 PyTorch Dataset for Wakeword Training
 Handles audio loading, preprocessing, and augmentation
 """
-import torch
-from torch.utils.data import Dataset
-import numpy as np
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import json
-import structlog
+from functools import lru_cache
 
-from src.data.balanced_sampler import create_balanced_sampler_from_dataset
-from src.data.cmvn import compute_cmvn_from_dataset, CMVN
+import numpy as np
+import structlog
+import torch
+from torch.utils.data import Dataset
+
 from src.data.audio_utils import AudioProcessor
-from src.data.feature_extraction import FeatureExtractor
 from src.data.augmentation import AudioAugmentation
+from src.data.balanced_sampler import create_balanced_sampler_from_dataset
+from src.data.cmvn import CMVN, compute_cmvn_from_dataset
+from src.data.feature_extraction import FeatureExtractor
 
 logger = structlog.get_logger(__name__)
 
@@ -36,8 +38,8 @@ class WakewordDataset(Dataset):
         augmentation_config: Optional[Dict] = None,
         background_noise_dir: Optional[Path] = None,
         rir_dir: Optional[Path] = None,
-        device: str = 'cpu',  # Dataset operations always on CPU
-        feature_type: str = 'mel',
+        device: str = "cpu",  # Dataset operations always on CPU
+        feature_type: str = "mel",
         n_mels: int = 64,
         n_mfcc: int = 0,
         n_fft: int = 400,
@@ -48,7 +50,9 @@ class WakewordDataset(Dataset):
         fallback_to_audio: bool = False,
         # CMVN parameters
         cmvn_path: Optional[Path] = None,
-        apply_cmvn: bool = False
+        apply_cmvn: bool = False,
+        # NEW: Dynamic Label Mapping
+        class_mapping: Optional[Dict[str, int]] = None,
     ):
         """
         Initialize wakeword dataset
@@ -73,16 +77,19 @@ class WakewordDataset(Dataset):
             fallback_to_audio: If NPY missing, load raw audio
             cmvn_path: Path to CMVN stats.json file
             apply_cmvn: Whether to apply CMVN normalization
+            class_mapping: Optional dictionary mapping category names to integer labels
         """
         self.manifest_path = Path(manifest_path)
         self.sample_rate = sample_rate
         self.audio_duration = audio_duration
         self.augment = augment
         self.cache_audio = cache_audio
-        self.device = 'cpu'  # Always CPU for dataset operations
+        self.device = "cpu"  # Always CPU for dataset operations
 
         # NEW: NPY feature parameters
-        self.use_precomputed_features_for_training = use_precomputed_features_for_training
+        self.use_precomputed_features_for_training = (
+            use_precomputed_features_for_training
+        )
         self.npy_cache_features = npy_cache_features
         self.fallback_to_audio = fallback_to_audio
 
@@ -96,19 +103,18 @@ class WakewordDataset(Dataset):
             logger.warning(f"CMVN requested but stats file not found: {cmvn_path}")
 
         # Load manifest
-        with open(self.manifest_path, 'r') as f:
+        with open(self.manifest_path, "r") as f:
             manifest = json.load(f)
 
-        self.files = manifest['files']
-        self.categories = manifest['categories']
+        self.files = manifest["files"]
+        self.categories = manifest["categories"]
 
         # Create label mapping
-        self.label_map = self._create_label_map()
+        self.label_map = self._create_label_map(class_mapping)
 
         # Audio processor
         self.audio_processor = AudioProcessor(
-            target_sr=sample_rate,
-            target_duration=audio_duration
+            target_sr=sample_rate, target_duration=audio_duration
         )
 
         # Cache for loaded audio
@@ -118,8 +124,8 @@ class WakewordDataset(Dataset):
         self.feature_cache = {} if npy_cache_features else None
 
         # Normalize feature type (handle legacy 'mel_spectrogram')
-        if feature_type == 'mel_spectrogram':
-            feature_type = 'mel'
+        if feature_type == "mel_spectrogram":
+            feature_type = "mel"
 
         # Initialize feature extractor
         self.feature_extractor = FeatureExtractor(
@@ -129,7 +135,7 @@ class WakewordDataset(Dataset):
             n_mfcc=n_mfcc,
             n_fft=n_fft,
             hop_length=hop_length,
-            device=device
+            device=device,
         )
 
         # Initialize augmentation if enabled
@@ -140,14 +146,17 @@ class WakewordDataset(Dataset):
             rir_files = None
 
             if background_noise_dir and Path(background_noise_dir).exists():
-                background_files = list(Path(background_noise_dir).rglob("*.wav")) + \
-                                 list(Path(background_noise_dir).rglob("*.mp3"))
+                background_files = list(
+                    Path(background_noise_dir).rglob("*.wav")
+                ) + list(Path(background_noise_dir).rglob("*.mp3"))
                 logger.info(f"Found {len(background_files)} background noise files")
 
             if rir_dir and Path(rir_dir).exists():
-                rir_files = list(Path(rir_dir).rglob("*.wav")) + \
-                            list(Path(rir_dir).rglob("*.flac")) + \
-                            list(Path(rir_dir).rglob("*.mp3"))
+                rir_files = (
+                    list(Path(rir_dir).rglob("*.wav"))
+                    + list(Path(rir_dir).rglob("*.flac"))
+                    + list(Path(rir_dir).rglob("*.mp3"))
+                )
                 logger.info(f"Found {len(rir_files)} RIR files")
 
             # Get augmentation parameters from config or use defaults
@@ -155,16 +164,16 @@ class WakewordDataset(Dataset):
 
             self.augmentation = AudioAugmentation(
                 sample_rate=sample_rate,
-                device='cpu',  # Audio augmentation always on CPU
-                time_stretch_range=aug_config.get('time_stretch_range', (0.9, 1.1)),
-                pitch_shift_range=aug_config.get('pitch_shift_range', (-2, 2)),
-                background_noise_prob=aug_config.get('background_noise_prob', 0.5),
-                noise_snr_range=aug_config.get('noise_snr_range', (5.0, 20.0)),
-                rir_prob=aug_config.get('rir_prob', 0.25),
-                rir_dry_wet_min=aug_config.get('rir_dry_wet_min', 0.3),
-                rir_dry_wet_max=aug_config.get('rir_dry_wet_max', 0.7),
+                device="cpu",  # Audio augmentation always on CPU
+                time_stretch_range=aug_config.get("time_stretch_range", (0.9, 1.1)),
+                pitch_shift_range=aug_config.get("pitch_shift_range", (-2, 2)),
+                background_noise_prob=aug_config.get("background_noise_prob", 0.5),
+                noise_snr_range=aug_config.get("noise_snr_range", (5.0, 20.0)),
+                rir_prob=aug_config.get("rir_prob", 0.25),
+                rir_dry_wet_min=aug_config.get("rir_dry_wet_min", 0.3),
+                rir_dry_wet_max=aug_config.get("rir_dry_wet_max", 0.7),
                 background_noise_files=background_files,
-                rir_files=rir_files
+                rir_files=rir_files,
             )
 
             logger.info("Augmentation pipeline initialized")
@@ -174,20 +183,22 @@ class WakewordDataset(Dataset):
             f"categories: {self.categories}, augment: {augment}"
         )
 
-    def _create_label_map(self) -> Dict[str, int]:
+    def _create_label_map(self, class_mapping: Optional[Dict[str, int]] = None) -> Dict[str, int]:
         """
         Create category to label mapping
+
+        Args:
+            class_mapping: Optional dictionary mapping category names to integer labels
 
         Returns:
             Dictionary mapping category names to integer labels
         """
+        if class_mapping is not None:
+            return class_mapping
+            
         # Binary classification: positive (1) vs everything else (0)
         # Note: background and rirs are NOT training samples - they're augmentation sources
-        label_map = {
-            'positive': 1,
-            'negative': 0,
-            'hard_negative': 0
-        }
+        label_map = {"positive": 1, "negative": 0, "hard_negative": 0}
 
         return label_map
 
@@ -195,12 +206,13 @@ class WakewordDataset(Dataset):
         """Return dataset size"""
         return len(self.files)
 
-    def _load_from_npy(self, file_info: Dict, idx: int) -> Optional[torch.Tensor]:
+    @lru_cache(maxsize=1000)
+    def _load_from_npy(self, file_info_json: str, idx: int) -> Optional[torch.Tensor]:
         """
         Load precomputed features from .npy file
 
         Args:
-            file_info: File metadata from manifest
+            file_info_json: JSON string of file metadata (hashable for lru_cache)
             idx: Sample index (for caching)
 
         Returns:
@@ -209,16 +221,19 @@ class WakewordDataset(Dataset):
         # Check cache first
         if self.feature_cache is not None and idx in self.feature_cache:
             return self.feature_cache[idx]
-
+        
+        file_info = json.loads(file_info_json)
+        
         # Get NPY path from manifest
-        npy_path = file_info.get('npy_path')
+        npy_path = file_info.get("npy_path")
 
         if not npy_path or not Path(npy_path).exists():
             return None
 
         try:
             # Load NPY file (memory-mapped for efficiency)
-            features = np.load(npy_path, mmap_mode='r')
+            # Use allow_pickle=False for security
+            features = np.load(npy_path, mmap_mode="r", allow_pickle=False)
 
             # Convert to tensor
             features_tensor = torch.from_numpy(np.array(features)).float()
@@ -256,36 +271,45 @@ class WakewordDataset(Dataset):
             Tuple of (features_tensor, label, metadata)
         """
         file_info = self.files[idx]
-        file_path = Path(file_info['path'])
-        category = file_info['category']
-        label = self.label_map[category]
+        file_path = Path(file_info["path"])
+        category = file_info["category"]
+        label = self.label_map.get(category, 0) # Default to 0 if unknown
 
         # NEW: Try loading from NPY first if enabled
         if self.use_precomputed_features_for_training:
-            features = self._load_from_npy(file_info, idx)
+            try:
+                # Pass JSON string for hashability in lru_cache
+                features = self._load_from_npy(json.dumps(file_info), idx)
 
-            if features is not None:
-                # Apply CMVN if enabled
-                if self.cmvn is not None:
-                    features = self.cmvn.normalize(features)
+                if features is not None:
+                    # Apply CMVN if enabled
+                    if self.cmvn is not None:
+                        features = self.cmvn.normalize(features)
 
-                # Successfully loaded from NPY
-                metadata = {
-                    'path': str(file_path),
-                    'category': category,
-                    'label': label,
-                    'source': 'npy',  # NEW: Track data source
-                    'sample_rate': self.sample_rate,
-                    'duration': self.audio_duration
-                }
-                return features, label, metadata
+                    # Successfully loaded from NPY
+                    metadata = {
+                        "path": str(file_path),
+                        "category": category,
+                        "label": label,
+                        "source": "npy",  # NEW: Track data source
+                        "sample_rate": self.sample_rate,
+                        "duration": self.audio_duration,
+                    }
+                    return features, label, metadata
 
-            elif not self.fallback_to_audio:
-                raise FileNotFoundError(
-                    f"NPY file not found for {file_path} and fallback disabled"
-                )
+                elif not self.fallback_to_audio:
+                    # Strict fallback logic: raise error if NPY missing
+                    raise FileNotFoundError(
+                        f"NPY features missing for {file_path} and fallback_to_audio=False"
+                    )
 
-            # If NPY not found, fall through to audio loading
+            except Exception as e:
+                if not self.fallback_to_audio:
+                    raise e
+                logger.error(f"Error loading NPY for {file_path}: {e}")
+                # Fall through to audio loading if fallback enabled
+
+            # If NPY not found and fallback enabled, fall through to audio loading
 
         # EXISTING: Load from raw audio
         if self.audio_cache is not None and idx in self.audio_cache:
@@ -313,12 +337,12 @@ class WakewordDataset(Dataset):
 
         # Metadata
         metadata = {
-            'path': str(file_path),
-            'category': category,
-            'label': label,
-            'source': 'audio',  # NEW: Track data source
-            'sample_rate': self.sample_rate,
-            'duration': self.audio_duration
+            "path": str(file_path),
+            "category": category,
+            "label": label,
+            "source": "audio",  # NEW: Track data source
+            "sample_rate": self.sample_rate,
+            "duration": self.audio_duration,
         }
 
         return features, label, metadata
@@ -360,7 +384,7 @@ class WakewordDataset(Dataset):
             Tensor of class weights
         """
         # Count samples per class
-        labels = [self.label_map[f['category']] for f in self.files]
+        labels = [self.label_map[f["category"]] for f in self.files]
 
         if len(labels) == 0:
             logger.warning("No samples found, returning equal weights")
@@ -370,7 +394,9 @@ class WakewordDataset(Dataset):
 
         # Guard: Check if any class has zero samples
         if np.any(label_counts == 0):
-            logger.warning("Zero samples in one or more classes, returning equal weights")
+            logger.warning(
+                "Zero samples in one or more classes, returning equal weights"
+            )
             return torch.ones(len(label_counts))
 
         # Guard: Check if only one class exists
@@ -392,8 +418,8 @@ def load_dataset_splits(
     augment_train: bool = True,
     cache_audio: bool = False,
     augmentation_config: Optional[Dict] = None,
-    device: str = 'cpu',  # Dataset operations always on CPU
-    feature_type: str = 'mel',
+    device: str = "cpu",  # Dataset operations always on CPU
+    feature_type: str = "mel",
     n_mels: int = 64,
     n_mfcc: int = 0,
     n_fft: int = 400,
@@ -404,7 +430,9 @@ def load_dataset_splits(
     fallback_to_audio: bool = False,
     # CMVN parameters
     cmvn_path: Optional[Path] = None,
-    apply_cmvn: bool = False
+    apply_cmvn: bool = False,
+    # NEW: Class mapping
+    class_mapping: Optional[Dict[str, int]] = None,
 ) -> Tuple[WakewordDataset, WakewordDataset, WakewordDataset]:
     """
     Load train, validation, and test datasets
@@ -434,7 +462,7 @@ def load_dataset_splits(
     splits_dir = data_root / "splits"
 
     # Force CPU for dataset operations
-    device = 'cpu'
+    device = "cpu"
 
     # Determine background noise and RIR directories
     background_noise_dir = data_root / "raw" / "background"
@@ -459,7 +487,8 @@ def load_dataset_splits(
         npy_cache_features=npy_cache_features,
         fallback_to_audio=fallback_to_audio,
         cmvn_path=cmvn_path,
-        apply_cmvn=apply_cmvn
+        apply_cmvn=apply_cmvn,
+        class_mapping=class_mapping,
     )
 
     val_dataset = WakewordDataset(
@@ -478,7 +507,8 @@ def load_dataset_splits(
         npy_cache_features=npy_cache_features,
         fallback_to_audio=fallback_to_audio,
         cmvn_path=cmvn_path,
-        apply_cmvn=apply_cmvn
+        apply_cmvn=apply_cmvn,
+        class_mapping=class_mapping,
     )
 
     test_dataset = WakewordDataset(
@@ -497,7 +527,8 @@ def load_dataset_splits(
         npy_cache_features=npy_cache_features,
         fallback_to_audio=fallback_to_audio,
         cmvn_path=cmvn_path,
-        apply_cmvn=apply_cmvn
+        apply_cmvn=apply_cmvn,
+        class_mapping=class_mapping,
     )
 
     logger.info(
@@ -515,8 +546,9 @@ if __name__ == "__main__":
 
     # This would test if splits exist
     data_root = Path("data")
+    splits_dir = data_root / "splits"
 
-    if (data_root / "splits").exists() and (data_root / "splits" / "train.json").exists():
+    if splits_dir.exists() and (splits_dir / "train.json").exists():
         try:
             train_ds, val_ds, test_ds = load_dataset_splits(data_root)
             print(f"Train dataset: {len(train_ds)} samples")

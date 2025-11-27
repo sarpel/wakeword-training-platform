@@ -4,7 +4,8 @@ Validates configuration parameters and checks for compatibility using Pydantic.
 """
 from __future__ import annotations
 
-from typing import List, Tuple, Dict, Any
+from typing import Any, Dict, List, Tuple
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -16,8 +17,11 @@ try:
     from src.config.schema import WakewordConfig  # gerçek tip burada ise
 except Exception:
     from typing import Protocol  # fallback tip
+
     class WakewordConfig(Protocol):
-        def to_dict(self) -> Dict[str, Any]: ...
+        def to_dict(self) -> Dict[str, Any]:
+            ...
+
 
 # Pydantic model ve sürüm-agnostik doğrulayıcı
 WakewordPydanticConfig = None
@@ -26,7 +30,8 @@ _pydantic_version = 0
 
 try:
     # Önce projedeki gerçek modeli dene
-    from src.config.pydantic_models import WakewordPydanticConfig as _RealModel  # type: ignore
+    from src.config.pydantic_validator import WakewordPydanticConfig as _RealModel
+
     WakewordPydanticConfig = _RealModel
 except Exception:
     pass
@@ -36,16 +41,20 @@ if WakewordPydanticConfig is None:
         # Pydantic yüklüyse generic bir doğrulama yolu kur
         import pydantic
         from pydantic import BaseModel
+
         try:
             from pydantic import ValidationError as PydanticValidationError  # v1
+
             _pydantic_version = 1
         except Exception:
             from pydantic_core import ValidationError as PydanticValidationError  # v2
+
             _pydantic_version = 2
 
         # Şema yoksa, Pydantic aşamasını pas geçeceğiz. Ama tipler mevcut.
     except Exception:
         PydanticValidationError = None  # pydantic yok
+
 
 # CUDA bilgisi
 def get_cuda_validator():
@@ -57,6 +66,7 @@ def get_cuda_validator():
     """
     try:
         from src.system.cuda_utils import get_cuda_validator as real_get
+
         return real_get()
     except Exception:
         # Fallback: torch ile basit bilgi
@@ -77,15 +87,22 @@ def get_cuda_validator():
                     torch.cuda.synchronize(device_index)
                     # PyTorch doğrudan "free" vermez; kaba bir tahmin:
                     # alloc + reserved üzerinden çıkarım yapmak yerine konservatif davran.
-                    return {"total_gb": float(total_gb), "free_gb": max(0.0, float(total_gb) * 0.8)}
+                    return {
+                        "total_gb": float(total_gb),
+                        "free_gb": max(0.0, float(total_gb) * 0.8),
+                    }
+
             return _TorchCudaValidator()
         except Exception:
+
             class _NoCuda:
                 @property
                 def cuda_available(self) -> bool:
                     return False
+
                 def get_memory_info(self, device_index: int = 0) -> Dict[str, float]:
                     return {"total_gb": 0.0, "free_gb": 0.0}
+
             return _NoCuda()
 
 
@@ -106,11 +123,7 @@ class ValidationError:
         self.severity = severity
 
     def __str__(self) -> str:
-        severity_symbols = {
-            "error": "❌",
-            "warning": "⚠️",
-            "info": "ℹ️"
-        }
+        severity_symbols = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}
         symbol = severity_symbols.get(self.severity, "•")
         return f"{symbol} {self.field}: {self.message}"
 
@@ -144,13 +157,18 @@ class ConfigValidator:
                         msg = error.get("msg", str(error))
                         self.errors.append(ValidationError(field or "<config>", msg))
                 else:
-                    self.errors.append(ValidationError("<config>", f"Pydantic validation failed: {e}"))
+                    self.errors.append(
+                        ValidationError("<config>", f"Pydantic validation failed: {e}")
+                    )
             return
 
         # Proje-özel model yoksa ama pydantic yüklüyse yine de atla.
         if PydanticValidationError is not None:
             # Şema olmadığı için doğrulama yapmıyoruz; sadece bilgi
-            logger.info("validator.pydantic", detail="Pydantic model not found; skipping schema validation.")
+            logger.info(
+                "validator.pydantic",
+                detail="Pydantic model not found; skipping schema validation.",
+            )
 
     def validate(self, config: WakewordConfig) -> Tuple[bool, List[ValidationError]]:
         """
@@ -169,7 +187,9 @@ class ConfigValidator:
         try:
             config_dict = config.to_dict()
         except Exception as e:
-            self.errors.append(ValidationError("<config>", f"Config to_dict() failed: {e}"))
+            self.errors.append(
+                ValidationError("<config>", f"Config to_dict() failed: {e}")
+            )
             return False, self.errors
 
         # Pydantic validation (opsiyonel)
@@ -187,92 +207,113 @@ class ConfigValidator:
         """Add custom warnings not covered by Pydantic validators"""
         # Sample rate warning
         if 8000 <= config.data.sample_rate < 16000:
-            self.warnings.append(ValidationError(
-                "data.sample_rate",
-                f"Low sample rate: {config.data.sample_rate}Hz (16000Hz recommended)",
-                "warning"
-            ))
+            self.warnings.append(
+                ValidationError(
+                    "data.sample_rate",
+                    f"Low sample rate: {config.data.sample_rate}Hz (16000Hz recommended)",
+                    "warning",
+                )
+            )
 
         # Audio duration warnings
         if 0.5 <= config.data.audio_duration < 1.5:
-            self.warnings.append(ValidationError(
-                "data.audio_duration",
-                f"Short duration: {config.data.audio_duration}s (1.5-2s recommended)",
-                "warning"
-            ))
+            self.warnings.append(
+                ValidationError(
+                    "data.audio_duration",
+                    f"Short duration: {config.data.audio_duration}s (1.5-2s recommended)",
+                    "warning",
+                )
+            )
         elif config.data.audio_duration > 5.0:
-            self.warnings.append(ValidationError(
-                "data.audio_duration",
-                f"Long duration: {config.data.audio_duration}s (may increase memory usage)",
-                "warning"
-            ))
+            self.warnings.append(
+                ValidationError(
+                    "data.audio_duration",
+                    f"Long duration: {config.data.audio_duration}s (may increase memory usage)",
+                    "warning",
+                )
+            )
 
         # MFCC coefficients warnings
         if hasattr(config.data, "n_mfcc"):
             if 0 < config.data.n_mfcc < 13:
-                self.warnings.append(ValidationError(
-                    "data.n_mfcc",
-                    f"Low MFCC count: {config.data.n_mfcc} (13-40 recommended)",
-                    "warning"
-                ))
+                self.warnings.append(
+                    ValidationError(
+                        "data.n_mfcc",
+                        f"Low MFCC count: {config.data.n_mfcc} (13-40 recommended)",
+                        "warning",
+                    )
+                )
             elif config.data.n_mfcc > 128:
-                self.warnings.append(ValidationError(
-                    "data.n_mfcc",
-                    f"High MFCC count: {config.data.n_mfcc} (may slow training)",
-                    "warning"
-                ))
+                self.warnings.append(
+                    ValidationError(
+                        "data.n_mfcc",
+                        f"High MFCC count: {config.data.n_mfcc} (may slow training)",
+                        "warning",
+                    )
+                )
 
         # Batch size warning
         if config.training.batch_size > 256:
-            self.warnings.append(ValidationError(
-                "training.batch_size",
-                f"Large batch size: {config.training.batch_size} (may cause OOM)",
-                "warning"
-            ))
+            self.warnings.append(
+                ValidationError(
+                    "training.batch_size",
+                    f"Large batch size: {config.training.batch_size} (may cause OOM)",
+                    "warning",
+                )
+            )
 
     def _validate_gpu_compatibility(self, config: WakewordConfig):
         """Validate GPU compatibility and estimate memory usage"""
         if not self.cuda_validator.cuda_available:
             # GPU mecburi ise error, değilse info: burada hatayı koruyoruz
-            self.errors.append(ValidationError(
-                "system.gpu",
-                "GPU not available but required for training"
-            ))
+            self.errors.append(
+                ValidationError(
+                    "system.gpu", "GPU not available but required for training"
+                )
+            )
             return
 
         # Tahmini bellek hesabı
-        total_samples_per_clip = int(config.data.sample_rate * config.data.audio_duration)
+        total_samples_per_clip = int(
+            config.data.sample_rate * config.data.audio_duration
+        )
         # 1 kanal, float32 varsayımı
         batch_memory_mb = (
-            config.training.batch_size *
-            total_samples_per_clip *
-            4 /  # float32=4 byte
-            (1024 * 1024)
+            config.training.batch_size
+            * total_samples_per_clip
+            * 4
+            / (1024 * 1024)  # float32=4 byte
         )
 
         mem_info = self.cuda_validator.get_memory_info(0)
-        available_memory_mb = float(mem_info.get('free_gb', 0.0)) * 1024.0
+        available_memory_mb = float(mem_info.get("free_gb", 0.0)) * 1024.0
 
         # Kaba tahmin: aktivasyonlar + gradientler + model
         estimated_usage_mb = batch_memory_mb * 3.0 + 200.0  # 200 MB model payı
 
         if available_memory_mb <= 0:
-            self.warnings.append(ValidationError(
-                "system.gpu",
-                "Could not read free GPU memory; memory checks are approximate",
-                "warning"
-            ))
+            self.warnings.append(
+                ValidationError(
+                    "system.gpu",
+                    "Could not read free GPU memory; memory checks are approximate",
+                    "warning",
+                )
+            )
         elif estimated_usage_mb > available_memory_mb:
-            self.errors.append(ValidationError(
-                "training.batch_size",
-                f"Estimated memory usage ({estimated_usage_mb:.0f}MB) exceeds available GPU memory ({available_memory_mb:.0f}MB)"
-            ))
+            self.errors.append(
+                ValidationError(
+                    "training.batch_size",
+                    f"Estimated memory usage ({estimated_usage_mb:.0f}MB) exceeds available GPU memory ({available_memory_mb:.0f}MB)",
+                )
+            )
         elif estimated_usage_mb > available_memory_mb * 0.8:
-            self.warnings.append(ValidationError(
-                "training.batch_size",
-                f"High memory usage expected ({estimated_usage_mb:.0f}MB / {available_memory_mb:.0f}MB available)",
-                "warning"
-            ))
+            self.warnings.append(
+                ValidationError(
+                    "training.batch_size",
+                    f"High memory usage expected ({estimated_usage_mb:.0f}MB / {available_memory_mb:.0f}MB available)",
+                    "warning",
+                )
+            )
 
     def generate_report(self) -> str:
         """
@@ -320,13 +361,18 @@ if __name__ == "__main__":
     # Test validator
     try:
         from src.config.defaults import get_default_config
+
         print("Configuration Validator Test")
         print("=" * 60)
         config = get_default_config()
         validator = ConfigValidator()
         is_valid, issues = validator.validate(config)
         print(validator.generate_report())
-        print("\n✅ Validation test passed" if is_valid else "\n❌ Validation test found errors")
+        print(
+            "\n✅ Validation test passed"
+            if is_valid
+            else "\n❌ Validation test found errors"
+        )
         print("\nValidator test complete")
     except Exception as e:
         print("Self-test skipped:", e)

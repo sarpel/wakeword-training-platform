@@ -2,12 +2,18 @@
 Checkpoint Management Utilities
 Handle checkpoint loading, saving, and management
 """
+import json
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+import structlog
 import torch
 import torch.nn as nn
-from pathlib import Path
-from typing import Optional, Dict, List, Tuple, Any
-from dataclasses import dataclass
-import structlog
+
+if TYPE_CHECKING:
+    from src.training.trainer import Trainer
 
 logger = structlog.get_logger(__name__)
 
@@ -15,6 +21,7 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class CheckpointInfo:
     """Metadata for a checkpoint"""
+
     path: Path
     epoch: int
     val_loss: float
@@ -58,7 +65,7 @@ class CheckpointManager:
         epoch: int,
         val_loss: float,
         val_metrics: Any,
-        improved: bool
+        improved: bool,
     ):
         """
         Save checkpoint
@@ -72,28 +79,30 @@ class CheckpointManager:
         """
         # Prepare checkpoint dictionary
         checkpoint = {
-            'epoch': epoch,
-            'global_step': trainer.state.global_step,
-            'model_state_dict': trainer.model.state_dict(),
-            'optimizer_state_dict': trainer.optimizer.state_dict(),
-            'val_loss': val_loss,
-            'val_metrics': {
-                'accuracy': val_metrics.accuracy,
-                'f1_score': val_metrics.f1_score,
-                'fpr': val_metrics.fpr,
-                'fnr': val_metrics.fnr
+            "epoch": epoch,
+            "global_step": trainer.state.global_step,
+            "model_state_dict": trainer.model.state_dict(),
+            "optimizer_state_dict": trainer.optimizer.state_dict(),
+            "val_loss": val_loss,
+            "val_metrics": {
+                "accuracy": val_metrics.accuracy,
+                "f1_score": val_metrics.f1_score,
+                "fpr": val_metrics.fpr,
+                "fnr": val_metrics.fnr,
             },
-            'config': trainer.config.to_dict()
+            "config": trainer.config.to_dict(),
         }
 
         if trainer.ema is not None:
-            checkpoint['ema_state_dict'] = trainer.ema.state_dict()
+            checkpoint["ema_state_dict"] = trainer.ema.state_dict()
 
         # Save best model
         if improved:
             best_path = self.checkpoint_dir / "best_model.pt"
             torch.save(checkpoint, best_path)
-            logger.info(f"Saved best model: {best_path} (F1: {val_metrics.f1_score:.4f})")
+            logger.info(
+                f"Saved best model: {best_path} (F1: {val_metrics.f1_score:.4f})"
+            )
 
         # Save epoch checkpoint
         should_save = False
@@ -128,18 +137,18 @@ class CheckpointManager:
         for checkpoint_path in self.checkpoint_dir.glob("*.pt"):
             try:
                 # Load checkpoint metadata
-                checkpoint = torch.load(checkpoint_path, map_location='cpu')
+                checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
                 # Extract metadata
-                epoch = checkpoint.get('epoch', 0)
-                val_loss = checkpoint.get('val_loss', float('inf'))
+                epoch = checkpoint.get("epoch", 0)
+                val_loss = checkpoint.get("val_loss", float("inf"))
 
                 # Get validation metrics
-                val_metrics = checkpoint.get('val_metrics', {})
-                val_accuracy = val_metrics.get('accuracy', 0.0)
-                val_f1 = val_metrics.get('f1_score', 0.0)
-                val_fpr = val_metrics.get('fpr', 1.0)
-                val_fnr = val_metrics.get('fnr', 1.0)
+                val_metrics = checkpoint.get("val_metrics", {})
+                val_accuracy = val_metrics.get("accuracy", 0.0)
+                val_f1 = val_metrics.get("f1_score", 0.0)
+                val_fpr = val_metrics.get("fpr", 1.0)
+                val_fnr = val_metrics.get("fnr", 1.0)
 
                 info = CheckpointInfo(
                     path=checkpoint_path,
@@ -148,7 +157,7 @@ class CheckpointManager:
                     val_accuracy=val_accuracy,
                     val_f1=val_f1,
                     val_fpr=val_fpr,
-                    val_fnr=val_fnr
+                    val_fnr=val_fnr,
                 )
 
                 checkpoints.append(info)
@@ -162,9 +171,7 @@ class CheckpointManager:
         return checkpoints
 
     def get_best_checkpoint(
-        self,
-        metric: str = 'f1_score',
-        mode: str = 'max'
+        self, metric: str = "f1_score", mode: str = "max"
     ) -> Optional[CheckpointInfo]:
         """
         Get best checkpoint based on metric
@@ -183,7 +190,7 @@ class CheckpointManager:
             return None
 
         # Select best based on metric
-        if mode == 'min':
+        if mode == "min":
             best = min(checkpoints, key=lambda x: getattr(x, metric))
         else:
             best = max(checkpoints, key=lambda x: getattr(x, metric))
@@ -197,7 +204,7 @@ class CheckpointManager:
         checkpoint_path: Path,
         model: Optional[nn.Module] = None,
         optimizer: Optional[Any] = None,
-        device: str = 'cuda'
+        device: str = "cuda",
     ) -> Dict[str, Any]:
         """
         Load checkpoint and optionally restore model/optimizer
@@ -217,12 +224,12 @@ class CheckpointManager:
 
         # Load model weights
         if model is not None:
-            model.load_state_dict(checkpoint['model_state_dict'])
+            model.load_state_dict(checkpoint["model_state_dict"])
             logger.info("  Loaded model weights")
 
         # Load optimizer state
-        if optimizer is not None and 'optimizer_state_dict' in checkpoint:
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if optimizer is not None and "optimizer_state_dict" in checkpoint:
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             logger.info("  Loaded optimizer state")
 
         logger.info(f"  Epoch: {checkpoint['epoch'] + 1}")
@@ -233,9 +240,9 @@ class CheckpointManager:
     def load_best_model(
         self,
         model: nn.Module,
-        metric: str = 'val_f1',
-        mode: str = 'max',
-        device: str = 'cuda'
+        metric: str = "val_f1",
+        mode: str = "max",
+        device: str = "cuda",
     ) -> Optional[Dict[str, Any]]:
         """
         Load best model weights
@@ -265,11 +272,7 @@ class CheckpointManager:
 
         return self.load_checkpoint(best_checkpoint.path, model=model, device=device)
 
-    def cleanup_old_checkpoints(
-        self,
-        keep_n: int = 5,
-        keep_best: bool = True
-    ):
+    def cleanup_old_checkpoints(self, keep_n: int = 5, keep_best: bool = True):
         """
         Delete old checkpoints, keeping only N most recent
 
@@ -313,18 +316,20 @@ class CheckpointManager:
         # Convert to dictionary
         checkpoint_data = []
         for checkpoint in checkpoints:
-            checkpoint_data.append({
-                'path': str(checkpoint.path),
-                'epoch': checkpoint.epoch,
-                'val_loss': checkpoint.val_loss,
-                'val_accuracy': checkpoint.val_accuracy,
-                'val_f1': checkpoint.val_f1,
-                'val_fpr': checkpoint.val_fpr,
-                'val_fnr': checkpoint.val_fnr
-            })
+            checkpoint_data.append(
+                {
+                    "path": str(checkpoint.path),
+                    "epoch": checkpoint.epoch,
+                    "val_loss": checkpoint.val_loss,
+                    "val_accuracy": checkpoint.val_accuracy,
+                    "val_f1": checkpoint.val_f1,
+                    "val_fpr": checkpoint.val_fpr,
+                    "val_fnr": checkpoint.val_fnr,
+                }
+            )
 
         # Save to JSON
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump(checkpoint_data, f, indent=2)
 
         logger.info(f"Exported checkpoint info to: {output_path}")
@@ -333,7 +338,7 @@ class CheckpointManager:
         self,
         model: nn.Module,
         snapshot_name: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """
         Create a standalone model snapshot (weights only, no optimizer)
@@ -345,19 +350,13 @@ class CheckpointManager:
         """
         snapshot_path = self.checkpoint_dir / f"{snapshot_name}.pt"
 
-        snapshot = {
-            'model_state_dict': model.state_dict(),
-            'metadata': metadata or {}
-        }
+        snapshot = {"model_state_dict": model.state_dict(), "metadata": metadata or {}}
 
         torch.save(snapshot, snapshot_path)
         logger.info(f"Created model snapshot: {snapshot_path}")
 
     def load_model_snapshot(
-        self,
-        model: nn.Module,
-        snapshot_name: str,
-        device: str = 'cuda'
+        self, model: nn.Module, snapshot_name: str, device: str = "cuda"
     ) -> Dict[str, Any]:
         """
         Load model from snapshot
@@ -378,15 +377,13 @@ class CheckpointManager:
         logger.info(f"Loading model snapshot: {snapshot_path}")
 
         snapshot = torch.load(snapshot_path, map_location=device)
-        model.load_state_dict(snapshot['model_state_dict'])
+        model.load_state_dict(snapshot["model_state_dict"])
 
-        return snapshot.get('metadata', {})
+        return snapshot.get("metadata", {})
 
 
 def extract_model_for_inference(
-    checkpoint_path: Path,
-    output_path: Path,
-    device: str = 'cuda'
+    checkpoint_path: Path, output_path: Path, device: str = "cuda"
 ):
     """
     Extract model weights from checkpoint for inference-only use
@@ -403,10 +400,10 @@ def extract_model_for_inference(
 
     # Create inference-only checkpoint
     inference_checkpoint = {
-        'model_state_dict': checkpoint['model_state_dict'],
-        'config': checkpoint.get('config'),
-        'epoch': checkpoint.get('epoch'),
-        'val_metrics': checkpoint.get('val_metrics')
+        "model_state_dict": checkpoint["model_state_dict"],
+        "config": checkpoint.get("config"),
+        "epoch": checkpoint.get("epoch"),
+        "val_metrics": checkpoint.get("val_metrics"),
     }
 
     # Save
@@ -423,8 +420,7 @@ def extract_model_for_inference(
 
 
 def compare_checkpoints(
-    checkpoint_paths: List[Path],
-    metric: str = 'val_f1'
+    checkpoint_paths: List[Path], metric: str = "val_f1"
 ) -> List[Tuple[Path, float]]:
     """
     Compare multiple checkpoints by metric
@@ -440,18 +436,18 @@ def compare_checkpoints(
 
     for path in checkpoint_paths:
         try:
-            checkpoint = torch.load(path, map_location='cpu')
-            val_metrics = checkpoint.get('val_metrics', {})
+            checkpoint = torch.load(path, map_location="cpu")
+            val_metrics = checkpoint.get("val_metrics", {})
 
             # Map metric name
-            if metric == 'val_f1':
-                value = val_metrics.get('f1_score', 0.0)
-            elif metric == 'val_fpr':
-                value = val_metrics.get('fpr', 1.0)
-            elif metric == 'val_accuracy':
-                value = val_metrics.get('accuracy', 0.0)
-            elif metric == 'val_loss':
-                value = checkpoint.get('val_loss', float('inf'))
+            if metric == "val_f1":
+                value = val_metrics.get("f1_score", 0.0)
+            elif metric == "val_fpr":
+                value = val_metrics.get("fpr", 1.0)
+            elif metric == "val_accuracy":
+                value = val_metrics.get("accuracy", 0.0)
+            elif metric == "val_loss":
+                value = checkpoint.get("val_loss", float("inf"))
             else:
                 value = 0.0
 
@@ -461,7 +457,7 @@ def compare_checkpoints(
             logger.warning(f"Failed to load checkpoint {path}: {e}")
 
     # Sort by metric (descending for most metrics, ascending for loss/fpr)
-    if metric in ['val_loss', 'val_fpr']:
+    if metric in ["val_loss", "val_fpr"]:
         results.sort(key=lambda x: x[1])  # Lower is better
     else:
         results.sort(key=lambda x: x[1], reverse=True)  # Higher is better
@@ -489,16 +485,16 @@ if __name__ == "__main__":
 
     for epoch in range(5):
         dummy_checkpoint = {
-            'epoch': epoch,
-            'model_state_dict': {'dummy': torch.randn(10, 10)},
-            'optimizer_state_dict': {},
-            'val_loss': 1.0 - epoch * 0.1,
-            'val_metrics': {
-                'accuracy': 0.7 + epoch * 0.05,
-                'f1_score': 0.65 + epoch * 0.06,
-                'fpr': 0.15 - epoch * 0.02,
-                'fnr': 0.20 - epoch * 0.02
-            }
+            "epoch": epoch,
+            "model_state_dict": {"dummy": torch.randn(10, 10)},
+            "optimizer_state_dict": {},
+            "val_loss": 1.0 - epoch * 0.1,
+            "val_metrics": {
+                "accuracy": 0.7 + epoch * 0.05,
+                "f1_score": 0.65 + epoch * 0.06,
+                "fpr": 0.15 - epoch * 0.02,
+                "fnr": 0.20 - epoch * 0.02,
+            },
         }
 
         checkpoint_path = test_dir / f"checkpoint_epoch_{epoch+1:03d}.pt"
@@ -507,15 +503,10 @@ if __name__ == "__main__":
 
     # Create best model
     best_checkpoint = {
-        'epoch': 4,
-        'model_state_dict': {'dummy': torch.randn(10, 10)},
-        'val_loss': 0.6,
-        'val_metrics': {
-            'accuracy': 0.92,
-            'f1_score': 0.89,
-            'fpr': 0.05,
-            'fnr': 0.08
-        }
+        "epoch": 4,
+        "model_state_dict": {"dummy": torch.randn(10, 10)},
+        "val_loss": 0.6,
+        "val_metrics": {"accuracy": 0.92, "f1_score": 0.89, "fpr": 0.05, "fnr": 0.08},
     }
     torch.save(best_checkpoint, test_dir / "best_model.pt")
     print(f"  Created: best_model.pt")
@@ -529,10 +520,10 @@ if __name__ == "__main__":
 
     # Get best checkpoint
     print("\n3. Finding best checkpoint...")
-    best = manager.get_best_checkpoint(metric='val_f1', mode='max')
+    best = manager.get_best_checkpoint(metric="val_f1", mode="max")
     print(f"  Best by F1: {best}")
 
-    best_fpr = manager.get_best_checkpoint(metric='val_fpr', mode='min')
+    best_fpr = manager.get_best_checkpoint(metric="val_fpr", mode="min")
     print(f"  Best by FPR: {best_fpr}")
 
     # Export checkpoint info

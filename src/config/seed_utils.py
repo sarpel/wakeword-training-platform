@@ -3,10 +3,11 @@ Seed Setting and Determinism Utilities
 Ensures reproducibility across runs
 """
 import random
+
 import numpy as np
+import structlog
 import torch
 import torch.backends.cudnn as cudnn
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -41,7 +42,9 @@ def set_seed(seed: int = 42, deterministic: bool = True):
         # Benchmark mode: faster but non-deterministic
         cudnn.benchmark = True
         cudnn.deterministic = False
-        logger.info(f"Seed set to {seed} with benchmark mode enabled (non-deterministic)")
+        logger.info(
+            f"Seed set to {seed} with benchmark mode enabled (non-deterministic)"
+        )
 
     logger.info(f"Random seed: {seed}")
 
@@ -54,10 +57,12 @@ def get_rng_state():
         Dictionary containing RNG states
     """
     return {
-        'python': random.getstate(),
-        'numpy': np.random.get_state(),
-        'torch': torch.get_rng_state(),
-        'torch_cuda': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.get_rng_state(),
+        "torch_cuda": torch.cuda.get_rng_state_all()
+        if torch.cuda.is_available()
+        else None,
     }
 
 
@@ -68,12 +73,12 @@ def set_rng_state(state: dict):
     Args:
         state: Dictionary containing RNG states from get_rng_state()
     """
-    random.setstate(state['python'])
-    np.random.set_state(state['numpy'])
-    torch.set_rng_state(state['torch'])
+    random.setstate(state["python"])
+    np.random.set_state(state["numpy"])
+    torch.set_rng_state(state["torch"])
 
-    if torch.cuda.is_available() and state['torch_cuda'] is not None:
-        torch.cuda.set_rng_state_all(state['torch_cuda'])
+    if torch.cuda.is_available() and state["torch_cuda"] is not None:
+        torch.cuda.set_rng_state_all(state["torch_cuda"])
 
     logger.info("RNG state restored")
 

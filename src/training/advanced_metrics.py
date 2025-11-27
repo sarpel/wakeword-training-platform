@@ -3,21 +3,24 @@ Advanced Metrics for Wakeword Detection
 Includes: FAH, threshold selection, EER, pAUC, DET curves
 """
 from __future__ import annotations
+
 import math
 from dataclasses import dataclass
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
 
 try:
-    from sklearn.metrics import roc_auc_score, roc_curve, auc
+    from sklearn.metrics import auc, roc_auc_score, roc_curve
+
     _HAS_SK = True
 except Exception:
     _HAS_SK = False
 
 
 # ------------------------------- helpers ------------------------------------ #
+
 
 def _to_numpy(x) -> np.ndarray:
     if isinstance(x, torch.Tensor):
@@ -26,8 +29,7 @@ def _to_numpy(x) -> np.ndarray:
 
 
 def _probs_from_logits(
-    logits: torch.Tensor | np.ndarray,
-    positive_index: int = 1
+    logits: torch.Tensor | np.ndarray, positive_index: int = 1
 ) -> np.ndarray:
     """
     Accepts (N,2) logits or (N,) probs. Returns (N,) positive-class probs.
@@ -36,7 +38,7 @@ def _probs_from_logits(
         logits = logits.detach().cpu().numpy()
     logits = np.asarray(logits)
     if logits.ndim == 2 and logits.shape[1] == 2:
-        z = logits - logits.max(axis=1, keepdims=True)     # stable softmax
+        z = logits - logits.max(axis=1, keepdims=True)  # stable softmax
         ex = np.exp(z)
         p = ex / ex.sum(axis=1, keepdims=True)
         return p[:, positive_index]
@@ -45,7 +47,9 @@ def _probs_from_logits(
     raise ValueError(f"Expected (N,2) logits or (N,) probs, got shape {logits.shape}")
 
 
-def _confusion_counts(y_true: np.ndarray, y_pred: np.ndarray) -> Tuple[int, int, int, int]:
+def _confusion_counts(
+    y_true: np.ndarray, y_pred: np.ndarray
+) -> Tuple[int, int, int, int]:
     tp = int(((y_true == 1) & (y_pred == 1)).sum())
     tn = int(((y_true == 0) & (y_pred == 0)).sum())
     fp = int(((y_true == 0) & (y_pred == 1)).sum())
@@ -58,6 +62,7 @@ def _safe_div(n: float, d: float) -> float:
 
 
 # ------------------------------- dataclass ----------------------------------- #
+
 
 @dataclass
 class ThresholdMetrics:
@@ -78,21 +83,26 @@ class ThresholdMetrics:
 
 # --------------------------- core metric routines --------------------------- #
 
+
 def _metrics_from_probs_at_threshold(
     y: np.ndarray,
     probs: np.ndarray,
     threshold: float,
     *,
-    total_seconds: Optional[float] = None
+    total_seconds: Optional[float] = None,
 ) -> ThresholdMetrics:
     y_pred = (probs >= threshold).astype(np.int64)
     tp, tn, fp, fn = _confusion_counts(y, y_pred)
     tpr = _safe_div(tp, tp + fn)  # recall
     fpr = _safe_div(fp, fp + tn)
-    fnr = _safe_div(fn, tp + fn) # false negative rate
+    fnr = _safe_div(fn, tp + fn)  # false negative rate
     precision = _safe_div(tp, tp + fp)
     recall = tpr
-    f1 = _safe_div(2 * precision * recall, precision + recall) if (precision + recall) else 0.0
+    f1 = (
+        _safe_div(2 * precision * recall, precision + recall)
+        if (precision + recall)
+        else 0.0
+    )
     accuracy = _safe_div(tp + tn, tp + tn + fp + fn)
 
     fah = None
@@ -103,8 +113,18 @@ def _metrics_from_probs_at_threshold(
 
     return ThresholdMetrics(
         threshold=float(threshold),
-        tpr=tpr, fpr=fpr, precision=precision, recall=recall, f1=f1,
-        accuracy=accuracy, tp=tp, tn=tn, fp=fp, fn=fn, fah=fah, fnr=fnr
+        tpr=tpr,
+        fpr=fpr,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        accuracy=accuracy,
+        tp=tp,
+        tn=tn,
+        fp=fp,
+        fn=fn,
+        fah=fah,
+        fnr=fnr,
     )
 
 
@@ -118,7 +138,9 @@ def calculate_metrics_at_threshold(
 ) -> ThresholdMetrics:
     y = _to_numpy(labels).astype(np.int64)
     probs = _probs_from_logits(logits, positive_index)
-    return _metrics_from_probs_at_threshold(y, probs, threshold, total_seconds=total_seconds)
+    return _metrics_from_probs_at_threshold(
+        y, probs, threshold, total_seconds=total_seconds
+    )
 
 
 def calculate_fah(
@@ -130,8 +152,11 @@ def calculate_fah(
     total_seconds: float = 1.0,
 ) -> float:
     m = calculate_metrics_at_threshold(
-        logits, labels, threshold,
-        positive_index=positive_index, total_seconds=total_seconds
+        logits,
+        labels,
+        threshold,
+        positive_index=positive_index,
+        total_seconds=total_seconds,
     )
     return float(m.fah if m.fah is not None else 0.0)
 
@@ -154,12 +179,18 @@ def find_threshold_for_target_fah(
     best_any_fah = math.inf
 
     for th in grid:
-        m = _metrics_from_probs_at_threshold(y, probs, float(th), total_seconds=total_seconds)
+        m = _metrics_from_probs_at_threshold(
+            y, probs, float(th), total_seconds=total_seconds
+        )
         if m.fah is not None and m.fah < best_any_fah:
             best_any_fah = m.fah
             best_any = m
         if m.fah is not None and m.fah <= target_fah:
-            if best_ok is None or (m.tpr > best_ok.tpr) or (m.tpr == best_ok.tpr and m.threshold > best_ok.threshold):
+            if (
+                best_ok is None
+                or (m.tpr > best_ok.tpr)
+                or (m.tpr == best_ok.tpr and m.threshold > best_ok.threshold)
+            ):
                 best_ok = m
 
     return best_ok if best_ok is not None else best_any
@@ -292,7 +323,9 @@ def grid_search_threshold(
         else:
             raise ValueError(f"Unknown objective: {objective}")
 
-        if score > best_score or (score == best_score and th > (best.threshold if best else -1)):
+        if score > best_score or (
+            score == best_score and th > (best.threshold if best else -1)
+        ):
             best_score = score
             best = m
 
@@ -300,6 +333,7 @@ def grid_search_threshold(
 
 
 # ------------------- back-compat convenience aggregators -------------------- #
+
 
 def find_operating_point(
     logits: torch.Tensor | np.ndarray,
@@ -317,14 +351,17 @@ def find_operating_point(
     """
     if target_fah is not None:
         m = find_threshold_for_target_fah(
-            logits, labels, target_fah,
+            logits,
+            labels,
+            target_fah,
             positive_index=positive_index,
             total_seconds=total_seconds,
             search_points=search_points,
         )
         return m
     return grid_search_threshold(
-        logits, labels,
+        logits,
+        labels,
         positive_index=positive_index,
         objective=objective,
         search_points=search_points,
@@ -336,7 +373,7 @@ def calculate_comprehensive_metrics(
     labels: torch.Tensor | np.ndarray,
     *,
     positive_index: int = 1,
-    threshold: Optional[float] = None,   # fixed threshold, else choose best
+    threshold: Optional[float] = None,  # fixed threshold, else choose best
     target_fah: Optional[float] = None,  # if set, overrides objective search
     total_seconds: float = 1.0,
     fpr_max: float = 0.1,
@@ -353,10 +390,13 @@ def calculate_comprehensive_metrics(
     pauc = calculate_pauc(probs, y, positive_index=1, fpr_max=fpr_max)
 
     if threshold is not None:
-        op = _metrics_from_probs_at_threshold(y, probs, float(threshold), total_seconds=total_seconds)
+        op = _metrics_from_probs_at_threshold(
+            y, probs, float(threshold), total_seconds=total_seconds
+        )
     else:
         op = find_operating_point(
-            probs, y,
+            probs,
+            y,
             positive_index=1,
             target_fah=target_fah,
             total_seconds=total_seconds,
@@ -390,9 +430,9 @@ def calculate_comprehensive_metrics(
 
 # ------------------------------- sanity check -------------------------------- #
 
+
 def sanity_check_positive_index(
-    logits: torch.Tensor | np.ndarray,
-    positive_index: int = 1
+    logits: torch.Tensor | np.ndarray, positive_index: int = 1
 ) -> bool:
     """
     Logits must be (N,2) or probs (N,). Average prob must lie in (0,1).

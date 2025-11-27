@@ -6,36 +6,42 @@ Panel 3: Model Training
 - GPU monitoring
 - Training state management
 """
+import queue
+import threading
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+
 import gradio as gr
+import matplotlib
+import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
-from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
-import time
-import threading
-import queue
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
-import structlog
-import pandas as pd
 
-from src.training.lr_finder import LRFinder
-from src.exceptions import WakewordException
-from src.training.checkpoint_manager import CheckpointManager
-from src.training.wandb_callback import WandbCallback
-from src.training.hpo import run_hpo
-from src.training.trainer import Trainer
+matplotlib.use("Agg")  # Non-interactive backend
+import pandas as pd
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+from src.config.cuda_utils import get_cuda_validator
 from src.config.defaults import WakewordConfig
-from src.data.dataset import WakewordDataset, load_dataset_splits
 from src.data.balanced_sampler import create_balanced_sampler_from_dataset
 from src.data.cmvn import compute_cmvn_from_dataset
+from src.data.dataset import WakewordDataset, load_dataset_splits
+from src.exceptions import WakewordException
 from src.models.architectures import create_model
-from src.config.cuda_utils import get_cuda_validator
+from src.training.checkpoint_manager import CheckpointManager
+from src.training.hpo import run_hpo
+from src.training.lr_finder import LRFinder
+from src.training.metrics import MetricResults  # Imported MetricResults
+from src.training.trainer import Trainer
+from src.training.wandb_callback import WandbCallback
 
 
 class TrainingState:
     """Global training state manager"""
+
     def __init__(self):
         self.is_training = False
         self.should_stop = False
@@ -50,14 +56,14 @@ class TrainingState:
 
         # Metrics history
         self.history = {
-            'train_loss': [],
-            'train_acc': [],
-            'val_loss': [],
-            'val_acc': [],
-            'val_f1': [],
-            'val_fpr': [],
-            'val_fnr': [],
-            'epochs': []
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
+            "val_f1": [],
+            "val_fpr": [],
+            "val_fnr": [],
+            "epochs": [],
         }
 
         # Current metrics
@@ -76,7 +82,7 @@ class TrainingState:
 
         # Best metrics
         self.best_epoch = 0
-        self.best_val_loss = float('inf')
+        self.best_val_loss = float("inf")
         self.best_val_acc = 0.0
         self.best_model_path = "No model saved yet"
 
@@ -107,23 +113,40 @@ def create_loss_plot() -> plt.Figure:
     """Create loss curve plot"""
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    if len(training_state.history['epochs']) > 0:
-        epochs = training_state.history['epochs']
+    if len(training_state.history["epochs"]) > 0:
+        epochs = training_state.history["epochs"]
 
-        ax.plot(epochs, training_state.history['train_loss'],
-               label='Train Loss', marker='o', linewidth=2)
-        ax.plot(epochs, training_state.history['val_loss'],
-               label='Val Loss', marker='s', linewidth=2)
+        ax.plot(
+            epochs,
+            training_state.history["train_loss"],
+            label="Train Loss",
+            marker="o",
+            linewidth=2,
+        )
+        ax.plot(
+            epochs,
+            training_state.history["val_loss"],
+            label="Val Loss",
+            marker="s",
+            linewidth=2,
+        )
 
-        ax.set_xlabel('Epoch', fontsize=12)
-        ax.set_ylabel('Loss', fontsize=12)
-        ax.set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
+        ax.set_xlabel("Epoch", fontsize=12)
+        ax.set_ylabel("Loss", fontsize=12)
+        ax.set_title("Training and Validation Loss", fontsize=14, fontweight="bold")
         ax.legend(fontsize=10)
         ax.grid(True, alpha=0.3)
     else:
-        ax.text(0.5, 0.5, 'No data yet', ha='center', va='center',
-               transform=ax.transAxes, fontsize=14)
-        ax.set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
+        ax.text(
+            0.5,
+            0.5,
+            "No data yet",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=14,
+        )
+        ax.set_title("Training and Validation Loss", fontsize=14, fontweight="bold")
 
     plt.tight_layout()
     return fig
@@ -133,24 +156,41 @@ def create_accuracy_plot() -> plt.Figure:
     """Create accuracy curve plot"""
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    if len(training_state.history['epochs']) > 0:
-        epochs = training_state.history['epochs']
+    if len(training_state.history["epochs"]) > 0:
+        epochs = training_state.history["epochs"]
 
-        ax.plot(epochs, [a*100 for a in training_state.history['train_acc']],
-               label='Train Acc', marker='o', linewidth=2)
-        ax.plot(epochs, [a*100 for a in training_state.history['val_acc']],
-               label='Val Acc', marker='s', linewidth=2)
+        ax.plot(
+            epochs,
+            [a * 100 for a in training_state.history["train_acc"]],
+            label="Train Acc",
+            marker="o",
+            linewidth=2,
+        )
+        ax.plot(
+            epochs,
+            [a * 100 for a in training_state.history["val_acc"]],
+            label="Val Acc",
+            marker="s",
+            linewidth=2,
+        )
 
-        ax.set_xlabel('Epoch', fontsize=12)
-        ax.set_ylabel('Accuracy (%)', fontsize=12)
-        ax.set_title('Training and Validation Accuracy', fontsize=14, fontweight='bold')
+        ax.set_xlabel("Epoch", fontsize=12)
+        ax.set_ylabel("Accuracy (%)", fontsize=12)
+        ax.set_title("Training and Validation Accuracy", fontsize=14, fontweight="bold")
         ax.legend(fontsize=10)
         ax.grid(True, alpha=0.3)
         ax.set_ylim([0, 105])
     else:
-        ax.text(0.5, 0.5, 'No data yet', ha='center', va='center',
-               transform=ax.transAxes, fontsize=14)
-        ax.set_title('Training and Validation Accuracy', fontsize=14, fontweight='bold')
+        ax.text(
+            0.5,
+            0.5,
+            "No data yet",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=14,
+        )
+        ax.set_title("Training and Validation Accuracy", fontsize=14, fontweight="bold")
 
     plt.tight_layout()
     return fig
@@ -160,25 +200,52 @@ def create_metrics_plot() -> plt.Figure:
     """Create FPR/FNR plot"""
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    if len(training_state.history['epochs']) > 0:
-        epochs = training_state.history['epochs']
+    if len(training_state.history["epochs"]) > 0:
+        epochs = training_state.history["epochs"]
 
-        ax.plot(epochs, [f*100 for f in training_state.history['val_fpr']],
-               label='FPR', marker='o', linewidth=2, color='red')
-        ax.plot(epochs, [f*100 for f in training_state.history['val_fnr']],
-               label='FNR', marker='s', linewidth=2, color='orange')
-        ax.plot(epochs, [f*100 for f in training_state.history['val_f1']],
-               label='F1 Score', marker='^', linewidth=2, color='green')
+        ax.plot(
+            epochs,
+            [f * 100 for f in training_state.history["val_fpr"]],
+            label="FPR",
+            marker="o",
+            linewidth=2,
+            color="red",
+        )
+        ax.plot(
+            epochs,
+            [f * 100 for f in training_state.history["val_fnr"]],
+            label="FNR",
+            marker="s",
+            linewidth=2,
+            color="orange",
+        )
+        ax.plot(
+            epochs,
+            [f * 100 for f in training_state.history["val_f1"]],
+            label="F1 Score",
+            marker="^",
+            linewidth=2,
+            color="green",
+        )
 
-        ax.set_xlabel('Epoch', fontsize=12)
-        ax.set_ylabel('Rate (%)', fontsize=12)
-        ax.set_title('Validation Metrics (FPR, FNR, F1)', fontsize=14, fontweight='bold')
+        ax.set_xlabel("Epoch", fontsize=12)
+        ax.set_ylabel("Rate (%)", fontsize=12)
+        ax.set_title(
+            "Validation Metrics (FPR, FNR, F1)", fontsize=14, fontweight="bold"
+        )
         ax.legend(fontsize=10)
         ax.grid(True, alpha=0.3)
     else:
-        ax.text(0.5, 0.5, 'No data yet', ha='center', va='center',
-               transform=ax.transAxes, fontsize=14)
-        ax.set_title('Validation Metrics', fontsize=14, fontweight='bold')
+        ax.text(
+            0.5,
+            0.5,
+            "No data yet",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=14,
+        )
+        ax.set_title("Validation Metrics", fontsize=14, fontweight="bold")
 
     plt.tight_layout()
     return fig
@@ -186,7 +253,7 @@ def create_metrics_plot() -> plt.Figure:
 
 def format_time(seconds: float) -> str:
     """Format seconds to HH:MM:SS"""
-    if seconds <= 0 or seconds == float('inf'):
+    if seconds <= 0 or seconds == float("inf"):
         return "--:--:--"
 
     hours = int(seconds // 3600)
@@ -203,12 +270,16 @@ def training_worker():
         training_state.add_log(f"Configuration: {training_state.config.config_name}")
         training_state.add_log(f"Model: {training_state.config.model.architecture}")
         training_state.add_log(f"Epochs: {training_state.config.training.epochs}")
-        training_state.add_log(f"Batch size: {training_state.config.training.batch_size}")
+        training_state.add_log(
+            f"Batch size: {training_state.config.training.batch_size}"
+        )
         training_state.add_log("-" * 60)
 
         # Create custom callback for live updates
         class LiveUpdateCallback:
-            def on_epoch_end(self, epoch, train_loss, val_loss, val_metrics: MetricResults):
+            def on_epoch_end(
+                self, epoch, train_loss, val_loss, val_metrics: MetricResults
+            ):
                 # Update state
                 training_state.current_epoch = epoch + 1
                 training_state.current_train_loss = train_loss
@@ -218,14 +289,16 @@ def training_worker():
                 training_state.current_fnr = val_metrics.fnr
 
                 # Update history
-                training_state.history['epochs'].append(epoch + 1)
-                training_state.history['train_loss'].append(train_loss)
-                training_state.history['train_acc'].append(training_state.current_train_acc)
-                training_state.history['val_loss'].append(val_loss)
-                training_state.history['val_acc'].append(val_metrics.accuracy)
-                training_state.history['val_f1'].append(val_metrics.f1_score)
-                training_state.history['val_fpr'].append(val_metrics.fpr)
-                training_state.history['val_fnr'].append(val_metrics.fnr)
+                training_state.history["epochs"].append(epoch + 1)
+                training_state.history["train_loss"].append(train_loss)
+                training_state.history["train_acc"].append(
+                    training_state.current_train_acc
+                )
+                training_state.history["val_loss"].append(val_loss)
+                training_state.history["val_acc"].append(val_metrics.accuracy)
+                training_state.history["val_f1"].append(val_metrics.f1_score)
+                training_state.history["val_fpr"].append(val_metrics.fpr)
+                training_state.history["val_fnr"].append(val_metrics.fnr)
 
                 # Update best metrics
                 if val_loss < training_state.best_val_loss:
@@ -270,7 +343,9 @@ def training_worker():
         training_state.add_log(f"Model saved to: {training_state.best_model_path}")
 
     except WakewordException as e:
-        training_state.add_log(f"ERROR: {str(e)}\n\nActionable suggestion: Please check your configuration and data for the following error: {e}")
+        training_state.add_log(
+            f"ERROR: {str(e)}\n\nActionable suggestion: Please check your configuration and data for the following error: {e}"
+        )
         logger.exception("Training failed")
     except Exception as e:
         training_state.add_log(f"ERROR: {str(e)}")
@@ -293,7 +368,7 @@ def start_training(
     sampler_ratio_hard: int,
     run_lr_finder: bool,
     use_wandb: bool,
-    wandb_project: str
+    wandb_project: str,
 ) -> Tuple:
     """Start training with current configuration and advanced features"""
     if training_state.is_training:
@@ -301,18 +376,24 @@ def start_training(
             "⚠️ Training already in progress",
             f"{training_state.current_epoch}/{training_state.total_epochs}",
             f"{training_state.current_batch}/{training_state.total_batches}",
-            None, None, None
+            None,
+            None,
+            None,
         )
 
     try:
         # Get config from global state
-        if 'config' not in config_state or config_state['config'] is None:
+        if "config" not in config_state or config_state["config"] is None:
             return (
                 "❌ No configuration loaded. Please configure in Panel 2 first.",
-                "0/0", "0/0", None, None, None
+                "0/0",
+                "0/0",
+                None,
+                None,
+                None,
             )
 
-        config = config_state['config']
+        config = config_state["config"]
         training_state.config = config
         training_state.total_epochs = config.training.epochs
 
@@ -324,25 +405,39 @@ def start_training(
         if not splits_dir.exists() or not (splits_dir / "train.json").exists():
             return (
                 "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.",
-                "0/0", "0/0", None, None, None
+                "0/0",
+                "0/0",
+                None,
+                None,
+                None,
             )
 
         training_state.add_log("Loading datasets...")
 
         # Load datasets
         aug_config = {
-            'time_stretch_range': (config.augmentation.time_stretch_min,
-                                  config.augmentation.time_stretch_max),
-            'pitch_shift_range': (config.augmentation.pitch_shift_min,
-                                 config.augmentation.pitch_shift_max),
-            'background_noise_prob': config.augmentation.background_noise_prob,
-            'noise_snr_range': (config.augmentation.noise_snr_min,
-                               config.augmentation.noise_snr_max),
-            'rir_prob': config.augmentation.rir_prob
+            "time_stretch_range": (
+                config.augmentation.time_stretch_min,
+                config.augmentation.time_stretch_max,
+            ),
+            "pitch_shift_range": (
+                config.augmentation.pitch_shift_min,
+                config.augmentation.pitch_shift_max,
+            ),
+            "background_noise_prob": config.augmentation.background_noise_prob,
+            "noise_snr_range": (
+                config.augmentation.noise_snr_min,
+                config.augmentation.noise_snr_max,
+            ),
+            "rir_prob": config.augmentation.rir_prob,
         }
 
         # Normalize feature type name
-        feature_type = 'mel' if config.data.feature_type == 'mel_spectrogram' else config.data.feature_type
+        feature_type = (
+            "mel"
+            if config.data.feature_type == "mel_spectrogram"
+            else config.data.feature_type
+        )
 
         # Handle CMVN
         cmvn_path = None
@@ -353,20 +448,22 @@ def start_training(
                 # Load datasets temporarily without CMVN to compute stats
                 temp_train_ds, _, _ = load_dataset_splits(
                     data_root=data_root,
-                    device='cuda',
+                    device="cuda",
                     feature_type=feature_type,
                     n_mels=config.data.n_mels,
                     n_mfcc=config.data.n_mfcc,
                     n_fft=config.data.n_fft,
                     hop_length=config.data.hop_length,
                     use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
-                    apply_cmvn=False
+                    apply_cmvn=False,
                 )
                 compute_cmvn_from_dataset(temp_train_ds, cmvn_path, max_samples=1000)
                 training_state.add_log(f"✅ CMVN stats saved to {cmvn_path}")
 
-        training_state.add_log("IMPORTANT: Forcing augmentation for training by disabling precomputed features.")
-        
+        training_state.add_log(
+            "IMPORTANT: Forcing augmentation for training by disabling precomputed features."
+        )
+
         train_ds = WakewordDataset(
             manifest_path=splits_dir / "train.json",
             sample_rate=config.data.sample_rate,
@@ -375,7 +472,7 @@ def start_training(
             augmentation_config=aug_config,
             background_noise_dir=data_root / "raw" / "background",
             rir_dir=data_root / "raw" / "rirs",
-            device='cuda',
+            device="cuda",
             feature_type=feature_type,
             n_mels=config.data.n_mels,
             n_mfcc=config.data.n_mfcc,
@@ -383,9 +480,9 @@ def start_training(
             hop_length=config.data.hop_length,
             use_precomputed_features_for_training=False,  # Force augmentation
             npy_cache_features=config.data.npy_cache_features,
-            fallback_to_audio=True, # IMPORTANT
+            fallback_to_audio=True,  # IMPORTANT
             cmvn_path=cmvn_path,
-            apply_cmvn=use_cmvn
+            apply_cmvn=use_cmvn,
         )
 
         val_ds = WakewordDataset(
@@ -393,7 +490,7 @@ def start_training(
             sample_rate=config.data.sample_rate,
             audio_duration=config.data.audio_duration,
             augment=False,
-            device='cuda',
+            device="cuda",
             feature_type=feature_type,
             n_mels=config.data.n_mels,
             n_mfcc=config.data.n_mfcc,
@@ -403,7 +500,7 @@ def start_training(
             npy_cache_features=config.data.npy_cache_features,
             fallback_to_audio=config.data.fallback_to_audio,
             cmvn_path=cmvn_path,
-            apply_cmvn=use_cmvn
+            apply_cmvn=use_cmvn,
         )
 
         # test_ds is not used in training, so we don't load it here to save memory
@@ -423,16 +520,20 @@ def start_training(
                     dataset=train_ds,
                     batch_size=config.training.batch_size,
                     ratio=(sampler_ratio_pos, sampler_ratio_neg, sampler_ratio_hard),
-                    drop_last=True
+                    drop_last=True,
                 )
                 training_state.train_loader = DataLoader(
                     train_ds,
                     batch_sampler=train_sampler,
                     num_workers=config.training.num_workers,
                     pin_memory=True,
-                    persistent_workers=True if config.training.num_workers > 0 else False
+                    persistent_workers=True
+                    if config.training.num_workers > 0
+                    else False,
                 )
-                training_state.add_log(f"✅ Balanced sampler enabled (ratio {sampler_ratio_pos}:{sampler_ratio_neg}:{sampler_ratio_hard})")
+                training_state.add_log(
+                    f"✅ Balanced sampler enabled (ratio {sampler_ratio_pos}:{sampler_ratio_neg}:{sampler_ratio_hard})"
+                )
             except Exception as e:
                 training_state.add_log(f"⚠️ Balanced sampler failed: {e}")
                 training_state.add_log("Falling back to standard DataLoader...")
@@ -442,7 +543,9 @@ def start_training(
                     shuffle=True,
                     num_workers=config.training.num_workers,
                     pin_memory=True,
-                    persistent_workers=True if config.training.num_workers > 0 else False
+                    persistent_workers=True
+                    if config.training.num_workers > 0
+                    else False,
                 )
         else:
             training_state.train_loader = DataLoader(
@@ -451,7 +554,7 @@ def start_training(
                 shuffle=True,
                 num_workers=config.training.num_workers,
                 pin_memory=True,
-                persistent_workers=True if config.training.num_workers > 0 else False
+                persistent_workers=True if config.training.num_workers > 0 else False,
             )
 
         training_state.val_loader = DataLoader(
@@ -460,7 +563,7 @@ def start_training(
             shuffle=False,
             num_workers=config.training.num_workers,
             pin_memory=True,
-            persistent_workers=True if config.training.num_workers > 0 else False
+            persistent_workers=True if config.training.num_workers > 0 else False,
         )
 
         training_state.total_batches = len(training_state.train_loader)
@@ -472,7 +575,7 @@ def start_training(
             architecture=config.model.architecture,
             num_classes=config.model.num_classes,
             pretrained=config.model.pretrained,
-            dropout=config.model.dropout
+            dropout=config.model.dropout,
         )
 
         training_state.add_log(f"Model created: {config.model.architecture}")
@@ -483,25 +586,30 @@ def start_training(
             training_state.add_log("Running LR Finder (this may take a few minutes)...")
             try:
                 optimizer = torch.optim.AdamW(
-                    training_state.model.parameters(),
-                    lr=config.training.learning_rate
+                    training_state.model.parameters(), lr=config.training.learning_rate
                 )
                 criterion = torch.nn.CrossEntropyLoss()
-                lr_finder = LRFinder(training_state.model, optimizer, criterion, device='cuda')
+                lr_finder = LRFinder(
+                    training_state.model, optimizer, criterion, device="cuda"
+                )
 
                 lrs, losses = lr_finder.range_test(
                     training_state.train_loader,
                     start_lr=1e-6,
                     end_lr=1e-2,
-                    num_iter=100
+                    num_iter=100,
                 )
                 optimal_lr = lr_finder.suggest_lr()
 
                 if 1e-5 <= optimal_lr <= 1e-2:
                     config.training.learning_rate = optimal_lr
-                    training_state.add_log(f"✅ LR Finder suggested: {optimal_lr:.2e} (applied)")
+                    training_state.add_log(
+                        f"✅ LR Finder suggested: {optimal_lr:.2e} (applied)"
+                    )
                 else:
-                    training_state.add_log(f"⚠️ LR Finder suggested {optimal_lr:.2e} (out of range, keeping {config.training.learning_rate:.2e})")
+                    training_state.add_log(
+                        f"⚠️ LR Finder suggested {optimal_lr:.2e} (out of range, keeping {config.training.learning_rate:.2e})"
+                    )
             except Exception as e:
                 training_state.add_log(f"⚠️ LR Finder failed: {e}")
 
@@ -519,9 +627,9 @@ def start_training(
             val_loader=training_state.val_loader,
             config=config,
             checkpoint_manager=checkpoint_manager,
-            device='cuda',
+            device="cuda",
             use_ema=use_ema,
-            ema_decay=ema_decay if use_ema else 0.999
+            ema_decay=ema_decay if use_ema else 0.999,
         )
 
         if use_ema:
@@ -529,7 +637,9 @@ def start_training(
 
         if use_wandb:
             try:
-                wandb_callback = WandbCallback(project_name=wandb_project, config=config.to_dict())
+                wandb_callback = WandbCallback(
+                    project_name=wandb_project, config=config.to_dict()
+                )
                 training_state.trainer.add_callback(wandb_callback)
                 training_state.add_log("✅ W&B logging enabled")
             except ImportError:
@@ -537,20 +647,22 @@ def start_training(
 
         # Reset history
         training_state.history = {
-            'train_loss': [],
-            'train_acc': [],
-            'val_loss': [],
-            'val_acc': [],
-            'val_f1': [],
-            'val_fpr': [],
-            'val_fnr': [],
-            'epochs': []
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
+            "val_f1": [],
+            "val_fpr": [],
+            "val_fnr": [],
+            "epochs": [],
         }
 
         # Start training in background thread
         training_state.is_training = True
         training_state.should_stop = False
-        training_state.training_thread = threading.Thread(target=training_worker, daemon=True)
+        training_state.training_thread = threading.Thread(
+            target=training_worker, daemon=True
+        )
         training_state.training_thread.start()
 
         return (
@@ -559,25 +671,21 @@ def start_training(
             f"0/{training_state.total_batches}",
             create_loss_plot(),
             create_accuracy_plot(),
-            create_metrics_plot()
+            create_metrics_plot(),
         )
 
     except WakewordException as e:
         error_msg = f"❌ Failed to start training: {str(e)}"
-        training_state.add_log(f"{error_msg}\n\nActionable suggestion: Please check your configuration and data for the following error: {e}")
-        logger.exception("Failed to start training")
-        return (
-            error_msg,
-            "0/0", "0/0", None, None, None
+        training_state.add_log(
+            f"{error_msg}\n\nActionable suggestion: Please check your configuration and data for the following error: {e}"
         )
+        logger.exception("Failed to start training")
+        return (error_msg, "0/0", "0/0", None, None, None)
     except Exception as e:
         error_msg = f"❌ Failed to start training: {str(e)}"
         training_state.add_log(error_msg)
         logger.exception("Failed to start training")
-        return (
-            error_msg,
-            "0/0", "0/0", None, None, None
-        )
+        return (error_msg, "0/0", "0/0", None, None, None)
 
 
 def stop_training() -> str:
@@ -594,7 +702,7 @@ def stop_training() -> str:
 def get_training_status() -> Tuple:
     """Get current training status for live updates"""
     # Close old matplotlib figures to prevent memory leak
-    plt.close('all')
+    plt.close("all")
 
     # Collect logs
     logs = ""
@@ -623,7 +731,7 @@ def get_training_status() -> Tuple:
     try:
         validator = get_cuda_validator()
         gpu_util = validator.get_memory_info()
-        gpu_percent = gpu_util['allocated_gb'] / gpu_util['total_gb'] * 100
+        gpu_percent = gpu_util["allocated_gb"] / gpu_util["total_gb"] * 100
     except:
         gpu_percent = 0.0
 
@@ -647,25 +755,30 @@ def get_training_status() -> Tuple:
         str(training_state.best_epoch),
         round(training_state.best_val_loss, 4),
         round(training_state.best_val_acc * 100, 2),
-        training_state.best_model_path
+        training_state.best_model_path,
     )
 
 
-def start_hpo(config_state: Dict, n_trials: int, study_name: str) -> Tuple[str, pd.DataFrame]:
+def start_hpo(
+    config_state: Dict, n_trials: int, study_name: str
+) -> Tuple[str, pd.DataFrame]:
     """Start hyperparameter optimization."""
     if training_state.is_training:
         return "⚠️ Training already in progress", None
 
     try:
-        if 'config' not in config_state or config_state['config'] is None:
+        if "config" not in config_state or config_state["config"] is None:
             return "❌ No configuration loaded. Please configure in Panel 2 first.", None
 
-        config = config_state['config']
+        config = config_state["config"]
         data_root = Path(config.data.data_root)
         splits_dir = data_root / "splits"
 
         if not splits_dir.exists() or not (splits_dir / "train.json").exists():
-            return "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.", None
+            return (
+                "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.",
+                None,
+            )
 
         train_ds, val_ds, _ = load_dataset_splits(
             data_root=data_root,
@@ -673,7 +786,7 @@ def start_hpo(config_state: Dict, n_trials: int, study_name: str) -> Tuple[str, 
             audio_duration=config.data.audio_duration,
             augment_train=True,
             augmentation_config=config.augmentation.to_dict(),
-            device='cuda',
+            device="cuda",
             feature_type=config.data.feature_type,
             n_mels=config.data.n_mels,
             n_mfcc=config.data.n_mfcc,
@@ -686,8 +799,12 @@ def start_hpo(config_state: Dict, n_trials: int, study_name: str) -> Tuple[str, 
             apply_cmvn=True,
         )
 
-        train_loader = DataLoader(train_ds, batch_size=config.training.batch_size, shuffle=True)
-        val_loader = DataLoader(val_ds, batch_size=config.training.batch_size, shuffle=False)
+        train_loader = DataLoader(
+            train_ds, batch_size=config.training.batch_size, shuffle=True
+        )
+        val_loader = DataLoader(
+            val_ds, batch_size=config.training.batch_size, shuffle=False
+        )
 
         study = run_hpo(config, train_loader, val_loader, n_trials, study_name)
 
@@ -710,12 +827,16 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 🚀 Model Training")
-        gr.Markdown("Train your wakeword model with real-time monitoring and GPU acceleration.")
+        gr.Markdown(
+            "Train your wakeword model with real-time monitoring and GPU acceleration."
+        )
 
         # Advanced Features Section
         with gr.Accordion("⚙️ Advanced Training Features", open=False):
             gr.Markdown("### Production-Ready Features")
-            gr.Markdown("Enable advanced features for improved model quality and training efficiency.")
+            gr.Markdown(
+                "Enable advanced features for improved model quality and training efficiency."
+            )
 
             with gr.Row():
                 with gr.Column():
@@ -723,7 +844,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     use_cmvn = gr.Checkbox(
                         label="Enable CMVN (Cepstral Mean Variance Normalization)",
                         value=True,
-                        info="Corpus-level feature normalization for consistent features (+2-4% accuracy)"
+                        info="Corpus-level feature normalization for consistent features (+2-4% accuracy)",
                     )
 
                 with gr.Column():
@@ -731,7 +852,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     use_ema = gr.Checkbox(
                         label="Enable EMA",
                         value=True,
-                        info="Shadow model weights for stable inference (+1-2% validation accuracy)"
+                        info="Shadow model weights for stable inference (+1-2% validation accuracy)",
                     )
                     ema_decay = gr.Slider(
                         minimum=0.99,
@@ -739,7 +860,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         value=0.999,
                         step=0.0001,
                         label="EMA Decay",
-                        info="Initial decay rate (auto-adjusts to 0.9995 in final epochs)"
+                        info="Initial decay rate (auto-adjusts to 0.9995 in final epochs)",
                     )
 
             with gr.Row():
@@ -747,8 +868,8 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     gr.Markdown("#### ⚖️ Balanced Batch Sampling")
                     use_balanced_sampler = gr.Checkbox(
                         label="Enable Balanced Sampler",
-                        value=False,
-                        info="Control pos:neg:hard_neg ratios in batches"
+                        value=True,
+                        info="Control pos:neg:hard_neg ratios in batches",
                     )
                     with gr.Row():
                         sampler_ratio_pos = gr.Number(
@@ -756,21 +877,21 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                             value=1,
                             precision=0,
                             minimum=1,
-                            info="Ratio of positive samples"
+                            info="Ratio of positive samples",
                         )
                         sampler_ratio_neg = gr.Number(
                             label="Negative",
                             value=1,
                             precision=0,
                             minimum=1,
-                            info="Ratio of negative samples"
+                            info="Ratio of negative samples",
                         )
                         sampler_ratio_hard = gr.Number(
                             label="Hard Negative",
                             value=1,
                             precision=0,
                             minimum=0,
-                            info="Ratio of hard negatives"
+                            info="Ratio of hard negatives",
                         )
 
                 with gr.Column():
@@ -778,9 +899,11 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     run_lr_finder = gr.Checkbox(
                         label="Run LR Finder",
                         value=False,
-                        info="Automatically discover optimal learning rate (-10-15% training time)"
+                        info="Automatically discover optimal learning rate (-10-15% training time)",
                     )
-                    gr.Markdown("*Note: LR Finder runs before training starts and may take a few minutes*")
+                    gr.Markdown(
+                        "*Note: LR Finder runs before training starts and may take a few minutes*"
+                    )
 
             with gr.Row():
                 with gr.Column():
@@ -788,12 +911,12 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     use_wandb = gr.Checkbox(
                         label="Enable W&B Logging",
                         value=False,
-                        info="Log metrics, parameters, and model artifacts to Weights & Biases."
+                        info="Log metrics, parameters, and model artifacts to Weights & Biases.",
                     )
                     wandb_project = gr.Textbox(
                         label="W&B Project Name",
                         value="wakeword-training",
-                        info="The name of the project in Weights & Biases."
+                        info="The name of the project in Weights & Biases.",
                     )
 
         gr.Markdown("---")
@@ -801,19 +924,32 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         with gr.Tabs():
             with gr.TabItem("🧠 Training"):
                 with gr.Row():
-                    start_training_btn = gr.Button("▶️ Start Training", variant="primary", scale=2)
-                    stop_training_btn = gr.Button("⏹️ Stop Training", variant="stop", scale=1)
+                    start_training_btn = gr.Button(
+                        "▶️ Start Training", variant="primary", scale=2
+                    )
+                    stop_training_btn = gr.Button(
+                        "⏹️ Stop Training", variant="stop", scale=1
+                    )
             with gr.TabItem("🔬 Hyperparameter Optimization"):
                 with gr.Row():
-                    hpo_status = gr.Textbox(label="HPO Status", value="Ready to start HPO", interactive=False)
+                    hpo_status = gr.Textbox(
+                        label="HPO Status",
+                        value="Ready to start HPO",
+                        interactive=False,
+                    )
                 with gr.Row():
-                    n_trials = gr.Slider(minimum=10, maximum=200, value=50, step=10, label="Number of Trials")
+                    n_trials = gr.Slider(
+                        minimum=10,
+                        maximum=200,
+                        value=50,
+                        step=10,
+                        label="Number of Trials",
+                    )
                     study_name = gr.Textbox(label="Study Name", value="wakeword-hpo")
                 with gr.Row():
                     start_hpo_btn = gr.Button("🚀 Start HPO Study", variant="primary")
                 with gr.Row():
                     hpo_results = gr.DataFrame(headers=["Trial", "Value", "Params"])
-
 
         gr.Markdown("---")
 
@@ -821,32 +957,43 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
             with gr.Column(scale=1):
                 gr.Markdown("### Training Status")
                 training_status = gr.Textbox(
-                    label="Status",
-                    value="Ready to train",
-                    lines=2,
-                    interactive=False
+                    label="Status", value="Ready to train", lines=2, interactive=False
                 )
 
                 gr.Markdown("### Current Progress")
-                current_epoch = gr.Textbox(label="Epoch", value="0/0", interactive=False)
-                current_batch = gr.Textbox(label="Batch", value="0/0", interactive=False)
+                current_epoch = gr.Textbox(
+                    label="Epoch", value="0/0", interactive=False
+                )
+                current_batch = gr.Textbox(
+                    label="Batch", value="0/0", interactive=False
+                )
 
                 gr.Markdown("### Current Metrics")
                 with gr.Row():
-                    train_loss = gr.Number(label="Train Loss", value=0.0, interactive=False)
+                    train_loss = gr.Number(
+                        label="Train Loss", value=0.0, interactive=False
+                    )
                     val_loss = gr.Number(label="Val Loss", value=0.0, interactive=False)
 
                 with gr.Row():
-                    train_acc = gr.Number(label="Train Acc (%)", value=0.0, interactive=False)
-                    val_acc = gr.Number(label="Val Acc (%)", value=0.0, interactive=False)
+                    train_acc = gr.Number(
+                        label="Train Acc (%)", value=0.0, interactive=False
+                    )
+                    val_acc = gr.Number(
+                        label="Val Acc (%)", value=0.0, interactive=False
+                    )
 
                 with gr.Row():
                     fpr = gr.Number(label="FPR (%)", value=0.0, interactive=False)
                     fnr = gr.Number(label="FNR (%)", value=0.0, interactive=False)
 
                 with gr.Row():
-                    speed = gr.Number(label="Speed (samples/sec)", value=0.0, interactive=False)
-                    gpu_util = gr.Number(label="GPU Util (%)", value=0.0, interactive=False)
+                    speed = gr.Number(
+                        label="Speed (samples/sec)", value=0.0, interactive=False
+                    )
+                    gpu_util = gr.Number(
+                        label="GPU Util (%)", value=0.0, interactive=False
+                    )
 
                 eta = gr.Textbox(label="ETA", value="--:--:--", interactive=False)
 
@@ -854,21 +1001,17 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 gr.Markdown("### Training Curves")
 
                 # Loss plot
-                loss_plot = gr.Plot(
-                    label="Loss Curves",
-                    value=create_loss_plot()
-                )
+                loss_plot = gr.Plot(label="Loss Curves", value=create_loss_plot())
 
                 # Accuracy plot
                 accuracy_plot = gr.Plot(
-                    label="Accuracy Curves",
-                    value=create_accuracy_plot()
+                    label="Accuracy Curves", value=create_accuracy_plot()
                 )
 
                 # Metrics plot
                 metrics_plot = gr.Plot(
                     label="Validation Metrics (FPR, FNR, F1)",
-                    value=create_metrics_plot()
+                    value=create_metrics_plot(),
                 )
 
         gr.Markdown("---")
@@ -883,7 +1026,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 value="Waiting to start training...\n",
                 interactive=False,
                 max_lines=100,
-                autoscroll=True
+                autoscroll=True,
             )
 
         gr.Markdown("---")
@@ -893,14 +1036,20 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
 
         with gr.Row():
             with gr.Column():
-                best_epoch = gr.Textbox(label="Best Epoch", value="--", interactive=False)
-                best_val_loss = gr.Number(label="Best Val Loss", value=0.0, interactive=False)
+                best_epoch = gr.Textbox(
+                    label="Best Epoch", value="--", interactive=False
+                )
+                best_val_loss = gr.Number(
+                    label="Best Val Loss", value=0.0, interactive=False
+                )
             with gr.Column():
-                best_val_acc = gr.Number(label="Best Val Acc (%)", value=0.0, interactive=False)
+                best_val_acc = gr.Number(
+                    label="Best Val Acc (%)", value=0.0, interactive=False
+                )
                 model_path = gr.Textbox(
                     label="Checkpoint Path",
                     value="No model saved yet",
-                    interactive=False
+                    interactive=False,
                 )
 
         # Event handlers
@@ -917,7 +1066,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 sampler_ratio_hard,
                 run_lr_finder,
                 use_wandb,
-                wandb_project
+                wandb_project,
             ],
             outputs=[
                 training_status,
@@ -925,19 +1074,16 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 current_batch,
                 loss_plot,
                 accuracy_plot,
-                metrics_plot
-            ]
+                metrics_plot,
+            ],
         )
 
-        stop_training_btn.click(
-            fn=stop_training,
-            outputs=[training_status]
-        )
+        stop_training_btn.click(fn=stop_training, outputs=[training_status])
 
         start_hpo_btn.click(
             fn=start_hpo,
             inputs=[state, n_trials, study_name],
-            outputs=[hpo_status, hpo_results]
+            outputs=[hpo_status, hpo_results],
         )
 
         # Auto-refresh for live updates
@@ -965,8 +1111,8 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 best_epoch,
                 best_val_loss,
                 best_val_acc,
-                model_path
-            ]
+                model_path,
+            ],
         )
 
     return panel

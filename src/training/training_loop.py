@@ -1,18 +1,28 @@
-from typing import Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from src.training.trainer import Trainer
+
+import structlog
 import torch
 from tqdm import tqdm
+
 from src.training.metrics import MetricResults
 from src.training.optimizer_factory import clip_gradients, get_learning_rate
-import structlog
 
 logger = structlog.get_logger(__name__)
 
-def _run_epoch(trainer: "Trainer", dataloader: torch.utils.data.DataLoader, is_training: bool, epoch: int) -> Tuple[float, MetricResults]:
+
+def _run_epoch(
+    trainer: "Trainer",
+    dataloader: torch.utils.data.DataLoader,
+    is_training: bool,
+    epoch: int,
+) -> Tuple[float, MetricResults]:
     """Run one epoch of training or validation."""
-    metrics_tracker = trainer.train_metrics_tracker if is_training else trainer.val_metrics_tracker
+    metrics_tracker = (
+        trainer.train_metrics_tracker if is_training else trainer.val_metrics_tracker
+    )
     metrics_tracker.reset()
 
     epoch_loss = 0.0
@@ -31,7 +41,9 @@ def _run_epoch(trainer: "Trainer", dataloader: torch.utils.data.DataLoader, is_t
             else:
                 inputs, targets = batch
 
-            inputs = inputs.to(trainer.device, non_blocking=True, memory_format=torch.channels_last)
+            inputs = inputs.to(
+                trainer.device, non_blocking=True, memory_format=torch.channels_last
+            )
             targets = targets.to(trainer.device, non_blocking=True)
 
             if is_training and trainer.spec_augment is not None:
@@ -63,15 +75,19 @@ def _run_epoch(trainer: "Trainer", dataloader: torch.utils.data.DataLoader, is_t
                     batch_acc = (pred_classes == targets).float().mean().item()
                 trainer.metric_monitor.update_batch(loss.item(), batch_acc)
                 running_avg = trainer.metric_monitor.get_running_averages()
-                pbar.set_postfix({
-                    'loss': f"{running_avg['loss']:.4f}",
-                    'acc': f"{running_avg['accuracy']:.4f}",
-                    'lr': f"{get_learning_rate(trainer.optimizer):.6f}"
-                })
+                pbar.set_postfix(
+                    {
+                        "loss": f"{running_avg['loss']:.4f}",
+                        "acc": f"{running_avg['accuracy']:.4f}",
+                        "lr": f"{get_learning_rate(trainer.optimizer):.6f}",
+                    }
+                )
                 trainer.state.global_step += 1
-                trainer._call_callbacks('on_batch_end', batch_idx, loss.item(), batch_acc)
+                trainer._call_callbacks(
+                    "on_batch_end", batch_idx, loss.item(), batch_acc
+                )
             else:
-                pbar.set_postfix({'loss': f"{loss.item():.4f}"})
+                pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
     avg_loss = epoch_loss / num_batches
     metrics = metrics_tracker.compute()
@@ -81,11 +97,15 @@ def _run_epoch(trainer: "Trainer", dataloader: torch.utils.data.DataLoader, is_t
 
     return avg_loss, metrics
 
+
 def train_epoch(trainer: "Trainer", epoch: int) -> Tuple[float, float]:
     """Train for one epoch"""
     trainer.model.train()
-    avg_loss, metrics = _run_epoch(trainer, trainer.train_loader, is_training=True, epoch=epoch)
+    avg_loss, metrics = _run_epoch(
+        trainer, trainer.train_loader, is_training=True, epoch=epoch
+    )
     return avg_loss, metrics.accuracy
+
 
 def validate_epoch(trainer: "Trainer", epoch: int) -> Tuple[float, MetricResults]:
     """Validate for one epoch"""
@@ -94,7 +114,9 @@ def validate_epoch(trainer: "Trainer", epoch: int) -> Tuple[float, MetricResults
     if trainer.ema is not None:
         original_params = trainer.ema.apply_shadow()
 
-    avg_loss, val_metrics = _run_epoch(trainer, trainer.val_loader, is_training=False, epoch=epoch)
+    avg_loss, val_metrics = _run_epoch(
+        trainer, trainer.val_loader, is_training=False, epoch=epoch
+    )
 
     if trainer.ema is not None and original_params is not None:
         trainer.ema.restore(original_params)

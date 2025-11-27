@@ -4,44 +4,44 @@ GPU-accelerated training with checkpointing, early stopping, and metrics trackin
 """
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple, Callable
+from typing import Any, Callable, Dict, Optional, Tuple
 
+import structlog
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from dataclasses import dataclass
-import structlog
 
 logger = structlog.get_logger(__name__)
 from tqdm import tqdm
 
 torch.backends.cudnn.benchmark = True
 
-from src.training.metrics import MetricsTracker, MetricMonitor, MetricResults
-from src.training.optimizer_factory import (
-    create_optimizer_and_scheduler,
-    create_grad_scaler,
-    clip_gradients,
-    get_learning_rate
-)
-from src.models.losses import create_loss_function
 from src.config.cuda_utils import enforce_cuda
-from src.data.augmentation import SpecAugment
 from src.config.seed_utils import set_seed
-from src.training.ema import EMA, EMAScheduler
-from src.training.training_loop import train_epoch, validate_epoch
+from src.data.augmentation import SpecAugment
+from src.models.losses import create_loss_function
 from src.training.checkpoint import _save_checkpoint, load_checkpoint
 from src.training.checkpoint_manager import CheckpointManager
-
+from src.training.ema import EMA, EMAScheduler
+from src.training.metrics import MetricMonitor, MetricResults, MetricsTracker
+from src.training.optimizer_factory import (
+    clip_gradients,
+    create_grad_scaler,
+    create_optimizer_and_scheduler,
+    get_learning_rate,
+)
+from src.training.training_loop import train_epoch, validate_epoch
 
 
 @dataclass
 class TrainingState:
     """Container for training state"""
+
     epoch: int = 0
     global_step: int = 0
-    best_val_loss: float = float('inf')
+    best_val_loss: float = float("inf")
     best_val_f1: float = 0.0
     best_val_fpr: float = 1.0
     epochs_without_improvement: int = 0
@@ -61,9 +61,9 @@ class Trainer:
         val_loader: DataLoader,
         config: "WakewordConfig",
         checkpoint_manager: CheckpointManager,
-        device: str = 'cuda',
+        device: str = "cuda",
         use_ema: bool = True,
-        ema_decay: float = 0.999
+        ema_decay: float = 0.999,
     ) -> None:
         """
         Initialize trainer
@@ -102,11 +102,13 @@ class Trainer:
             focal_alpha=config.loss.focal_alpha,
             focal_gamma=config.loss.focal_gamma,
             class_weights=None,
-            device=device
+            device=device,
         ).to(device)
 
         # Create optimizer and scheduler (self.model ile kur)
-        self.optimizer, self.scheduler = create_optimizer_and_scheduler(self.model, config)  # CHANGE
+        self.optimizer, self.scheduler = create_optimizer_and_scheduler(
+            self.model, config
+        )  # CHANGE
 
         # Mixed precision training
         self.use_mixed_precision = config.optimizer.mixed_precision
@@ -134,13 +136,13 @@ class Trainer:
         self.callbacks = []
 
         # SpecAugment (GPU-based, applied during training only)
-        self.use_spec_augment = getattr(config.augmentation, 'use_spec_augment', True)
+        self.use_spec_augment = getattr(config.augmentation, "use_spec_augment", True)
         if self.use_spec_augment:
             self.spec_augment = SpecAugment(
-                freq_mask_param=getattr(config.augmentation, 'freq_mask_param', 15),
-                time_mask_param=getattr(config.augmentation, 'time_mask_param', 30),
-                n_freq_masks=getattr(config.augmentation, 'n_freq_masks', 2),
-                n_time_masks=getattr(config.augmentation, 'n_time_masks', 2)
+                freq_mask_param=getattr(config.augmentation, "freq_mask_param", 15),
+                time_mask_param=getattr(config.augmentation, "time_mask_param", 30),
+                n_freq_masks=getattr(config.augmentation, "n_freq_masks", 2),
+                n_time_masks=getattr(config.augmentation, "n_time_masks", 2),
             )
             logger.info("SpecAugment initialized (GPU-based)")
         else:
@@ -156,7 +158,7 @@ class Trainer:
                 initial_decay=ema_decay,
                 final_decay=0.9995,
                 warmup_epochs=0,
-                final_epochs=10
+                final_epochs=10,
             )
             logger.info(f"EMA initialized with decay={ema_decay}")
 
@@ -173,14 +175,12 @@ class Trainer:
         logger.info(f"  SpecAugment: {self.use_spec_augment}")
         logger.info(f"  EMA: {self.use_ema}")
 
-
-
     def train(
         self,
         start_epoch: int = 0,
         resume_from: Optional[Path] = None,
         seed: int = 42,
-        deterministic: bool = False
+        deterministic: bool = False,
     ) -> Dict[str, Any]:
         """
         Full training loop
@@ -195,19 +195,21 @@ class Trainer:
         set_seed(seed, deterministic=deterministic)
 
         if resume_from is not None:
-            self.checkpoint_manager.load_checkpoint(resume_from, self.model, self.optimizer, self.device)
+            self.checkpoint_manager.load_checkpoint(
+                resume_from, self.model, self.optimizer, self.device
+            )
             start_epoch = self.state.epoch + 1
             logger.info(f"Resumed from checkpoint at epoch {start_epoch}")
 
         history = {
-            'train_loss': [],
-            'train_acc': [],
-            'val_loss': [],
-            'val_acc': [],
-            'val_f1': [],
-            'val_fpr': [],
-            'val_fnr': [],
-            'learning_rates': []
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
+            "val_f1": [],
+            "val_fpr": [],
+            "val_fnr": [],
+            "learning_rates": [],
         }
 
         logger.info("=" * 80)
@@ -223,7 +225,7 @@ class Trainer:
         try:
             for epoch in range(start_epoch, self.config.training.epochs):
                 self.state.epoch = epoch
-                self._call_callbacks('on_epoch_start', epoch)
+                self._call_callbacks("on_epoch_start", epoch)
 
                 train_loss, train_acc = train_epoch(self, epoch)
                 val_loss, val_metrics = validate_epoch(self, epoch)
@@ -233,34 +235,44 @@ class Trainer:
 
                 # Update EMA decay schedule
                 if self.ema_scheduler is not None:
-                    ema_decay = self.ema_scheduler.step(epoch, self.config.training.epochs)
+                    ema_decay = self.ema_scheduler.step(
+                        epoch, self.config.training.epochs
+                    )
                     logger.debug(f"EMA decay updated to {ema_decay:.5f}")
 
-                history['train_loss'].append(train_loss)
-                history['train_acc'].append(train_acc)
-                history['val_loss'].append(val_loss)
-                history['val_acc'].append(val_metrics.accuracy)
-                history['val_f1'].append(val_metrics.f1_score)
-                history['val_fpr'].append(val_metrics.fpr)
-                history['val_fnr'].append(val_metrics.fnr)
-                history['learning_rates'].append(current_lr)
+                history["train_loss"].append(train_loss)
+                history["train_acc"].append(train_acc)
+                history["val_loss"].append(val_loss)
+                history["val_acc"].append(val_metrics.accuracy)
+                history["val_f1"].append(val_metrics.f1_score)
+                history["val_fpr"].append(val_metrics.fpr)
+                history["val_fnr"].append(val_metrics.fnr)
+                history["learning_rates"].append(current_lr)
 
                 self.val_metrics_tracker.save_epoch_metrics(val_metrics)
 
-                improved = self._check_improvement(val_loss, val_metrics.f1_score, val_metrics.fpr)
+                improved = self._check_improvement(
+                    val_loss, val_metrics.f1_score, val_metrics.fpr
+                )
 
-                self.checkpoint_manager.save_checkpoint(self, epoch, val_loss, val_metrics, improved)
+                self.checkpoint_manager.save_checkpoint(
+                    self, epoch, val_loss, val_metrics, improved
+                )
 
                 if self._should_stop_early():
                     logger.info(f"Early stopping triggered after {epoch+1} epochs")
                     break
 
-                self._call_callbacks('on_epoch_end', epoch, train_loss, val_loss, val_metrics)
+                self._call_callbacks(
+                    "on_epoch_end", epoch, train_loss, val_loss, val_metrics
+                )
 
                 print(f"\nEpoch {epoch+1}/{self.config.training.epochs}")
                 print(f"  Train: Loss={train_loss:.4f}, Acc={train_acc:.4f}")
-                print(f"  Val:   Loss={val_loss:.4f}, Acc={val_metrics.accuracy:.4f}, "
-                      f"F1={val_metrics.f1_score:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}")
+                print(
+                    f"  Val:   Loss={val_loss:.4f}, Acc={val_metrics.accuracy:.4f}, "
+                    f"F1={val_metrics.f1_score:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}"
+                )
                 print(f"  LR: {current_lr:.6f}")
                 if improved:
                     print(f"  ✅ New best model (improvement detected)\n")
@@ -279,21 +291,27 @@ class Trainer:
         logger.info(f"  Best val FPR: {self.state.best_val_fpr:.4f}")
         logger.info("=" * 80)
 
-        best_f1_epoch, best_f1_metrics = self.val_metrics_tracker.get_best_epoch('f1_score')
-        best_fpr_epoch, best_fpr_metrics = self.val_metrics_tracker.get_best_epoch('fpr')
+        best_f1_epoch, best_f1_metrics = self.val_metrics_tracker.get_best_epoch(
+            "f1_score"
+        )
+        best_fpr_epoch, best_fpr_metrics = self.val_metrics_tracker.get_best_epoch(
+            "fpr"
+        )
 
-        logger.info(f"\nBest F1 Score: {best_f1_metrics.f1_score:.4f} (Epoch {best_f1_epoch+1})")
+        logger.info(
+            f"\nBest F1 Score: {best_f1_metrics.f1_score:.4f} (Epoch {best_f1_epoch+1})"
+        )
         logger.info(f"Best FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
 
         results = {
-            'history': history,
-            'final_epoch': self.state.epoch,
-            'best_val_loss': self.state.best_val_loss,
-            'best_val_f1': self.state.best_val_f1,
-            'best_val_fpr': self.state.best_val_fpr,
-            'training_time': self.state.training_time,
-            'best_f1_epoch': best_f1_epoch,
-            'best_fpr_epoch': best_fpr_epoch
+            "history": history,
+            "final_epoch": self.state.epoch,
+            "best_val_loss": self.state.best_val_loss,
+            "best_val_f1": self.state.best_val_f1,
+            "best_val_fpr": self.state.best_val_fpr,
+            "training_time": self.state.training_time,
+            "best_f1_epoch": best_f1_epoch,
+            "best_fpr_epoch": best_fpr_epoch,
         }
 
         return results
@@ -301,17 +319,14 @@ class Trainer:
     def _update_scheduler(self, val_loss: float) -> None:
         """Update learning rate scheduler"""
         if self.scheduler is not None:
-            if hasattr(self.scheduler, 'step'):
+            if hasattr(self.scheduler, "step"):
                 try:
                     self.scheduler.step(val_loss)
                 except TypeError:
                     self.scheduler.step()
 
     def _check_improvement(
-        self,
-        val_loss: float,
-        val_f1: float,
-        val_fpr: float
+        self, val_loss: float, val_f1: float, val_fpr: float
     ) -> bool:
         """Check if model improved based on primary metric (val_f1)
         Simplified to use single primary metric for early stopping
@@ -349,6 +364,7 @@ class Trainer:
             if hasattr(callback, event):
                 getattr(callback, event)(*args, **kwargs)
 
+
 if __name__ == "__main__":
     # Test trainer initialization
     print("Trainer Test")
@@ -364,7 +380,7 @@ if __name__ == "__main__":
     # Create dummy model
     from src.models.architectures import create_model
 
-    model = create_model('resnet18', num_classes=2, pretrained=False)
+    model = create_model("resnet18", num_classes=2, pretrained=False)
     print(f"✅ Created model: ResNet18")
 
     # Create dummy config
@@ -376,13 +392,15 @@ if __name__ == "__main__":
     # Create dummy data loaders
     dummy_dataset = torch.utils.data.TensorDataset(
         torch.randn(100, 1, 64, 50),  # Spectrograms
-        torch.randint(0, 2, (100,))   # Labels
+        torch.randint(0, 2, (100,)),  # Labels
     )
 
     train_loader = DataLoader(dummy_dataset, batch_size=8, shuffle=True)
     val_loader = DataLoader(dummy_dataset, batch_size=8, shuffle=False)
 
-    print(f"✅ Created data loaders: {len(train_loader)} train batches, {len(val_loader)} val batches")
+    print(
+        f"✅ Created data loaders: {len(train_loader)} train batches, {len(val_loader)} val batches"
+    )
 
     # Create trainer (will fail if CUDA not available due to enforce_cuda)
     try:
@@ -392,7 +410,7 @@ if __name__ == "__main__":
             val_loader=val_loader,
             config=config,
             checkpoint_dir=Path("test_checkpoints"),
-            device=device
+            device=device,
         )
         print(f"✅ Trainer initialized successfully")
 

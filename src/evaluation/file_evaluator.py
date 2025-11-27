@@ -1,17 +1,18 @@
+import time
 from pathlib import Path
 from typing import List
-import torch
+
 import numpy as np
-import time
 import structlog
-from .evaluator import EvaluationResult
+import torch
+
+from src.evaluation.types import EvaluationResult
 
 logger = structlog.get_logger(__name__)
 
+
 def evaluate_file(
-    evaluator,
-    audio_path: Path,
-    threshold: float = 0.5
+    evaluator, audio_path: Path, threshold: float = 0.5
 ) -> EvaluationResult:
     """
     Evaluate single audio file
@@ -58,16 +59,14 @@ def evaluate_file(
         prediction="Positive" if predicted_class == 1 else "Negative",
         confidence=confidence,
         latency_ms=latency_ms,
-        logits=logits.cpu().numpy()[0]
+        logits=logits.cpu().numpy()[0],
     )
 
     return result
 
+
 def evaluate_files(
-    evaluator,
-    audio_paths: List[Path],
-    threshold: float = 0.5,
-    batch_size: int = 32
+    evaluator, audio_paths: List[Path], threshold: float = 0.5, batch_size: int = 32
 ) -> List[EvaluationResult]:
     """
     Evaluate multiple audio files in batches
@@ -84,7 +83,7 @@ def evaluate_files(
 
     # Process in batches
     for i in range(0, len(audio_paths), batch_size):
-        batch_paths = audio_paths[i:i + batch_size]
+        batch_paths = audio_paths[i : i + batch_size]
 
         # Load batch
         batch_audio = []
@@ -98,13 +97,15 @@ def evaluate_files(
             except Exception as e:
                 logger.error(f"Failed to load {path}: {e}")
                 # Add error result
-                results.append(EvaluationResult(
-                    filename=path.name,
-                    prediction="Error",
-                    confidence=0.0,
-                    latency_ms=0.0,
-                    logits=np.array([0.0, 0.0])
-                ))
+                results.append(
+                    EvaluationResult(
+                        filename=path.name,
+                        prediction="Error",
+                        confidence=0.0,
+                        latency_ms=0.0,
+                        logits=np.array([0.0, 0.0]),
+                    )
+                )
 
         if not batch_audio:
             continue
@@ -139,12 +140,14 @@ def evaluate_files(
         for path, confidence, pred_class, logit in zip(
             valid_paths, confidences, predicted_classes, logits.cpu().numpy()
         ):
-            results.append(EvaluationResult(
-                filename=path.name,
-                prediction="Positive" if pred_class == 1 else "Negative",
-                confidence=float(confidence),
-                latency_ms=batch_latency,
-                logits=logit
-            ))
+            results.append(
+                EvaluationResult(
+                    filename=path.name,
+                    prediction="Positive" if pred_class == 1 else "Negative",
+                    confidence=float(confidence),
+                    latency_ms=batch_latency,
+                    logits=logit,
+                )
+            )
 
     return results

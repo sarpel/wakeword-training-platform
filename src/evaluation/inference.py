@@ -2,14 +2,15 @@
 Real-Time Microphone Inference
 Streaming audio capture and wakeword detection
 """
+import queue
+import threading
+import time
+from typing import Callable, Optional, Tuple
+
+import numpy as np
+import structlog
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import Optional, Callable, Tuple
-import threading
-import queue
-import time
-import structlog
 
 try:
     import sounddevice as sd
@@ -17,9 +18,9 @@ except ImportError:
     sd = None
     structlog.warning("sounddevice not installed. Microphone inference not available.")
 
+from src.config.cuda_utils import enforce_cuda
 from src.data.audio_utils import AudioProcessor
 from src.data.feature_extraction import FeatureExtractor
-from src.config.cuda_utils import enforce_cuda
 
 logger = structlog.get_logger(__name__)
 
@@ -35,13 +36,13 @@ class MicrophoneInference:
         sample_rate: int = 16000,
         audio_duration: float = 1.5,
         threshold: float = 0.5,
-        device: str = 'cuda',
+        device: str = "cuda",
         callback: Optional[Callable] = None,
-        feature_type: str = 'mel',
+        feature_type: str = "mel",
         n_mels: int = 128,
         n_mfcc: int = 40,
         n_fft: int = 1024,
-        hop_length: int = 160
+        hop_length: int = 160,
     ):
         """
         Initialize microphone inference
@@ -61,8 +62,7 @@ class MicrophoneInference:
         """
         if sd is None:
             raise ImportError(
-                "sounddevice not installed. "
-                "Install with: pip install sounddevice"
+                "sounddevice not installed. " "Install with: pip install sounddevice"
             )
 
         # Enforce CUDA
@@ -82,13 +82,12 @@ class MicrophoneInference:
 
         # Audio processor
         self.audio_processor = AudioProcessor(
-            target_sr=sample_rate,
-            target_duration=audio_duration
+            target_sr=sample_rate, target_duration=audio_duration
         )
 
         # Normalize feature type (handle legacy 'mel_spectrogram')
-        if feature_type == 'mel_spectrogram':
-            feature_type = 'mel'
+        if feature_type == "mel_spectrogram":
+            feature_type = "mel"
 
         # Feature extractor
         self.feature_extractor = FeatureExtractor(
@@ -98,7 +97,7 @@ class MicrophoneInference:
             n_mfcc=n_mfcc,
             n_fft=n_fft,
             hop_length=hop_length,
-            device=device
+            device=device,
         )
 
         # Recording state
@@ -149,8 +148,10 @@ class MicrophoneInference:
                     # Process if we have enough samples
                     while len(self.audio_buffer) >= self.chunk_samples:
                         # Extract chunk
-                        chunk = self.audio_buffer[:self.chunk_samples]
-                        self.audio_buffer = self.audio_buffer[self.chunk_samples // 2:]  # 50% overlap
+                        chunk = self.audio_buffer[: self.chunk_samples]
+                        self.audio_buffer = self.audio_buffer[
+                            self.chunk_samples // 2 :
+                        ]  # 50% overlap
 
                         # Process chunk
                         confidence, is_positive = self._process_chunk(chunk)
@@ -245,7 +246,9 @@ class MicrophoneInference:
 
         # Start processing thread
         self.is_recording = True
-        self.processing_thread = threading.Thread(target=self._processing_worker, daemon=True)
+        self.processing_thread = threading.Thread(
+            target=self._processing_worker, daemon=True
+        )
         self.processing_thread.start()
 
         # Start audio stream
@@ -253,7 +256,7 @@ class MicrophoneInference:
             samplerate=self.sample_rate,
             channels=1,
             callback=self._audio_callback,
-            blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
+            blocksize=int(self.sample_rate * 0.1),  # 100ms blocks
         )
         self.stream.start()
 
@@ -271,7 +274,7 @@ class MicrophoneInference:
         self.is_recording = False
 
         # Stop stream
-        if hasattr(self, 'stream'):
+        if hasattr(self, "stream"):
             self.stream.stop()
             self.stream.close()
 
@@ -301,10 +304,10 @@ class MicrophoneInference:
             Dictionary with statistics
         """
         return {
-            'detection_count': self.detection_count,
-            'false_alarm_count': self.false_alarm_count,
-            'is_recording': self.is_recording,
-            'buffer_size': len(self.audio_buffer)
+            "detection_count": self.detection_count,
+            "false_alarm_count": self.false_alarm_count,
+            "is_recording": self.is_recording,
+            "buffer_size": len(self.audio_buffer),
         }
 
 
@@ -319,8 +322,8 @@ class SimulatedMicrophoneInference:
         sample_rate: int = 16000,
         audio_duration: float = 1.5,
         threshold: float = 0.5,
-        device: str = 'cuda',
-        callback: Optional[Callable] = None
+        device: str = "cuda",
+        callback: Optional[Callable] = None,
     ):
         """Initialize simulated microphone inference"""
         self.model = model
@@ -348,19 +351,22 @@ class SimulatedMicrophoneInference:
         if self.is_recording:
             # Return random results
             import random
+
             confidence = random.random()
             is_positive = confidence >= self.threshold
-            dummy_audio = np.random.randn(int(self.sample_rate * 1.5)).astype(np.float32)
+            dummy_audio = np.random.randn(int(self.sample_rate * 1.5)).astype(
+                np.float32
+            )
             return confidence, is_positive, dummy_audio
         return None
 
     def get_stats(self) -> dict:
         """Get simulated stats"""
         return {
-            'detection_count': self.detection_count,
-            'false_alarm_count': 0,
-            'is_recording': self.is_recording,
-            'buffer_size': 0
+            "detection_count": self.detection_count,
+            "false_alarm_count": 0,
+            "is_recording": self.is_recording,
+            "buffer_size": 0,
         }
 
 
@@ -379,7 +385,7 @@ if __name__ == "__main__":
         print("\nAvailable audio devices:")
         devices = sd.query_devices()
         for i, device in enumerate(devices):
-            if device['max_input_channels'] > 0:
+            if device["max_input_channels"] > 0:
                 print(f"  {i}: {device['name']}")
 
     print("\nMicrophone inference module ready")

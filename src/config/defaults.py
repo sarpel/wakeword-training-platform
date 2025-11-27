@@ -2,16 +2,18 @@
 Default Configuration Parameters for Wakeword Training
 Defines basic and advanced training hyperparameters
 """
-from typing import Dict, Any, List
-from dataclasses import dataclass, asdict, field
-import yaml
 import copy
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any, Dict, List
+
+import yaml
 
 
 @dataclass
 class DataConfig:
     """Data processing configuration"""
+
     data_root: str = "data"
     # Audio parameters
     sample_rate: int = 16000  # Hz
@@ -27,10 +29,12 @@ class DataConfig:
 
     # NEW: NPY feature parameters
     use_precomputed_features_for_training: bool = True  # Enable NPY loading
-    npy_feature_dir: str = "data/npy"       # Directory with split .npy files (train/val/test)
-    npy_feature_type: str = "mel"           # mel, mfcc (must match extraction)
-    npy_cache_features: bool = True         # Cache loaded features in RAM
-    fallback_to_audio: bool = True         # If NPY missing, load raw audio
+    npy_feature_dir: str = (
+        "data/npy"  # Directory with split .npy files (train/val/test)
+    )
+    npy_feature_type: str = "mel"  # mel, mfcc (must match extraction)
+    npy_cache_features: bool = True  # Cache loaded features in RAM
+    fallback_to_audio: bool = True  # If NPY missing, load raw audio
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -40,6 +44,7 @@ class DataConfig:
 @dataclass
 class TrainingConfig:
     """Training configuration"""
+
     # Basic training parameters
     batch_size: int = 64
     epochs: int = 80
@@ -52,7 +57,9 @@ class TrainingConfig:
     persistent_workers: bool = True
 
     # Checkpointing
-    checkpoint_frequency: str = "every_5_epochs"  # best_only, every_epoch, every_5_epochs, every_10_epochs
+    checkpoint_frequency: str = (
+        "every_5_epochs"  # best_only, every_epoch, every_5_epochs, every_10_epochs
+    )
     save_best_only: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
@@ -63,6 +70,7 @@ class TrainingConfig:
 @dataclass
 class ModelConfig:
     """Model architecture configuration"""
+
     architecture: str = "resnet18"  # resnet18, mobilenetv3, lstm, gru, tcn
     num_classes: int = 2  # Binary classification
     pretrained: bool = False  # Use pretrained weights (ImageNet)
@@ -81,6 +89,7 @@ class ModelConfig:
 @dataclass
 class AugmentationConfig:
     """Data augmentation configuration"""
+
     # Time domain augmentation (CPU-based)
     time_stretch_min: float = 0.90
     time_stretch_max: float = 1.10
@@ -115,6 +124,7 @@ class AugmentationConfig:
 @dataclass
 class OptimizerConfig:
     """Optimizer and scheduler configuration"""
+
     optimizer: str = "adamw"  # adam, sgd, adamw
     weight_decay: float = 1e-4
     momentum: float = 0.9  # For SGD
@@ -145,6 +155,7 @@ class OptimizerConfig:
 @dataclass
 class LossConfig:
     """Loss function configuration"""
+
     loss_function: str = "cross_entropy"  # cross_entropy, focal_loss
     label_smoothing: float = 0.05
 
@@ -167,6 +178,7 @@ class LossConfig:
 @dataclass
 class WakewordConfig:
     """Complete wakeword training configuration"""
+
     # Sub-configurations
     data: DataConfig = field(default_factory=DataConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
@@ -182,28 +194,28 @@ class WakewordConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
-            'config_name': self.config_name,
-            'description': self.description,
-            'data': self.data.to_dict(),
-            'training': self.training.to_dict(),
-            'model': self.model.to_dict(),
-            'augmentation': self.augmentation.to_dict(),
-            'optimizer': self.optimizer.to_dict(),
-            'loss': self.loss.to_dict()
+            "config_name": self.config_name,
+            "description": self.description,
+            "data": self.data.to_dict(),
+            "training": self.training.to_dict(),
+            "model": self.model.to_dict(),
+            "augmentation": self.augmentation.to_dict(),
+            "optimizer": self.optimizer.to_dict(),
+            "loss": self.loss.to_dict(),
         }
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> 'WakewordConfig':
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "WakewordConfig":
         """Create configuration from dictionary"""
         return cls(
-            config_name=config_dict.get('config_name', 'default'),
-            description=config_dict.get('description', ''),
-            data=DataConfig(**config_dict.get('data', {})),
-            training=TrainingConfig(**config_dict.get('training', {})),
-            model=ModelConfig(**config_dict.get('model', {})),
-            augmentation=AugmentationConfig(**config_dict.get('augmentation', {})),
-            optimizer=OptimizerConfig(**config_dict.get('optimizer', {})),
-            loss=LossConfig(**config_dict.get('loss', {}))
+            config_name=config_dict.get("config_name", "default"),
+            description=config_dict.get("description", ""),
+            data=DataConfig(**config_dict.get("data", {})),
+            training=TrainingConfig(**config_dict.get("training", {})),
+            model=ModelConfig(**config_dict.get("model", {})),
+            augmentation=AugmentationConfig(**config_dict.get("augmentation", {})),
+            optimizer=OptimizerConfig(**config_dict.get("optimizer", {})),
+            loss=LossConfig(**config_dict.get("loss", {})),
         )
 
     def save(self, path: Path):
@@ -211,26 +223,27 @@ class WakewordConfig:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(path, 'w') as f:
-            yaml.safe_dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)  # <-- safe_dump
+        with open(path, "w") as f:
+            yaml.safe_dump(
+                self.to_dict(), f, default_flow_style=False, sort_keys=False
+            )  # <-- safe_dump
 
     @classmethod
-    def load(cls, path: Path) -> 'WakewordConfig':
+    def load(cls, path: Path) -> "WakewordConfig":
         """Load configuration from YAML file"""
         path = Path(path)
 
         if not path.exists():
             raise FileNotFoundError(f"Configuration file not found: {path}")
 
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             config_dict = yaml.safe_load(f)
 
         return cls.from_dict(config_dict)
 
-    def copy(self) -> 'WakewordConfig':
+    def copy(self) -> "WakewordConfig":
         """Create a deep copy of the configuration"""
         return copy.deepcopy(self)
-
 
 
 def get_default_config() -> WakewordConfig:
@@ -242,20 +255,20 @@ def get_default_config() -> WakewordConfig:
     """
     return WakewordConfig(
         config_name="default",
-        description="Default balanced configuration for general use"
+        description="Default balanced configuration for general use",
     )
 
 
 # Export all configurations
 __all__ = [
-    'DataConfig',
-    'TrainingConfig',
-    'ModelConfig',
-    'AugmentationConfig',
-    'OptimizerConfig',
-    'LossConfig',
-    'WakewordConfig',
-    'get_default_config'
+    "DataConfig",
+    "TrainingConfig",
+    "ModelConfig",
+    "AugmentationConfig",
+    "OptimizerConfig",
+    "LossConfig",
+    "WakewordConfig",
+    "get_default_config",
 ]
 
 

@@ -2,8 +2,9 @@
 Dataset Health Checker and Briefing System
 Analyzes dataset quality and provides recommendations
 """
-from typing import Dict, List, Tuple
 from collections import Counter
+from typing import Dict, List, Tuple
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -68,37 +69,47 @@ class DatasetHealthChecker:
         assessment = self._generate_assessment()
 
         return {
-            'health_score': max(0, self.health_score),
-            'assessment': assessment,
-            'issues': self.issues,
-            'warnings': self.warnings,
-            'recommendations': self.recommendations,
-            'statistics': self._get_key_statistics()
+            "health_score": max(0, self.health_score),
+            "assessment": assessment,
+            "issues": self.issues,
+            "warnings": self.warnings,
+            "recommendations": self.recommendations,
+            "statistics": self._get_key_statistics(),
         }
 
     def _check_positive_samples(self):
         """Check if sufficient positive samples"""
-        categories = self.stats.get('categories', {})
-        positive_count = categories.get('positive', {}).get('file_count', 0)
+        categories = self.stats.get("categories", {})
+        positive_count = categories.get("positive", {}).get("file_count", 0)
 
         if positive_count == 0:
             self.issues.append("❌ CRITICAL: No positive samples found")
             self.health_score -= 50
-            self.recommendations.append("• Record wakeword utterances from multiple speakers")
+            self.recommendations.append(
+                "• Record wakeword utterances from multiple speakers"
+            )
         elif positive_count < self.MIN_POSITIVE_SAMPLES:
-            self.warnings.append(f"⚠️  Low positive samples: {positive_count} (minimum: {self.MIN_POSITIVE_SAMPLES})")
+            self.warnings.append(
+                f"⚠️  Low positive samples: {positive_count} (minimum: {self.MIN_POSITIVE_SAMPLES})"
+            )
             self.health_score -= 20
-            self.recommendations.append(f"• Collect at least {self.MIN_POSITIVE_SAMPLES - positive_count} more positive samples")
+            self.recommendations.append(
+                f"• Collect at least {self.MIN_POSITIVE_SAMPLES - positive_count} more positive samples"
+            )
         elif positive_count < self.RECOMMENDED_POSITIVE_SAMPLES:
-            self.warnings.append(f"⚠️  Below recommended positive samples: {positive_count} (recommended: {self.RECOMMENDED_POSITIVE_SAMPLES})")
+            self.warnings.append(
+                f"⚠️  Below recommended positive samples: {positive_count} (recommended: {self.RECOMMENDED_POSITIVE_SAMPLES})"
+            )
             self.health_score -= 10
-            self.recommendations.append(f"• Consider collecting {self.RECOMMENDED_POSITIVE_SAMPLES - positive_count} more positive samples for better accuracy")
+            self.recommendations.append(
+                f"• Consider collecting {self.RECOMMENDED_POSITIVE_SAMPLES - positive_count} more positive samples for better accuracy"
+            )
 
     def _check_class_balance(self):
         """Check positive to negative ratio"""
-        categories = self.stats.get('categories', {})
-        positive_count = categories.get('positive', {}).get('file_count', 0)
-        negative_count = categories.get('negative', {}).get('file_count', 0)
+        categories = self.stats.get("categories", {})
+        positive_count = categories.get("positive", {}).get("file_count", 0)
+        negative_count = categories.get("negative", {}).get("file_count", 0)
 
         if positive_count == 0:
             return  # Already handled in positive check
@@ -106,7 +117,9 @@ class DatasetHealthChecker:
         if negative_count == 0:
             self.issues.append("❌ CRITICAL: No negative samples found")
             self.health_score -= 30
-            self.recommendations.append("• Collect general speech and non-wakeword utterances")
+            self.recommendations.append(
+                "• Collect general speech and non-wakeword utterances"
+            )
             return
 
         ratio = negative_count / positive_count
@@ -117,18 +130,26 @@ class DatasetHealthChecker:
                 f"(recommended: {self.MIN_NEGATIVE_TO_POSITIVE_RATIO:.0f}-{self.MAX_NEGATIVE_TO_POSITIVE_RATIO:.0f}:1)"
             )
             self.health_score -= 15
-            needed = int(positive_count * self.MIN_NEGATIVE_TO_POSITIVE_RATIO - negative_count)
-            self.recommendations.append(f"• Collect approximately {needed} more negative samples")
+            needed = int(
+                positive_count * self.MIN_NEGATIVE_TO_POSITIVE_RATIO - negative_count
+            )
+            self.recommendations.append(
+                f"• Collect approximately {needed} more negative samples"
+            )
         elif ratio > self.MAX_NEGATIVE_TO_POSITIVE_RATIO * 2:
-            self.warnings.append(f"⚠️  Very high negative ratio: {ratio:.1f}:1 (may slow training)")
+            self.warnings.append(
+                f"⚠️  Very high negative ratio: {ratio:.1f}:1 (may slow training)"
+            )
             self.health_score -= 5
-            self.recommendations.append("• Consider reducing negative samples or adding more positives")
+            self.recommendations.append(
+                "• Consider reducing negative samples or adding more positives"
+            )
 
     def _check_hard_negatives(self):
         """Check hard negative samples"""
-        categories = self.stats.get('categories', {})
-        negative_count = categories.get('negative', {}).get('file_count', 0)
-        hard_negative_count = categories.get('hard_negative', {}).get('file_count', 0)
+        categories = self.stats.get("categories", {})
+        negative_count = categories.get("negative", {}).get("file_count", 0)
+        hard_negative_count = categories.get("hard_negative", {}).get("file_count", 0)
 
         if negative_count == 0:
             return  # Already handled
@@ -149,18 +170,22 @@ class DatasetHealthChecker:
                     f"(recommended: {self.HARD_NEGATIVE_RATIO*100:.0f}%)"
                 )
                 self.health_score -= 8
-                needed = int(negative_count * self.HARD_NEGATIVE_RATIO - hard_negative_count)
-                self.recommendations.append(f"• Collect approximately {needed} more hard negative samples")
+                needed = int(
+                    negative_count * self.HARD_NEGATIVE_RATIO - hard_negative_count
+                )
+                self.recommendations.append(
+                    f"• Collect approximately {needed} more hard negative samples"
+                )
 
     def _check_sample_rates(self):
         """Check sample rate consistency"""
-        categories = self.stats.get('categories', {})
+        categories = self.stats.get("categories", {})
 
         all_sample_rates = []
         inconsistent_categories = []
 
         for category, data in categories.items():
-            sample_rates = data.get('sample_rates', {})
+            sample_rates = data.get("sample_rates", {})
             if sample_rates:
                 all_sample_rates.extend(int(sr) for sr in sample_rates.keys())
                 if len(sample_rates) > 1:
@@ -177,7 +202,9 @@ class DatasetHealthChecker:
                 "  Audio quality may be insufficient"
             )
             self.health_score -= 10
-            self.recommendations.append(f"• Re-record audio at {self.MIN_SAMPLE_RATE}Hz or higher")
+            self.recommendations.append(
+                f"• Re-record audio at {self.MIN_SAMPLE_RATE}Hz or higher"
+            )
 
         # Check for inconsistency
         if inconsistent_categories:
@@ -189,13 +216,13 @@ class DatasetHealthChecker:
 
     def _check_durations(self):
         """Check audio duration consistency"""
-        categories = self.stats.get('categories', {})
+        categories = self.stats.get("categories", {})
 
         for category, data in categories.items():
-            if category in ['background', 'rirs']:
+            if category in ["background", "rirs"]:
                 continue  # Skip background and RIRs
 
-            avg_duration = data.get('avg_duration', 0)
+            avg_duration = data.get("avg_duration", 0)
 
             if avg_duration > 0:
                 if avg_duration < self.RECOMMENDED_DURATION_MIN:
@@ -214,10 +241,13 @@ class DatasetHealthChecker:
 
     def _check_diversity(self):
         """Check data diversity"""
-        categories = self.stats.get('categories', {})
+        categories = self.stats.get("categories", {})
 
         # Check if background noise exists
-        if 'background' not in categories or categories['background'].get('file_count', 0) == 0:
+        if (
+            "background" not in categories
+            or categories["background"].get("file_count", 0) == 0
+        ):
             self.warnings.append("⚠️  No background noise samples found")
             self.health_score -= 8
             self.recommendations.append(
@@ -226,7 +256,7 @@ class DatasetHealthChecker:
             )
 
         # Check if RIRs exist
-        if 'rirs' not in categories or categories['rirs'].get('file_count', 0) == 0:
+        if "rirs" not in categories or categories["rirs"].get("file_count", 0) == 0:
             self.warnings.append("⚠️  No Room Impulse Response (RIR) samples found")
             self.health_score -= 5
             self.recommendations.append(
@@ -261,25 +291,25 @@ class DatasetHealthChecker:
         Returns:
             Dictionary with key stats
         """
-        categories = self.stats.get('categories', {})
+        categories = self.stats.get("categories", {})
 
-        positive_count = categories.get('positive', {}).get('file_count', 0)
-        negative_count = categories.get('negative', {}).get('file_count', 0)
-        hard_negative_count = categories.get('hard_negative', {}).get('file_count', 0)
-        background_count = categories.get('background', {}).get('file_count', 0)
-        rir_count = categories.get('rirs', {}).get('file_count', 0)
+        positive_count = categories.get("positive", {}).get("file_count", 0)
+        negative_count = categories.get("negative", {}).get("file_count", 0)
+        hard_negative_count = categories.get("hard_negative", {}).get("file_count", 0)
+        background_count = categories.get("background", {}).get("file_count", 0)
+        rir_count = categories.get("rirs", {}).get("file_count", 0)
 
         ratio = negative_count / positive_count if positive_count > 0 else 0
 
         return {
-            'positive_samples': positive_count,
-            'negative_samples': negative_count,
-            'hard_negative_samples': hard_negative_count,
-            'background_samples': background_count,
-            'rir_samples': rir_count,
-            'total_samples': self.stats.get('total_files', 0),
-            'total_duration_minutes': self.stats.get('total_duration_minutes', 0),
-            'negative_to_positive_ratio': f"{ratio:.1f}:1" if ratio > 0 else "N/A"
+            "positive_samples": positive_count,
+            "negative_samples": negative_count,
+            "hard_negative_samples": hard_negative_count,
+            "background_samples": background_count,
+            "rir_samples": rir_count,
+            "total_samples": self.stats.get("total_files", 0),
+            "total_duration_minutes": self.stats.get("total_duration_minutes", 0),
+            "negative_to_positive_ratio": f"{ratio:.1f}:1" if ratio > 0 else "N/A",
         }
 
     def generate_report(self) -> str:
@@ -305,48 +335,50 @@ class DatasetHealthChecker:
         # Key statistics
         report.append("Key Statistics:")
         report.append("-" * 60)
-        stats = analysis['statistics']
+        stats = analysis["statistics"]
         report.append(f"  Positive Samples:      {stats['positive_samples']:,}")
         report.append(f"  Negative Samples:      {stats['negative_samples']:,}")
         report.append(f"  Hard Negative Samples: {stats['hard_negative_samples']:,}")
         report.append(f"  Background Samples:    {stats['background_samples']:,}")
         report.append(f"  RIR Samples:           {stats['rir_samples']:,}")
         report.append(f"  Total Samples:         {stats['total_samples']:,}")
-        report.append(f"  Total Duration:        {stats['total_duration_minutes']:.1f} minutes")
+        report.append(
+            f"  Total Duration:        {stats['total_duration_minutes']:.1f} minutes"
+        )
         report.append(f"  Neg:Pos Ratio:         {stats['negative_to_positive_ratio']}")
         report.append("")
 
         # Issues
-        if analysis['issues']:
+        if analysis["issues"]:
             report.append("Critical Issues:")
             report.append("-" * 60)
-            for issue in analysis['issues']:
+            for issue in analysis["issues"]:
                 report.append(f"  {issue}")
             report.append("")
 
         # Warnings
-        if analysis['warnings']:
+        if analysis["warnings"]:
             report.append("Warnings:")
             report.append("-" * 60)
-            for warning in analysis['warnings']:
+            for warning in analysis["warnings"]:
                 report.append(f"  {warning}")
             report.append("")
 
         # Recommendations
-        if analysis['recommendations']:
+        if analysis["recommendations"]:
             report.append("Recommendations:")
             report.append("-" * 60)
-            for rec in analysis['recommendations']:
+            for rec in analysis["recommendations"]:
                 report.append(f"  {rec}")
             report.append("")
 
         # Training readiness
         report.append("Training Readiness:")
         report.append("-" * 60)
-        if analysis['health_score'] >= 75:
+        if analysis["health_score"] >= 75:
             report.append("  ✅ Dataset is ready for training")
             report.append("  • Proceed to configuration and training")
-        elif analysis['health_score'] >= 60:
+        elif analysis["health_score"] >= 60:
             report.append("  ⚠️  Dataset can be used but improvements recommended")
             report.append("  • Consider addressing warnings before training")
         else:
@@ -366,15 +398,15 @@ if __name__ == "__main__":
 
     # Example stats
     example_stats = {
-        'total_files': 15000,
-        'total_duration_minutes': 500,
-        'categories': {
-            'positive': {'file_count': 1500, 'avg_duration': 1.5},
-            'negative': {'file_count': 12000, 'avg_duration': 1.8},
-            'hard_negative': {'file_count': 3000, 'avg_duration': 1.6},
-            'background': {'file_count': 500, 'avg_duration': 5.0},
-            'rirs': {'file_count': 100, 'avg_duration': 1.0}
-        }
+        "total_files": 15000,
+        "total_duration_minutes": 500,
+        "categories": {
+            "positive": {"file_count": 1500, "avg_duration": 1.5},
+            "negative": {"file_count": 12000, "avg_duration": 1.8},
+            "hard_negative": {"file_count": 3000, "avg_duration": 1.6},
+            "background": {"file_count": 500, "avg_duration": 5.0},
+            "rirs": {"file_count": 100, "avg_duration": 1.0},
+        },
     }
 
     checker = DatasetHealthChecker(example_stats)

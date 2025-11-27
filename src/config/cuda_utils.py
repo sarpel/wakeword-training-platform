@@ -2,9 +2,10 @@
 CUDA Detection and Validation Utilities
 No CPU fallback for tensor operations - GPU is mandatory
 """
-import torch
 import sys
-from typing import Dict, Tuple, Any
+from typing import Any, Dict, Tuple
+
+import torch
 
 
 class CUDAValidator:
@@ -38,7 +39,10 @@ class CUDAValidator:
                 "Please check your GPU installation."
             )
 
-        return True, f"✅ CUDA validated successfully. {self.device_count} GPU(s) available."
+        return (
+            True,
+            f"✅ CUDA validated successfully. {self.device_count} GPU(s) available.",
+        )
 
     def get_device_info(self) -> Dict[str, Any]:
         """
@@ -52,19 +56,21 @@ class CUDAValidator:
                 "cuda_available": False,
                 "device_count": 0,
                 "devices": [],
-                "error": "CUDA not available"
+                "error": "CUDA not available",
             }
 
         devices = []
         for i in range(self.device_count):
             props = torch.cuda.get_device_properties(i)
-            devices.append({
-                "id": i,
-                "name": props.name,
-                "compute_capability": f"{props.major}.{props.minor}",
-                "total_memory_gb": round(props.total_memory / (1024**3), 2),
-                "multi_processor_count": props.multi_processor_count,
-            })
+            devices.append(
+                {
+                    "id": i,
+                    "name": props.name,
+                    "compute_capability": f"{props.major}.{props.minor}",
+                    "total_memory_gb": round(props.total_memory / (1024**3), 2),
+                    "multi_processor_count": props.multi_processor_count,
+                }
+            )
 
         return {
             "cuda_available": True,
@@ -103,9 +109,9 @@ class CUDAValidator:
             "utilization_percent": round((allocated / total) * 100, 2),
         }
 
-    def estimate_batch_size(self, model_size_mb: float = 50,
-                           sample_size_mb: float = 0.5,
-                           device_id: int = 0) -> int:
+    def estimate_batch_size(
+        self, model_size_mb: float = 50, sample_size_mb: float = 0.5, device_id: int = 0
+    ) -> int:
         """
         Estimate safe batch size based on available GPU memory
 
@@ -187,9 +193,9 @@ def enforce_cuda():
 
     if not is_valid:
         print(message)
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("CUDA VALIDATION FAILED - EXITING")
-        print("="*60)
+        print("=" * 60)
         sys.exit(1)
 
     print(message)
@@ -199,7 +205,7 @@ def enforce_cuda():
     print(f"\nCUDA Version: {info['cuda_version']}")
     print(f"cuDNN Version: {info['cudnn_version']}")
     print(f"\nAvailable GPUs:")
-    for device in info['devices']:
+    for device in info["devices"]:
         print(f"  [{device['id']}] {device['name']}")
         print(f"      Compute Capability: {device['compute_capability']}")
         print(f"      Memory: {device['total_memory_gb']} GB")
