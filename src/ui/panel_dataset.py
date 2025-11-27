@@ -141,6 +141,21 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             lines=1
                         )
                         analyze_button = gr.Button("🔍 Analyze .npy Files", variant="secondary")
+                        
+                        gr.Markdown("### 📐 Shape Validation")
+                        gr.Markdown("Check if NPY files match the expected input shape for training.")
+                        
+                        validate_shape_checkbox = gr.Checkbox(
+                            label="Validate Shapes",
+                            value=True,
+                            info="Check dimensions against current config"
+                        )
+                        delete_invalid_checkbox = gr.Checkbox(
+                            label="Delete Invalid Files",
+                            value=False,
+                            info="⚠️ Permanently delete files with mismatching shapes"
+                        )
+                        validate_button = gr.Button("📏 Validate & Clean Shapes", variant="secondary")
 
                     with gr.Column():
                         analysis_log = gr.Textbox(
@@ -239,6 +254,10 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 _current_scanner = scanner
                 _current_dataset_info = dataset_info
 
+                # Move excluded files
+                progress(0.96, desc="Moving excluded files...")
+                moved_count = scanner.move_excluded_files()
+                
                 # Generate health report
                 progress(0.97, desc="Generating health report...")
                 health_checker = DatasetHealthChecker(stats)
@@ -255,6 +274,10 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 cache_msg = ""
                 if dataset_info.get('cached_files', 0) > 0:
                     cache_msg = f" ({dataset_info['cached_files']} from cache)"
+                
+                moved_msg = ""
+                if moved_count > 0:
+                    moved_msg = f"\n\nMoved {moved_count} low-quality files to 'unqualified_datasets' folder."
 
                 mode_msg = " (fast scan)" if skip_val else ""
 
@@ -262,7 +285,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
                 return (
                     stats,
-                    f"✅ Scan complete! Found {stats['total_files']} audio files{cache_msg}{mode_msg}",
+                    f"✅ Scan complete! Found {stats['total_files']} audio files{cache_msg}{mode_msg}{moved_msg}",
                     health_report_text
                 )
 
@@ -554,7 +577,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # Generate report
                 progress(0.95, desc="Generating report...")
                 report = extractor.generate_report()
-
+                
                 logger.info("NPY analysis complete")
 
                 progress(1.0, desc="Complete!")
@@ -566,6 +589,105 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
                 return f"❌ Error: {str(e)}"
+
+        def validate_shapes_handler(
+            npy_path: str, 
+            root_path: str, 
+            delete_invalid: bool,
+            progress=gr.Progress()
+        ) -> str:
+            """Validate NPY file shapes"""
+            try:
+                # Determine npy folder path
+                if not npy_path:
+                    if not root_path:
+                        return "❌ Please provide either .npy folder path or scan datasets first"
+                    npy_path = Path(root_path) / "npy"
+                else:
+                    npy_path = Path(npy_path)
+
+                if not npy_path.exists():
+                    return f"❌ Directory not found: {npy_path}"
+
+                # Get current config to determine expected shape
+                from src.config.defaults import DataConfig
+                from src.data.feature_extraction import FeatureExtractor
+                
+                # Initialize standard config
+                config = DataConfig()
+                
+                # Calculate expected shape
+                # Standard: 1.5s * 16000 = 24000 samples
+                target_samples = int(config.audio_duration * config.sample_rate)
+                
+                # Helper extractor to calculate shape
+                helper_extractor = FeatureExtractor(
+                    sample_rate=config.sample_rate,
+                    feature_type=config.feature_type,
+                    n_mels=config.n_mels,
+                    n_mfcc=config.n_mfcc,
+                    n_fft=config.n_fft,
+                    hop_length=config.hop_length
+                )
+                
+                expected_shape = helper_extractor.get_output_shape(target_samples)
+                
+                logger.info(f"Validating shapes in {npy_path} against expected: {expected_shape}")
+                
+                # Initialize NPY extractor
+                extractor = NpyExtractor()
+                
+                # Scan files
+                progress(0.1, desc="Scanning .npy files...")
+                npy_files = extractor.scan_npy_files(npy_path, recursive=True)
+                
+                if not npy_files:
+                    return f"ℹ️ No .npy files found in {npy_path}"
+
+                # Progress callback
+                def update_progress(current, total, message):
+                    progress_value = 0.1 + (current / total) * 0.8
+                    progress(progress_value, desc=message)
+                
+                # Validate
+                progress(0.2, desc=f"Validating {len(npy_files)} files...")
+                results = extractor.validate_shapes(
+                    npy_files=npy_files,
+                    expected_shape=expected_shape,
+                    delete_invalid=delete_invalid,
+                    progress_callback=update_progress
+                )
+                
+                # Generate Report
+                report = ["=" * 60]
+                report.append("SHAPE VALIDATION REPORT")
+                report.append("=" * 60)
+                report.append("")
+                report.append(f"Target Shape: {expected_shape}")
+                report.append(f"Files Checked: {results['total_files']}")
+                report.append(f"✅ Valid Matches: {results['valid_count']}")
+                report.append(f"❌ Mismatches: {results['mismatch_count']}")
+                
+                if delete_invalid:
+                    report.append(f"🗑️ Deleted: {results['deleted_count']}")
+                
+                if results['mismatches']:
+                    report.append("")
+                    report.append("Mismatch Examples:")
+                    report.append("-" * 40)
+                    for m in results['mismatches'][:10]:
+                        report.append(f"File: {Path(m['path']).name}")
+                        report.append(f"  Got: {m['actual']}")
+                        report.append(f"  Exp: {m['expected']}")
+                        report.append("")
+                    
+                    if len(results['mismatches']) > 10:
+                        report.append(f"... and {len(results['mismatches']) - 10} more")
+
+                return "\n".join(report)
+                
+            except Exception as e:
+                return f"❌ Error during validation: {str(e)}\n{traceback.format_exc()}"
 
         # Connect event handlers
         scan_button.click(
@@ -589,6 +711,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
         analyze_button.click(
             fn=analyze_npy_handler,
             inputs=[npy_folder, dataset_root],
+            outputs=[analysis_log]
+        )
+
+        validate_button.click(
+            fn=validate_shapes_handler,
+            inputs=[npy_folder, dataset_root, delete_invalid_checkbox],
             outputs=[analysis_log]
         )
 

@@ -131,6 +131,63 @@ class DatasetScanner:
         self.dataset_info = results
         return results
 
+    def move_excluded_files(self, excluded_root: Path = Path("unqualified_datasets")) -> int:
+        """
+        Move excluded files out of the dataset folder to a quarantine folder
+
+        Args:
+            excluded_root: Directory to move excluded files to
+
+        Returns:
+            Number of files moved
+        """
+        if not self.dataset_info or 'categories' not in self.dataset_info:
+            logger.warning("No scan results found. Run scan_datasets() first.")
+            return 0
+
+        excluded_root = Path(excluded_root)
+        excluded_root.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Moving excluded files to: {excluded_root}")
+
+        moved_count = 0
+
+        # Iterate through all categories
+        for category, data in self.dataset_info['categories'].items():
+            excluded_files = data.get('excluded_files', [])
+            
+            if not excluded_files:
+                continue
+
+            for file_info in excluded_files:
+                src_path = Path(file_info['path'])
+                
+                if not src_path.exists():
+                    logger.warning(f"File not found for moving: {src_path}")
+                    continue
+
+                # Create destination path preserving category structure
+                # e.g. unqualified_datasets/positive/sample.wav
+                dest_dir = excluded_root / category
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                
+                dest_path = dest_dir / src_path.name
+                
+                # Handle duplicate filenames
+                if dest_path.exists():
+                    timestamp = int(src_path.stat().st_mtime)
+                    dest_path = dest_dir / f"{src_path.stem}_{timestamp}{src_path.suffix}"
+
+                try:
+                    # Move file
+                    shutil.move(str(src_path), str(dest_path))
+                    moved_count += 1
+                    logger.info(f"Moved excluded file: {src_path.name} -> {dest_path}")
+                except Exception as e:
+                    logger.error(f"Failed to move {src_path}: {e}")
+
+        logger.info(f"Moved {moved_count} files to {excluded_root}")
+        return moved_count
+
     def _validate_file(self, file_path: Path) -> Tuple[bool, Optional[Dict], Optional[str]]:
         """
         Validate a single file (with caching support)

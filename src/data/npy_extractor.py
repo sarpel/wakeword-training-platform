@@ -359,6 +359,84 @@ class NpyExtractor:
 
         return "\n".join(report)
 
+    def validate_shapes(
+        self,
+        npy_files: List[Path],
+        expected_shape: Tuple[int, int, int],
+        delete_invalid: bool = False,
+        progress_callback: Optional[Callable] = None
+    ) -> Dict:
+        """
+        Validate NPY files against a specific expected shape
+
+        Args:
+            npy_files: List of .npy file paths
+            expected_shape: Tuple of (channels, n_mels/mfcc, time_steps)
+            delete_invalid: If True, delete files with mismatching shapes
+            progress_callback: Optional progress callback
+
+        Returns:
+            Dictionary with validation results
+        """
+        results = {
+            'total_files': len(npy_files),
+            'valid_count': 0,
+            'mismatch_count': 0,
+            'error_count': 0,
+            'deleted_count': 0,
+            'mismatches': []
+        }
+
+        logger.info(f"Validating shapes for {len(npy_files)} files against {expected_shape}")
+
+        for i, file_path in enumerate(npy_files):
+            try:
+                # Load metadata only (fast)
+                # We can read just the header to get the shape without loading the whole array
+                # But np.load(mmap_mode='r') is already efficient for this
+                data = np.load(str(file_path), mmap_mode='r')
+                shape = data.shape
+                
+                # Convert to tuple for comparison (handle 3D vs 2D)
+                # Dataset expects (channels, freq, time), usually (1, 64, 151)
+                # Loaded data might be (1, 64, 151) or just (64, 151) if squeezed
+                
+                is_match = False
+                if shape == expected_shape:
+                    is_match = True
+                elif len(expected_shape) == 3 and len(shape) == 2:
+                    # Handle missing channel dim: expected (1, 64, 151), got (64, 151)
+                    if shape == expected_shape[1:]:
+                        is_match = True
+                
+                if is_match:
+                    results['valid_count'] += 1
+                else:
+                    results['mismatch_count'] += 1
+                    results['mismatches'].append({
+                        'path': str(file_path),
+                        'actual': shape,
+                        'expected': expected_shape
+                    })
+                    
+                    if delete_invalid:
+                        try:
+                            # Close mmap before deleting (Windows issue)
+                            del data
+                            file_path.unlink()
+                            results['deleted_count'] += 1
+                        except Exception as e:
+                            logger.error(f"Failed to delete {file_path}: {e}")
+
+            except Exception as e:
+                results['error_count'] += 1
+                logger.error(f"Error validating {file_path}: {e}")
+
+            if progress_callback and i % 100 == 0:
+                progress_callback(i, len(npy_files), f"Validating shapes... ({results['mismatch_count']} mismatches)")
+
+        return results
+
 
 if __name__ == "__main__":
     # Test NPY extractor

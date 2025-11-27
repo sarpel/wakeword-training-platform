@@ -165,7 +165,11 @@ class FeatureExtractor:
         Returns:
             Output feature shape (without batch dimension)
         """
-        # Calculate time dimension based on hop length
+        # Correct calculation of time dimension
+        # This formula should match PyTorch's stft/spectrogram output size
+        # time_steps = 1 + (input_samples - n_fft) // hop_length + 2 (for centering)
+        # But torchaudio MelSpectrogram usually does center=True by default
+        # which results in: time_steps = input_samples // hop_length + 1
         time_steps = input_samples // self.mel_spectrogram.hop_length + 1
 
         if self.feature_type == 'mel':
