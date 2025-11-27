@@ -2,13 +2,12 @@
 Metrics Tracking for Wakeword Detection
 Includes: Accuracy, Precision, Recall, F1, FPR, FNR, Confusion Matrix
 """
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
 
 import numpy as np
 import structlog
 import torch
-import torch.nn as nn
 
 logger = structlog.get_logger(__name__)
 

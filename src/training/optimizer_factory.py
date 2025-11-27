@@ -2,7 +2,7 @@
 Optimizer and Scheduler Factory
 Creates optimizers and learning rate schedulers from configuration
 """
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import structlog
 import torch
@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
-    LambdaLR,
     ReduceLROnPlateau,
     StepLR,
 )

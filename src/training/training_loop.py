@@ -41,10 +41,18 @@ def _run_epoch(
             else:
                 inputs, targets = batch
 
-            inputs = inputs.to(
-                trainer.device, non_blocking=True, memory_format=torch.channels_last
-            )
+            # Move to device
+            inputs = inputs.to(trainer.device, non_blocking=True)
             targets = targets.to(trainer.device, non_blocking=True)
+
+            # NEW: GPU Processing Pipeline
+            # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
+            if inputs.ndim <= 3:
+                trainer.audio_processor.train(is_training)
+                inputs = trainer.audio_processor(inputs)
+            
+            # Apply memory format optimization (now inputs are definitely 4D features)
+            inputs = inputs.to(memory_format=torch.channels_last)
 
             if is_training and trainer.spec_augment is not None:
                 inputs = trainer.spec_augment(inputs)

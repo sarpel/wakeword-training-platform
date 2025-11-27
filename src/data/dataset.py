@@ -4,7 +4,7 @@ Handles audio loading, preprocessing, and augmentation
 """
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 from functools import lru_cache
 
 import numpy as np
@@ -14,8 +14,7 @@ from torch.utils.data import Dataset
 
 from src.data.audio_utils import AudioProcessor
 from src.data.augmentation import AudioAugmentation
-from src.data.balanced_sampler import create_balanced_sampler_from_dataset
-from src.data.cmvn import CMVN, compute_cmvn_from_dataset
+from src.data.cmvn import CMVN
 from src.data.feature_extraction import FeatureExtractor
 
 logger = structlog.get_logger(__name__)
@@ -53,6 +52,8 @@ class WakewordDataset(Dataset):
         apply_cmvn: bool = False,
         # NEW: Dynamic Label Mapping
         class_mapping: Optional[Dict[str, int]] = None,
+        # NEW: GPU Pipeline support
+        return_raw_audio: bool = False,
     ):
         """
         Initialize wakeword dataset
@@ -78,6 +79,8 @@ class WakewordDataset(Dataset):
             cmvn_path: Path to CMVN stats.json file
             apply_cmvn: Whether to apply CMVN normalization
             class_mapping: Optional dictionary mapping category names to integer labels
+            return_raw_audio: If True, returns raw audio waveform (Tensor) instead of features.
+                             Used for GPU-based processing pipelines.
         """
         self.manifest_path = Path(manifest_path)
         self.sample_rate = sample_rate
@@ -85,6 +88,7 @@ class WakewordDataset(Dataset):
         self.augment = augment
         self.cache_audio = cache_audio
         self.device = "cpu"  # Always CPU for dataset operations
+        self.return_raw_audio = return_raw_audio
 
         # NEW: NPY feature parameters
         self.use_precomputed_features_for_training = (
@@ -96,11 +100,13 @@ class WakewordDataset(Dataset):
         # CMVN initialization
         self.apply_cmvn = apply_cmvn
         self.cmvn = None
-        if apply_cmvn and cmvn_path and Path(cmvn_path).exists():
+        if apply_cmvn and cmvn_path and Path(cmvn_path).exists() and not return_raw_audio:
+            # Only load CMVN in dataset if we are NOT returning raw audio
+            # If returning raw audio, CMVN happens on GPU
             self.cmvn = CMVN(stats_path=cmvn_path)
             logger.info(f"CMVN loaded from {cmvn_path}")
-        elif apply_cmvn:
-            logger.warning(f"CMVN requested but stats file not found: {cmvn_path}")
+        elif apply_cmvn and return_raw_audio:
+             logger.info("CMVN enabled but deferred to GPU pipeline (return_raw_audio=True)")
 
         # Load manifest
         with open(self.manifest_path, "r") as f:
@@ -127,20 +133,22 @@ class WakewordDataset(Dataset):
         if feature_type == "mel_spectrogram":
             feature_type = "mel"
 
-        # Initialize feature extractor
-        self.feature_extractor = FeatureExtractor(
-            sample_rate=sample_rate,
-            feature_type=feature_type,
-            n_mels=n_mels,
-            n_mfcc=n_mfcc,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            device=device,
-        )
+        # Initialize feature extractor (Only if not returning raw audio)
+        self.feature_extractor = None
+        if not return_raw_audio:
+            self.feature_extractor = FeatureExtractor(
+                sample_rate=sample_rate,
+                feature_type=feature_type,
+                n_mels=n_mels,
+                n_mfcc=n_mfcc,
+                n_fft=n_fft,
+                hop_length=hop_length,
+                device=device,
+            )
 
-        # Initialize augmentation if enabled
+        # Initialize augmentation if enabled (Only if not returning raw audio)
         self.augmentation = None
-        if augment:
+        if augment and not return_raw_audio:
             # Collect background noise and RIR files
             background_files = None
             rir_files = None
@@ -176,11 +184,12 @@ class WakewordDataset(Dataset):
                 rir_files=rir_files,
             )
 
-            logger.info("Augmentation pipeline initialized")
+            logger.info("Augmentation pipeline initialized (CPU)")
 
         logger.info(
             f"Dataset initialized: {len(self.files)} files, "
-            f"categories: {self.categories}, augment: {augment}"
+            f"categories: {self.categories}, augment: {augment}, "
+            f"return_raw_audio: {return_raw_audio}"
         )
 
     def _create_label_map(self, class_mapping: Optional[Dict[str, int]] = None) -> Dict[str, int]:
@@ -275,7 +284,32 @@ class WakewordDataset(Dataset):
         category = file_info["category"]
         label = self.label_map.get(category, 0) # Default to 0 if unknown
 
-        # NEW: Try loading from NPY first if enabled
+        # NEW: GPU Pipeline Support - Return raw audio immediately
+        if self.return_raw_audio:
+            if self.audio_cache is not None and idx in self.audio_cache:
+                audio = self.audio_cache[idx]
+            else:
+                # Load and process audio (resample/trim)
+                audio = self.audio_processor.process_audio(file_path)
+                if self.audio_cache is not None:
+                    self.audio_cache[idx] = audio
+            
+            # Convert to tensor (1, Samples)
+            audio_tensor = torch.from_numpy(audio).float()
+            if audio_tensor.ndim == 1:
+                audio_tensor = audio_tensor.unsqueeze(0)
+                
+            metadata = {
+                "path": str(file_path),
+                "category": category,
+                "label": label,
+                "source": "raw_audio",
+                "sample_rate": self.sample_rate,
+                "duration": self.audio_duration,
+            }
+            return audio_tensor, label, metadata
+
+        # NEW: Try loading from NPY first if enabled (Legacy CPU Mode)
         if self.use_precomputed_features_for_training:
             try:
                 # Pass JSON string for hashability in lru_cache
@@ -311,7 +345,7 @@ class WakewordDataset(Dataset):
 
             # If NPY not found and fallback enabled, fall through to audio loading
 
-        # EXISTING: Load from raw audio
+        # EXISTING: Load from raw audio (Legacy CPU Mode)
         if self.audio_cache is not None and idx in self.audio_cache:
             audio = self.audio_cache[idx]
         else:
@@ -433,6 +467,8 @@ def load_dataset_splits(
     apply_cmvn: bool = False,
     # NEW: Class mapping
     class_mapping: Optional[Dict[str, int]] = None,
+    # NEW: GPU Pipeline support
+    return_raw_audio: bool = False,
 ) -> Tuple[WakewordDataset, WakewordDataset, WakewordDataset]:
     """
     Load train, validation, and test datasets
@@ -455,6 +491,7 @@ def load_dataset_splits(
         fallback_to_audio: If NPY missing, load raw audio
         cmvn_path: Path to CMVN stats.json file
         apply_cmvn: Whether to apply CMVN normalization
+        return_raw_audio: If True, datasets return raw audio tensors (for GPU pipeline)
 
     Returns:
         Tuple of (train_dataset, val_dataset, test_dataset)
@@ -489,6 +526,7 @@ def load_dataset_splits(
         cmvn_path=cmvn_path,
         apply_cmvn=apply_cmvn,
         class_mapping=class_mapping,
+        return_raw_audio=return_raw_audio,
     )
 
     val_dataset = WakewordDataset(
@@ -509,6 +547,7 @@ def load_dataset_splits(
         cmvn_path=cmvn_path,
         apply_cmvn=apply_cmvn,
         class_mapping=class_mapping,
+        return_raw_audio=return_raw_audio,
     )
 
     test_dataset = WakewordDataset(
@@ -529,6 +568,7 @@ def load_dataset_splits(
         cmvn_path=cmvn_path,
         apply_cmvn=apply_cmvn,
         class_mapping=class_mapping,
+        return_raw_audio=return_raw_audio,
     )
 
     logger.info(

@@ -12,7 +12,6 @@ import sys
 from pathlib import Path
 
 import gradio as gr
-import structlog
 
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -21,7 +20,7 @@ if sys.platform.startswith("win"):
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.cuda_utils import enforce_cuda, get_cuda_validator
+from src.config.cuda_utils import enforce_cuda
 from src.config.logger import get_data_logger, setup_logging
 from src.ui.panel_config import create_config_panel
 from src.ui.panel_dataset import create_dataset_panel

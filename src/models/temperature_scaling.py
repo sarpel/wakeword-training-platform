@@ -3,7 +3,6 @@ Temperature Scaling for Model Calibration
 Learns optimal temperature parameter to calibrate model confidence
 """
 import logging
-from typing import Optional
 
 import torch
 import torch.nn as nn

@@ -15,7 +15,7 @@ import gradio as gr
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.defaults import WakewordConfig, get_default_config
+from src.config.defaults import WakewordConfig
 from src.config.logger import get_data_logger
 from src.config.presets import get_preset, list_presets
 from src.config.validator import ConfigValidator

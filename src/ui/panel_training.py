@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import gradio as gr
 import matplotlib
@@ -463,6 +463,10 @@ def start_training(
         training_state.add_log(
             "IMPORTANT: Forcing augmentation for training by disabling precomputed features."
         )
+        
+        # NEW: Optimize config for GPU pipeline
+        config.training.num_workers = min(config.training.num_workers, 8)
+        config.training.pin_memory = True
 
         train_ds = WakewordDataset(
             manifest_path=splits_dir / "train.json",
@@ -483,6 +487,7 @@ def start_training(
             fallback_to_audio=True,  # IMPORTANT
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
+            return_raw_audio=True, # NEW: Use GPU pipeline
         )
 
         val_ds = WakewordDataset(
@@ -498,9 +503,10 @@ def start_training(
             hop_length=config.data.hop_length,
             use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
             npy_cache_features=config.data.npy_cache_features,
-            fallback_to_audio=config.data.fallback_to_audio,
+            fallback_to_audio=True,  # FORCE TRUE to handle shape mismatches automatically
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
+            return_raw_audio=True, # NEW: Use GPU pipeline
         )
 
         # test_ds is not used in training, so we don't load it here to save memory
@@ -794,19 +800,34 @@ def start_hpo(
             hop_length=config.data.hop_length,
             use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
             npy_cache_features=config.data.npy_cache_features,
-            fallback_to_audio=config.data.fallback_to_audio,
+            fallback_to_audio=True,  # Force True for HPO robustness
             cmvn_path=data_root / "cmvn_stats.json",
             apply_cmvn=True,
+            return_raw_audio=True,  # NEW: Use GPU pipeline for HPO
         )
 
+        # Optimize config for GPU pipeline
+        # Reduce workers to prevent CPU saturation (GPU handles processing now)
+        hpo_config = config.copy()
+        hpo_config.training.num_workers = min(hpo_config.training.num_workers, 8) 
+        hpo_config.training.pin_memory = True
+        
         train_loader = DataLoader(
-            train_ds, batch_size=config.training.batch_size, shuffle=True
+            train_ds, 
+            batch_size=hpo_config.training.batch_size, 
+            shuffle=True,
+            num_workers=hpo_config.training.num_workers,
+            pin_memory=True
         )
         val_loader = DataLoader(
-            val_ds, batch_size=config.training.batch_size, shuffle=False
+            val_ds, 
+            batch_size=hpo_config.training.batch_size, 
+            shuffle=False,
+            num_workers=hpo_config.training.num_workers,
+            pin_memory=True
         )
 
-        study = run_hpo(config, train_loader, val_loader, n_trials, study_name)
+        study = run_hpo(hpo_config, train_loader, val_loader, n_trials, study_name)
 
         df = study.trials_dataframe()
         return f"✅ HPO study '{study_name}' complete!", df

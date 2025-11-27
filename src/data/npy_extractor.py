@@ -9,7 +9,6 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import structlog
-from tqdm import tqdm
 
 logger = structlog.get_logger(__name__)
 

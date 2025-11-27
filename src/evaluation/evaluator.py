@@ -2,10 +2,8 @@
 Model Evaluator for File-Based and Test Set Evaluation
 GPU-accelerated batch evaluation with comprehensive metrics
 """
-import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import structlog

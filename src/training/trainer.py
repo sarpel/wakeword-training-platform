@@ -6,7 +6,7 @@ GPU-accelerated training with checkpointing, early stopping, and metrics trackin
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 import structlog
 import torch
@@ -14,20 +14,18 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 logger = structlog.get_logger(__name__)
-from tqdm import tqdm
 
 torch.backends.cudnn.benchmark = True
 
 from src.config.cuda_utils import enforce_cuda
 from src.config.seed_utils import set_seed
 from src.data.augmentation import SpecAugment
+from src.data.processor import AudioProcessor  # NEW
 from src.models.losses import create_loss_function
-from src.training.checkpoint import _save_checkpoint, load_checkpoint
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.ema import EMA, EMAScheduler
-from src.training.metrics import MetricMonitor, MetricResults, MetricsTracker
+from src.training.metrics import MetricMonitor, MetricsTracker
 from src.training.optimizer_factory import (
-    clip_gradients,
     create_grad_scaler,
     create_optimizer_and_scheduler,
     get_learning_rate,
@@ -93,6 +91,14 @@ class Trainer:
         # Data loaders
         self.train_loader = train_loader
         self.val_loader = val_loader
+
+        # NEW: Audio Processor for GPU-based augmentation/feature extraction
+        cmvn_path = Path(config.data.data_root) / "cmvn_stats.json"
+        self.audio_processor = AudioProcessor(
+            config=config,
+            cmvn_path=cmvn_path if cmvn_path.exists() else None,
+            device=device
+        )
 
         # Create loss function
         self.criterion = create_loss_function(

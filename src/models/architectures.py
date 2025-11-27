@@ -3,7 +3,6 @@ Model Architectures for Wakeword Detection
 Supports: ResNet18, MobileNetV3, LSTM, GRU, TCN
 """
 import logging
-from typing import Optional
 
 import torch
 import torch.nn as nn

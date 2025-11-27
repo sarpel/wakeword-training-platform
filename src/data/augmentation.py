@@ -6,24 +6,26 @@ import random
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import numpy as np
 import structlog
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import torchaudio
 import torchaudio.transforms as T
 
 logger = structlog.get_logger(__name__)
 
 
-class AudioAugmentation:
+class AudioAugmentation(nn.Module):
     """
-    CPU-based audio augmentation pipeline for dataset preprocessing
+    GPU-accelerated audio augmentation pipeline.
+    Inherits from nn.Module for seamless integration with training pipelines.
     """
 
     def __init__(
         self,
         sample_rate: int = 16000,
-        device: str = "cpu",  # Audio augmentation always on CPU
+        device: str = "cpu",  # Initial device
         # Time domain
         time_stretch_range: Tuple[float, float] = (0.9, 1.1),
         pitch_shift_range: Tuple[int, int] = (-2, 2),
@@ -40,393 +42,262 @@ class AudioAugmentation:
     ):
         """
         Initialize augmentation pipeline
-
-        Args:
-            sample_rate: Audio sample rate
-            device: Device for computation (always 'cpu' for dataset pipeline)
-            time_stretch_range: Min and max time stretch factors
-            pitch_shift_range: Min and max pitch shift in semitones
-            background_noise_prob: Probability of adding background noise
-            noise_snr_range: SNR range in dB for noise mixing
-            rir_prob: Probability of applying RIR
-            rir_dry_wet_min: Minimum dry signal ratio (0.0=full wet, 1.0=full dry)
-            rir_dry_wet_max: Maximum dry signal ratio
-            background_noise_files: List of background noise file paths
-            rir_files: List of RIR file paths
         """
+        super().__init__()
         self.sample_rate = sample_rate
-        self.device = "cpu"  # Always CPU for audio augmentation
-
-        # Time domain parameters
+        
+        # Store parameters
         self.time_stretch_range = time_stretch_range
         self.pitch_shift_range = pitch_shift_range
-
-        # Noise parameters
         self.background_noise_prob = background_noise_prob
         self.noise_snr_range = noise_snr_range
-
-        # RIR parameters
         self.rir_prob = rir_prob
         self.rir_dry_wet_min = rir_dry_wet_min
         self.rir_dry_wet_max = rir_dry_wet_max
 
-        # Preload background noise and RIRs
-        self.background_noises = []
-        self.rirs = []
-
+        # Buffers for noises and RIRs
+        # We initialize them as empty buffers. If files are provided, we load them.
+        self.register_buffer("background_noises", torch.empty(0))
+        self.register_buffer("rirs", torch.empty(0))
+        
         if background_noise_files:
             self._load_background_noises(background_noise_files)
 
         if rir_files:
             self._load_rirs(rir_files)
 
+        if device and device != "cpu":
+            self.to(device)
+
         logger.info(
             f"Augmentation initialized: {len(self.background_noises)} background noises, "
             f"{len(self.rirs)} RIRs"
         )
 
-    def _load_background_noises(self, noise_files: List[Path]):
-        """Load background noise files into memory"""
-        logger.info(f"Loading {len(noise_files)} background noise files...")
+    def _pad_and_stack(self, waveforms: List[torch.Tensor]) -> torch.Tensor:
+        """
+        Pad list of waveforms to same length and stack them.
+        """
+        if not waveforms:
+            return torch.empty(0)
+            
+        max_len = max(w.shape[-1] for w in waveforms)
+        padded_waveforms = []
+        for w in waveforms:
+            if w.shape[-1] < max_len:
+                w = F.pad(w, (0, max_len - w.shape[-1]))
+            padded_waveforms.append(w)
+            
+        # Stack: (N, 1, Samples)
+        return torch.stack(padded_waveforms)
 
-        for noise_file in noise_files[:100]:  # Limit to 100 files to save memory
+    def _load_background_noises(self, noise_files: List[Path]):
+        """Load background noise files into buffer"""
+        logger.info(f"Loading {len(noise_files)} background noise files...")
+        loaded_noises = []
+
+        for noise_file in noise_files[:100]:  # Limit to 100
             try:
                 waveform, sr = torchaudio.load(str(noise_file))
-
-                # Resample if needed
                 if sr != self.sample_rate:
-                    resampler = T.Resample(sr, self.sample_rate)
-                    waveform = resampler(waveform)
-
-                # Convert to mono
+                    waveform = T.Resample(sr, self.sample_rate)(waveform)
                 if waveform.shape[0] > 1:
                     waveform = torch.mean(waveform, dim=0, keepdim=True)
-
-                # Move to device
-                waveform = waveform.to(self.device)
-
-                self.background_noises.append(waveform)
-
+                
+                # Trim to reasonable max length (e.g., 5s) to save VRAM
+                max_len = self.sample_rate * 5
+                if waveform.shape[-1] > max_len:
+                    start = random.randint(0, waveform.shape[-1] - max_len)
+                    waveform = waveform[:, start:start+max_len]
+                    
+                loaded_noises.append(waveform)
             except Exception as e:
-                logger.warning(f"Failed to load background noise {noise_file}: {e}")
+                logger.warning(f"Failed to load noise {noise_file}: {e}")
 
-    def _validate_rir(
-        self, waveform: torch.Tensor, file_path: Path
-    ) -> Tuple[bool, Optional[str]]:
-        """
-        Validate RIR quality
-
-        Args:
-            waveform: RIR waveform tensor
-            file_path: Path to RIR file (for logging)
-
-        Returns:
-            (is_valid, warning_message)
-        """
-        warnings = []
-
-        # Duration check
-        duration = waveform.shape[-1] / self.sample_rate
-        if duration < 0.1 or duration > 5.0:
-            return False, f"Invalid duration: {duration:.2f}s (expected 0.1-5.0s)"
-
-        # Energy check
-        energy = torch.sum(waveform**2).item()
-        if energy < 1e-6:
-            return False, "RIR has near-zero energy (silent)"
-
-        # NaN/Inf check
-        if not torch.isfinite(waveform).all():
-            return False, "RIR contains NaN or Inf values"
-
-        # Peak location check (first 10%)
-        peak_idx = torch.argmax(torch.abs(waveform)).item()
-        peak_position = peak_idx / waveform.shape[-1]
-        if peak_position > 0.1:
-            warnings.append(f"Peak at {peak_position*100:.1f}% (expected <10%)")
-
-        warning_msg = "; ".join(warnings) if warnings else None
-        return True, warning_msg
+        if loaded_noises:
+            self.register_buffer("background_noises", self._pad_and_stack(loaded_noises))
 
     def _load_rirs(self, rir_files: List[Path]):
-        """Load RIR files into memory with validation"""
+        """Load RIR files into buffer"""
+        # ... similar to previous validation logic ...
         all_rir_files = list(set(rir_files))
         max_rirs = min(len(all_rir_files), 200)
-
-        logger.info(f"Loading up to {max_rirs} RIRs (found {len(all_rir_files)})...")
-
-        valid_count = 0
-        warning_count = 0
-
+        logger.info(f"Loading up to {max_rirs} RIRs...")
+        
+        loaded_rirs = []
         for rir_file in all_rir_files[:max_rirs]:
             try:
                 waveform, sr = torchaudio.load(str(rir_file))
-
-                # Resample if needed
                 if sr != self.sample_rate:
-                    resampler = T.Resample(sr, self.sample_rate)
-                    waveform = resampler(waveform)
-
-                # Convert to mono
+                    waveform = T.Resample(sr, self.sample_rate)(waveform)
                 if waveform.shape[0] > 1:
                     waveform = torch.mean(waveform, dim=0, keepdim=True)
-
-                # Validate RIR quality
-                is_valid, warning_msg = self._validate_rir(waveform, rir_file)
-
-                if not is_valid:
-                    logger.warning(
-                        f"Skipping invalid RIR {rir_file.name}: {warning_msg}"
-                    )
+                
+                # Validate (simplified)
+                energy = torch.sum(waveform**2).item()
+                if energy < 1e-6 or not torch.isfinite(waveform).all():
                     continue
-
-                if warning_msg:
-                    logger.debug(
-                        f"RIR quality warning for {rir_file.name}: {warning_msg}"
-                    )
-                    warning_count += 1
-
+                    
                 # Normalize
                 waveform = waveform / (torch.max(torch.abs(waveform)) + 1e-8)
-
-                # Move to device
-                waveform = waveform.to(self.device)
-
-                self.rirs.append(waveform)
-                valid_count += 1
-
+                loaded_rirs.append(waveform)
             except Exception as e:
                 logger.warning(f"Failed to load RIR {rir_file}: {e}")
 
-        logger.info(
-            f"Loaded {valid_count} valid RIRs ({warning_count} with quality warnings)"
-        )
+        if loaded_rirs:
+            self.register_buffer("rirs", self._pad_and_stack(loaded_rirs))
 
     def time_stretch(self, waveform: torch.Tensor) -> torch.Tensor:
-        """
-        Apply time stretching (speed change without pitch change)
-
-        Args:
-            waveform: Input waveform tensor (channels, samples)
-
-        Returns:
-            Time-stretched waveform
-        """
-        stretch_factor = random.uniform(*self.time_stretch_range)
-
-        # Simple time stretching using resampling
-        # Note: This is a simplified version. For better quality, use librosa
-        original_length = waveform.shape[-1]
-        new_length = int(original_length / stretch_factor)
-
-        # Resample to new length
-        stretched = torch.nn.functional.interpolate(
-            waveform.unsqueeze(0), size=new_length, mode="linear", align_corners=False
-        ).squeeze(0)
-
-        # Pad or trim to original length
-        if stretched.shape[-1] < original_length:
-            padding = original_length - stretched.shape[-1]
-            stretched = torch.nn.functional.pad(stretched, (0, padding))
+        """Batch time stretch using interpolation"""
+        # waveform: (Batch, 1, Samples)
+        factor = random.uniform(*self.time_stretch_range)
+        if factor == 1.0: return waveform
+        
+        original_len = waveform.shape[-1]
+        new_len = int(original_len / factor)
+        
+        out = F.interpolate(waveform, size=new_len, mode="linear", align_corners=False)
+        
+        if new_len < original_len:
+            out = F.pad(out, (0, original_len - new_len))
         else:
-            stretched = stretched[:, :original_length]
-
-        return stretched
+            out = out[..., :original_len]
+            
+        return out
 
     def pitch_shift(self, waveform: torch.Tensor) -> torch.Tensor:
-        """
-        Apply pitch shifting
-
-        Args:
-            waveform: Input waveform tensor (channels, samples)
-
-        Returns:
-            Pitch-shifted waveform
-        """
+        """Batch pitch shift"""
         n_steps = random.randint(*self.pitch_shift_range)
-
-        if n_steps == 0:
-            return waveform
-
-        # Calculate shift rate
+        if n_steps == 0: return waveform
+        
+        # Similar implementation using interpolate tricks
         shift_rate = 2 ** (n_steps / 12)
+        # 1. Time stretch by 1/rate (changes pitch & speed)
+        # 2. Resample back to original speed (restores speed, keeps pitch change) -> This requires Resample transform which is complex on batch variable rates
+        # Simpler: Use time stretch + pretend sample rate changed (which we fix by interpolation)
+        
+        # Stretch
+        stretched = F.interpolate(waveform, scale_factor=1/shift_rate, mode="linear", align_corners=False)
+        # Resample back to original length matches original duration
+        out = F.interpolate(stretched, size=waveform.shape[-1], mode="linear", align_corners=False)
+        return out
 
-        # Pitch shift using time stretch and resample
-        # Stretch by inverse of shift rate
-        stretched = torch.nn.functional.interpolate(
-            waveform.unsqueeze(0),
-            size=int(waveform.shape[-1] / shift_rate),
-            mode="linear",
-            align_corners=False,
-        ).squeeze(0)
+    def add_background_noise(self, waveform: torch.Tensor) -> torch.Tensor:
+        """Add background noise to batch"""
+        if self.background_noises.numel() == 0:
+            return waveform + torch.randn_like(waveform) * 0.01
 
-        # Resample back to original rate
-        pitch_shifted = torch.nn.functional.interpolate(
-            stretched.unsqueeze(0),
-            size=waveform.shape[-1],
-            mode="linear",
-            align_corners=False,
-        ).squeeze(0)
-
-        return pitch_shifted
-
-    def add_background_noise(
-        self, waveform: torch.Tensor, snr_db: Optional[float] = None
-    ) -> torch.Tensor:
-        """
-        Add background noise to audio
-
-        Args:
-            waveform: Input waveform tensor (channels, samples)
-            snr_db: Signal-to-noise ratio in dB (if None, random from range)
-
-        Returns:
-            Waveform with added noise
-        """
-        if not self.background_noises:
-            # Generate white noise if no background noises loaded
-            noise = torch.randn_like(waveform) * 0.01
+        batch_size, _, samples = waveform.shape
+        
+        # Select random noises for each element in batch
+        indices = torch.randint(0, len(self.background_noises), (batch_size,), device=self.background_noises.device)
+        noises = self.background_noises[indices] # (B, 1, NoiseSamples)
+        
+        # Crop/Loop noises to match waveform length
+        if noises.shape[-1] > samples:
+            # Random start
+            start = random.randint(0, noises.shape[-1] - samples)
+            noises = noises[..., start:start+samples]
         else:
-            # Select random background noise
-            noise = random.choice(self.background_noises)
+            # Repeat
+            repeats = (samples // noises.shape[-1]) + 1
+            noises = noises.repeat(1, 1, repeats)[..., :samples]
 
-            # Random segment if noise is longer than waveform
-            if noise.shape[-1] > waveform.shape[-1]:
-                start = random.randint(0, noise.shape[-1] - waveform.shape[-1])
-                noise = noise[:, start : start + waveform.shape[-1]]
-            else:
-                # Repeat if noise is shorter
-                repeats = (waveform.shape[-1] // noise.shape[-1]) + 1
-                noise = noise.repeat(1, repeats)
-                noise = noise[:, : waveform.shape[-1]]
+        # Random SNRs
+        snrs = torch.empty(batch_size, 1, 1, device=waveform.device).uniform_(*self.noise_snr_range)
+        snr_linear = 10 ** (snrs / 10)
 
-        # Ensure same shape
-        if noise.shape[0] != waveform.shape[0]:
-            noise = noise.repeat(waveform.shape[0], 1)
+        # Calculate scaling
+        sig_power = waveform.pow(2).mean(dim=-1, keepdim=True)
+        noise_power = noises.pow(2).mean(dim=-1, keepdim=True)
+        scale = torch.sqrt(sig_power / (noise_power * snr_linear + 1e-8))
+        
+        noisy = waveform + scale * noises
+        
+        # Normalize
+        max_vals = noisy.abs().max(dim=-1, keepdim=True)[0]
+        noisy = noisy / (max_vals + 1e-8)
+        
+        return noisy
 
-        # Calculate SNR
-        if snr_db is None:
-            snr_db = random.uniform(*self.noise_snr_range)
-
-        # Calculate signal and noise power
-        signal_power = torch.mean(waveform**2)
-        noise_power = torch.mean(noise**2)
-
-        # Calculate scaling factor for desired SNR
-        snr_linear = 10 ** (snr_db / 10)
-        scale = torch.sqrt(signal_power / (noise_power * snr_linear + 1e-8))
-
-        # Add scaled noise
-        noisy_waveform = waveform + scale * noise
-
-        # Normalize to prevent clipping
-        max_val = torch.max(torch.abs(noisy_waveform))
-        if max_val > 1.0:
-            noisy_waveform = noisy_waveform / max_val
-
-        return noisy_waveform
-
-    def apply_rir(
-        self, waveform: torch.Tensor, dry_wet_ratio: Optional[float] = None
-    ) -> torch.Tensor:
-        """
-        Apply Room Impulse Response (RIR) with dry/wet mixing
-
-        Args:
-            waveform: Input waveform tensor (channels, samples)
-            dry_wet_ratio: Dry signal ratio (0.0=full wet, 1.0=full dry)
-                          If None, random value from config range
-
-        Returns:
-            Mixed waveform (dry + wet)
-        """
-        if not self.rirs:
-            return waveform
-
-        # Store original (dry) waveform
-        dry_signal = waveform.clone()
-
-        # Select random RIR
-        rir = random.choice(self.rirs)
-
-        # Store original energy
-        original_energy = torch.mean(waveform**2)
-
-        # Convolve with RIR to create wet signal
-        # Convert to 1D for convolution
-        waveform_1d = waveform.squeeze(0)
-        rir_1d = rir.squeeze(0)
-
-        # Perform convolution
-        wet_signal = torch.nn.functional.conv1d(
-            waveform_1d.unsqueeze(0).unsqueeze(0),
-            rir_1d.unsqueeze(0).unsqueeze(0),
-            padding=rir_1d.shape[0] // 2,
-        )
-
+    def apply_rir(self, waveform: torch.Tensor) -> torch.Tensor:
+        """Apply RIR convolution to batch"""
+        if self.rirs.numel() == 0: return waveform
+        
+        batch_size, _, samples = waveform.shape
+        
+        # Select random RIRs
+        indices = torch.randint(0, len(self.rirs), (batch_size,), device=self.rirs.device)
+        selected_rirs = self.rirs[indices] # (B, 1, RirSamples)
+        
+        # Trim RIRs to remove tail silence/save compute (optional)
+        
+        # Convolution using FFT
+        # Pad to (N + M - 1)
+        n_fft = samples + selected_rirs.shape[-1] - 1
+        # Next power of 2
+        n_fft = 2 ** (n_fft - 1).bit_length()
+        
+        spec_w = torch.fft.rfft(waveform, n=n_fft)
+        spec_r = torch.fft.rfft(selected_rirs, n=n_fft)
+        
+        convolved = torch.fft.irfft(spec_w * spec_r, n=n_fft)
+        
         # Trim to original length
-        wet_signal = wet_signal.squeeze(0)[:, : waveform.shape[-1]]
-
-        # Remove DC offset
-        wet_signal = wet_signal - torch.mean(wet_signal)
-
-        # Energy normalization: restore original energy to wet signal
-        wet_energy = torch.mean(wet_signal**2)
-        if wet_energy > 1e-8:
-            wet_signal = wet_signal * torch.sqrt(original_energy / (wet_energy + 1e-8))
-
-        # Determine dry/wet ratio
-        if dry_wet_ratio is None:
-            dry_wet_ratio = random.uniform(self.rir_dry_wet_min, self.rir_dry_wet_max)
-
-        # Mix dry and wet signals
-        # dry_ratio: portion of dry signal (0.0 to 1.0)
-        # wet_ratio: portion of wet signal (1.0 - dry_ratio)
-        mixed = dry_wet_ratio * dry_signal + (1.0 - dry_wet_ratio) * wet_signal
-
-        # Final normalization if needed
-        max_val = torch.max(torch.abs(mixed))
-        if max_val > 1.0:
-            mixed = mixed / max_val
-
+        wet = convolved[..., :samples]
+        
+        # Normalize wet
+        # We match energy to input
+        input_energy = waveform.pow(2).mean(dim=-1, keepdim=True)
+        wet_energy = wet.pow(2).mean(dim=-1, keepdim=True)
+        wet = wet * torch.sqrt(input_energy / (wet_energy + 1e-8))
+        
+        # Mix
+        ratios = torch.empty(batch_size, 1, 1, device=waveform.device).uniform_(self.rir_dry_wet_min, self.rir_dry_wet_max)
+        mixed = ratios * waveform + (1 - ratios) * wet
+        
+        # Final normalize
+        max_vals = mixed.abs().max(dim=-1, keepdim=True)[0]
+        mixed = mixed / (max_vals + 1e-8)
+        
         return mixed
 
-    def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         """
-        Apply augmentation pipeline on CPU
-
-        Args:
-            waveform: Input waveform tensor (channels, samples)
-
-        Returns:
-            Augmented waveform
+        Apply augmentations
+        waveform: (Batch, 1, Samples) or (Batch, Samples) or (Samples,)
         """
-        # Ensure waveform is on CPU
-        if waveform.device.type != "cpu":
-            waveform = waveform.cpu()
-
-        # Apply augmentations randomly
-
-        # Time stretch
-        if random.random() < 0.5:
-            waveform = self.time_stretch(waveform)
-
-        # Pitch shift
-        if random.random() < 0.5:
-            waveform = self.pitch_shift(waveform)
-
-        # Background noise
-        if random.random() < self.background_noise_prob:
-            waveform = self.add_background_noise(waveform)
-
-        # RIR
-        if random.random() < self.rir_prob:
-            waveform = self.apply_rir(waveform)
-
+        # Standardization
+        original_ndim = waveform.ndim
+        if original_ndim == 1:
+            waveform = waveform.unsqueeze(0).unsqueeze(0) # (1, 1, S)
+        elif original_ndim == 2:
+            waveform = waveform.unsqueeze(1) # (B, 1, S)
+            
+        # Apply
+        if self.training:
+            if random.random() < 0.5:
+                waveform = self.time_stretch(waveform)
+                
+            if random.random() < 0.5:
+                waveform = self.pitch_shift(waveform)
+                
+            if random.random() < self.background_noise_prob:
+                waveform = self.add_background_noise(waveform)
+                
+            if random.random() < self.rir_prob:
+                waveform = self.apply_rir(waveform)
+                
+        # Restore shape
+        if original_ndim == 1:
+            waveform = waveform.squeeze(0).squeeze(0)
+        elif original_ndim == 2:
+            waveform = waveform.squeeze(1)
+            
         return waveform
 
-
-class SpecAugment:
+# SpecAugment remains mostly the same, ensuring T.FrequencyMasking works on GPU tensors
+class SpecAugment(nn.Module):
     """
     SpecAugment for spectrograms (frequency and time masking)
     """
@@ -438,29 +309,16 @@ class SpecAugment:
         n_freq_masks: int = 2,
         n_time_masks: int = 2,
     ):
-        """
-        Initialize SpecAugment
-
-        Args:
-            freq_mask_param: Maximum width of frequency mask
-            time_mask_param: Maximum width of time mask
-            n_freq_masks: Number of frequency masks to apply
-            n_time_masks: Number of time masks to apply
-        """
+        super().__init__()
+        # torchaudio.transforms.FrequencyMasking is already nn.Module
         self.freq_mask = T.FrequencyMasking(freq_mask_param)
         self.time_mask = T.TimeMasking(time_mask_param)
         self.n_freq_masks = n_freq_masks
         self.n_time_masks = n_time_masks
 
-    def __call__(self, spectrogram: torch.Tensor) -> torch.Tensor:
+    def forward(self, spectrogram: torch.Tensor) -> torch.Tensor:
         """
         Apply SpecAugment
-
-        Args:
-            spectrogram: Input spectrogram tensor (channels, freq, time)
-
-        Returns:
-            Augmented spectrogram
         """
         # Apply frequency masking
         for _ in range(self.n_freq_masks):

@@ -7,14 +7,13 @@ Panel 4: Model Evaluation
 """
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import gradio as gr
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
 
 matplotlib.use("Agg")
 import structlog

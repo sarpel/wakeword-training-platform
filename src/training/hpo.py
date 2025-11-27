@@ -1,12 +1,8 @@
-import logging
-import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
 
 import optuna
 import structlog
-import torch
 from torch.utils.data import DataLoader
 
 from src.config.defaults import WakewordConfig

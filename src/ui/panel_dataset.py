@@ -124,6 +124,27 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             value=1.5,
                             info="Target duration (must match training config)",
                         )
+                        
+                        with gr.Row():
+                            extract_n_mels = gr.Number(
+                                label="Mel Channels",
+                                value=64,
+                                precision=0,
+                                info="Number of mel filterbanks",
+                            )
+                            extract_hop_length = gr.Number(
+                                label="Hop Length",
+                                value=160,
+                                precision=0,
+                                info="STFT hop length (affects time dimension)",
+                            )
+                            extract_n_fft = gr.Number(
+                                label="FFT Size",
+                                value=400,
+                                precision=0,
+                                info="FFT window size",
+                            )
+                        
                         extract_batch_size = gr.Slider(
                             minimum=16,
                             maximum=128,
@@ -155,6 +176,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     with gr.Column():
                         npy_folder = gr.Textbox(
                             label=".npy Files Directory",
+                            value="data/npy",
                             placeholder="Path to .npy files (or leave empty to scan dataset_root/npy)",
                             lines=1,
                         )
@@ -171,7 +193,8 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             val_sample_rate = gr.Number(
                                 label="Target Sample Rate", value=16000
                             )
-                            val_duration = gr.Number(label="Target Duration", value=1.5)
+                            val_duration = gr.Number(label="Target Duration (s)", value=1.5)
+                            val_n_mels = gr.Number(label="Mel Channels", value=64, precision=0)
                             val_hop_length = gr.Number(label="Hop Length", value=160)
 
                         validate_shape_checkbox = gr.Checkbox(
@@ -466,6 +489,9 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             feature_type: str,
             sample_rate: int,
             audio_duration: float,
+            n_mels: int,
+            hop_length: int,
+            n_fft: int,
             batch_size: int,
             output_dir: str,
             progress=gr.Progress(),
@@ -492,10 +518,10 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     feature_type=feature_type,
                     sample_rate=int(sample_rate),
                     audio_duration=float(audio_duration),
-                    n_mels=64,
-                    n_mfcc=40,
-                    n_fft=400,
-                    hop_length=160,
+                    n_mels=int(n_mels),
+                    n_mfcc=40,  # MFCC için varsayılan, feature_type='mfcc' ise kullanılır
+                    n_fft=int(n_fft),
+                    hop_length=int(hop_length),
                 )
 
                 # Initialize extractor
@@ -667,6 +693,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             # Added inputs to manually specify target shape
             target_sample_rate: int,
             target_duration: float,
+            target_n_mels: int,
             target_hop_length: int,
             progress=gr.Progress(),
         ) -> str:
@@ -692,6 +719,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     sample_rate=int(target_sample_rate),
                     audio_duration=float(target_duration),
                     hop_length=int(target_hop_length),
+                    n_mels=int(target_n_mels),
                 )
 
                 # Calculate expected shape
@@ -795,6 +823,9 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 extract_feature_type,
                 extract_sample_rate,
                 extract_duration,
+                extract_n_mels,
+                extract_hop_length,
+                extract_n_fft,
                 extract_batch_size,
                 extract_output_dir,
             ],
@@ -815,6 +846,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 delete_invalid_checkbox,
                 val_sample_rate,
                 val_duration,
+                val_n_mels,
                 val_hop_length,
             ],
             outputs=[analysis_log],

@@ -3,20 +3,17 @@ Dataset Scanner, Validator, and Splitter
 Handles recursive scanning, validation, statistics, and train/test/val splitting
 """
 import json
-import logging
 import multiprocessing
 import shutil
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
-import numpy as np
 import structlog
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from src.config.logger import get_data_logger
 from src.data.audio_utils import AudioValidator, scan_audio_files
 from src.data.file_cache import FileCache
 
@@ -872,7 +869,7 @@ class DatasetSplitter:
 
 if __name__ == "__main__":
     # Test dataset scanner and splitter
-    import sys
+    pass
 
     print("Dataset Scanner and Splitter Test")
     print("=" * 60)

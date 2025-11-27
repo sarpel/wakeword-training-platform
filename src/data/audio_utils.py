@@ -331,7 +331,7 @@ def scan_audio_files(directory: Path, recursive: bool = True) -> list:
 
 if __name__ == "__main__":
     # Test audio utilities
-    import sys
+    pass
 
     from src.config.logger import get_logger
 

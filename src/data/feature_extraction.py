@@ -6,33 +6,32 @@ from typing import Literal, Optional
 
 import structlog
 import torch
-import torchaudio
+import torch.nn as nn
 import torchaudio.transforms as T
 
 logger = structlog.get_logger(__name__)
 
 
-class FeatureExtractor:
+class FeatureExtractor(nn.Module):
     """
     Extract features (mel-spectrogram or MFCC) from audio waveforms.
     
-    This class is explicitly designed for CPU-based preprocessing within DataLoader workers.
-    It forces all operations to CPU to ensure efficient parallel data loading and 
-    avoid multiprocessing issues with CUDA tensors.
+    Inherits from nn.Module to support GPU acceleration and seamless integration
+    with training pipelines.
     """
 
     def __init__(
         self,
         sample_rate: int = 16000,
         feature_type: Literal["mel", "mfcc"] = "mel",
-        n_mels: int = 64,
+        n_mels: int = 40,
         n_mfcc: int = 0,
         n_fft: int = 400,
         hop_length: int = 160,
         win_length: Optional[int] = None,
         f_min: float = 0.0,
         f_max: Optional[float] = None,
-        device: str = "cpu",  # Feature extraction always on CPU
+        device: str = "cpu",  # Kept for API compatibility but unused logic-wise
     ):
         """
         Initialize feature extractor
@@ -47,8 +46,9 @@ class FeatureExtractor:
             win_length: Window length (None = same as n_fft)
             f_min: Minimum frequency
             f_max: Maximum frequency (None = sample_rate / 2)
-            device: Device for computation (always 'cpu' for dataset pipeline)
+            device: Initial device (module can be moved with .to())
         """
+        super().__init__()
         self.sample_rate = sample_rate
         # Normalize feature type (handle legacy 'mel_spectrogram')
         if feature_type == "mel_spectrogram":
@@ -56,15 +56,15 @@ class FeatureExtractor:
         self.feature_type = feature_type
         self.n_mels = n_mels
         self.n_mfcc = n_mfcc
-        self.device = "cpu"  # Always CPU for feature extraction
-
+        
         if win_length is None:
             win_length = n_fft
 
         if f_max is None:
             f_max = sample_rate / 2.0
 
-        # Create mel-spectrogram transform (always on CPU for feature extraction)
+        # Create mel-spectrogram transform
+        # Registered as submodule, so it moves to GPU with .to(device)
         self.mel_spectrogram = T.MelSpectrogram(
             sample_rate=sample_rate,
             n_fft=n_fft,
@@ -74,7 +74,7 @@ class FeatureExtractor:
             f_max=f_max,
             n_mels=n_mels,
             power=2.0,
-        )  # Keep on CPU
+        )
 
         # Create MFCC transform if needed
         if feature_type == "mfcc":
@@ -89,19 +89,25 @@ class FeatureExtractor:
                     "f_max": f_max,
                     "n_mels": n_mels,
                 },
-            )  # Keep on CPU
+            )
+        else:
+            self.mfcc_transform = None
 
         # Amplitude to DB conversion
-        self.amplitude_to_db = T.AmplitudeToDB(stype="power", top_db=80)  # Keep on CPU
+        self.amplitude_to_db = T.AmplitudeToDB(stype="power", top_db=80)
+
+        # Move to initial device if specified
+        if device and device != "cpu":
+            self.to(device)
 
         logger.info(
             f"FeatureExtractor initialized: {feature_type}, "
             f"n_mels={n_mels}, n_fft={n_fft}, hop_length={hop_length}"
         )
 
-    def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         """
-        Extract features from waveform on CPU
+        Extract features from waveform
 
         Args:
             waveform: Input waveform tensor
@@ -112,10 +118,6 @@ class FeatureExtractor:
             - mel: (1, n_mels, time) or (batch, 1, n_mels, time)
             - mfcc: (n_mfcc, time) or (batch, n_mfcc, time)
         """
-        # Ensure waveform is on CPU
-        if waveform.device.type != "cpu":
-            waveform = waveform.cpu()
-
         # Handle different input shapes
         original_shape = waveform.shape
         if waveform.dim() == 1:
@@ -143,7 +145,7 @@ class FeatureExtractor:
             if squeeze_output:
                 features = features.squeeze(0)  # (1, n_mels, time)
 
-        elif self.feature_type == "mfcc":
+        elif self.feature_type == "mfcc" and self.mfcc_transform is not None:
             # Compute MFCC
             mfcc = self.mfcc_transform(waveform)  # (batch, n_mfcc, time)
 

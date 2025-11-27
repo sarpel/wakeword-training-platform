@@ -2,8 +2,7 @@
 Dataset Health Checker and Briefing System
 Analyzes dataset quality and provides recommendations
 """
-from collections import Counter
-from typing import Dict, List, Tuple
+from typing import Dict
 
 import structlog
 

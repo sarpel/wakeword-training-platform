@@ -4,7 +4,6 @@ Streaming audio capture and wakeword detection
 """
 import queue
 import threading
-import time
 from typing import Callable, Optional, Tuple
 
 import numpy as np

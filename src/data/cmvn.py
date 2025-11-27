@@ -4,21 +4,19 @@ Implements global normalization statistics with persistence
 """
 import json
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
-import numpy as np
 import structlog
 import torch
+import torch.nn as nn
 
 logger = structlog.get_logger(__name__)
 
 
-class CMVN:
+class CMVN(nn.Module):
     """
     Corpus-level Cepstral Mean Variance Normalization
-
-    Computes global mean and std across entire corpus and applies
-    consistent normalization to train/val/test splits.
+    Inherits from nn.Module for seamless integration with models.
     """
 
     def __init__(self, stats_path: Optional[Path] = None, eps: float = 1e-8):
@@ -29,13 +27,24 @@ class CMVN:
             stats_path: Path to stats.json file (for loading/saving)
             eps: Small constant for numerical stability
         """
+        super().__init__()
         self.stats_path = Path(stats_path) if stats_path else None
         self.eps = eps
 
-        # Statistics
-        self.mean: Optional[torch.Tensor] = None
-        self.std: Optional[torch.Tensor] = None
-        self.count: int = 0
+        # Register statistics as buffers (persistent state, not parameters)
+        # We register them as None initially, but buffers must be tensors.
+        # So we use register_buffer with a dummy tensor or handle loading logic carefully.
+        # Better approach: register_buffer with empty tensor or None if allowed (it's not).
+        # Strategy: use self.register_buffer("mean", torch.tensor(...)) only when we have values.
+        # But __init__ must set up state.
+        # Let's init as buffers if we can load them, otherwise placeholders.
+        
+        self.register_buffer("mean", torch.zeros(1))
+        self.register_buffer("std", torch.zeros(1))
+        self.register_buffer("count", torch.tensor(0, dtype=torch.long))
+        
+        # Flag to check if initialized
+        self._initialized = False
 
         # Load stats if path provided and exists
         if self.stats_path and self.stats_path.exists():
@@ -85,10 +94,17 @@ class CMVN:
             total_frames += num_frames
 
         # Compute global statistics
-        self.mean = sum_features / total_frames
-        variance = (sum_squared / total_frames) - (self.mean**2)
-        self.std = torch.sqrt(variance.clamp(min=self.eps))
-        self.count = total_frames
+        # Ensure calculations are done on CPU initially to avoid VRAM usage for large accumulations
+        # Or respect input device.
+        mean = sum_features / total_frames
+        variance = (sum_squared / total_frames) - (mean**2)
+        std = torch.sqrt(variance.clamp(min=self.eps))
+        
+        # Update buffers
+        self.mean = mean
+        self.std = std
+        self.count.fill_(total_frames)
+        self._initialized = True
 
         logger.info(f"CMVN stats computed:")
         logger.info(f"  Total frames: {total_frames}")
@@ -104,93 +120,73 @@ class CMVN:
 
     def normalize(self, features: torch.Tensor) -> torch.Tensor:
         """
-        Apply CMVN normalization to features
-
+        Apply CMVN normalization to features (batch-aware)
         Args:
             features: Input features (B, C, T) or (C, T)
-
-        Returns:
-            Normalized features (same shape as input)
         """
-        if self.mean is None or self.std is None:
-            raise RuntimeError("CMVN stats not computed. Call compute_stats() first.")
-
-        # Move stats to same device as features
-        mean = self.mean.to(features.device)
-        std = self.std.to(features.device)
+        if not self._initialized:
+            # If loaded via state_dict, check buffers
+            if self.mean.numel() > 1:
+                self._initialized = True
+            else:
+                raise RuntimeError("CMVN stats not computed. Call compute_stats() first.")
 
         # Handle batch dimension
-        original_shape = features.shape
-        if features.ndim == 2:
-            # (C, T) -> add batch dim
+        original_ndim = features.ndim
+        if original_ndim == 2: # (C, T)
             features = features.unsqueeze(0)
 
         # Normalize: (x - mean) / std
-        # mean and std are (C,), features are (B, C, T)
-        mean = mean.view(1, -1, 1)
-        std = std.view(1, -1, 1)
+        # mean, std: (C,)
+        # features: (B, C, T)
+        mean = self.mean.view(1, -1, 1)
+        std = self.std.view(1, -1, 1)
 
         normalized = (features - mean) / std
 
-        # Restore original shape
-        if len(original_shape) == 2:
+        if original_ndim == 2:
             normalized = normalized.squeeze(0)
 
         return normalized
 
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """Forward pass alias for normalize"""
+        return self.normalize(features)
+
     def denormalize(self, features: torch.Tensor) -> torch.Tensor:
-        """
-        Reverse CMVN normalization
+        """Reverse CMVN normalization"""
+        if not self._initialized:
+             raise RuntimeError("CMVN stats not computed.")
 
-        Args:
-            features: Normalized features
-
-        Returns:
-            Original scale features
-        """
-        if self.mean is None or self.std is None:
-            raise RuntimeError("CMVN stats not computed.")
-
-        mean = self.mean.to(features.device)
-        std = self.std.to(features.device)
-
-        original_shape = features.shape
-        if features.ndim == 2:
+        original_ndim = features.ndim
+        if original_ndim == 2:
             features = features.unsqueeze(0)
 
-        mean = mean.view(1, -1, 1)
-        std = std.view(1, -1, 1)
+        mean = self.mean.view(1, -1, 1)
+        std = self.std.view(1, -1, 1)
 
         denormalized = (features * std) + mean
 
-        if len(original_shape) == 2:
+        if original_ndim == 2:
             denormalized = denormalized.squeeze(0)
 
         return denormalized
 
     def save_stats(self, path: Optional[Path] = None):
-        """
-        Save CMVN statistics to JSON
-
-        Args:
-            path: Path to save stats (uses self.stats_path if None)
-        """
+        """Save CMVN statistics to JSON"""
         save_path = Path(path) if path else self.stats_path
-
         if save_path is None:
             raise ValueError("No stats path provided")
 
-        if self.mean is None or self.std is None:
-            raise RuntimeError("No stats to save. Compute stats first.")
+        if not self._initialized:
+            raise RuntimeError("No stats to save.")
 
-        # Create parent directory
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Convert to lists for JSON serialization
         stats_dict = {
-            "mean": self.mean.cpu().numpy().tolist(),
-            "std": self.std.cpu().numpy().tolist(),
-            "count": self.count,
+            "mean": self.mean.detach().cpu().numpy().tolist(),
+            "std": self.std.detach().cpu().numpy().tolist(),
+            "count": self.count.item(),
             "eps": self.eps,
         }
 
@@ -200,31 +196,25 @@ class CMVN:
         logger.info(f"CMVN stats saved to {save_path}")
 
     def load_stats(self, path: Optional[Path] = None):
-        """
-        Load CMVN statistics from JSON
-
-        Args:
-            path: Path to load stats from (uses self.stats_path if None)
-        """
+        """Load CMVN statistics from JSON"""
         load_path = Path(path) if path else self.stats_path
-
-        if load_path is None:
-            raise ValueError("No stats path provided")
-
-        if not load_path.exists():
-            raise FileNotFoundError(f"Stats file not found: {load_path}")
+        if load_path is None: raise ValueError("No stats path provided")
+        if not load_path.exists(): raise FileNotFoundError(f"Stats file not found: {load_path}")
 
         with open(load_path, "r") as f:
             stats_dict = json.load(f)
 
-        self.mean = torch.tensor(stats_dict["mean"], dtype=torch.float32)
-        self.std = torch.tensor(stats_dict["std"], dtype=torch.float32)
-        self.count = stats_dict["count"]
+        # Load into buffers and move to device if module already on device (handled by register_buffer persistence logic usually, but here we set manually)
+        # We must respect current device if possible, or let .to(device) handle it later.
+        device = self.mean.device
+        
+        self.mean = torch.tensor(stats_dict["mean"], dtype=torch.float32, device=device)
+        self.std = torch.tensor(stats_dict["std"], dtype=torch.float32, device=device)
+        self.count = torch.tensor(stats_dict["count"], dtype=torch.long, device=device)
         self.eps = stats_dict.get("eps", 1e-8)
+        self._initialized = True
 
-        logger.info(f"CMVN stats loaded from {load_path}")
-        logger.info(f"  Feature dim: {self.mean.shape[0]}")
-        logger.info(f"  Total frames: {self.count}")
+        logger.info(f"CMVN stats loaded from {load_path} (dim={self.mean.shape[0]})")
 
 
 def compute_cmvn_from_dataset(

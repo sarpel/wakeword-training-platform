@@ -39,8 +39,7 @@ except Exception:
 if WakewordPydanticConfig is None:
     try:
         # Pydantic yüklüyse generic bir doğrulama yolu kur
-        import pydantic
-        from pydantic import BaseModel
+        pass
 
         try:
             from pydantic import ValidationError as PydanticValidationError  # v1

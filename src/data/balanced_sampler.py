@@ -2,11 +2,10 @@
 Balanced Batch Sampler for controlling class ratios in batches
 Ensures each batch has specified proportions of positive, negative, and hard negative samples
 """
-from typing import Dict, List, Optional
+from typing import List
 
 import numpy as np
 import structlog
-import torch
 from torch.utils.data import Sampler
 
 logger = structlog.get_logger(__name__)

@@ -179,9 +179,8 @@ def validate_config_with_pydantic(
 
 
 if __name__ == "__main__":
-    from pathlib import Path
+    pass
 
-    import yaml
 
     # Test with a sample valid config
     sample_config = {
