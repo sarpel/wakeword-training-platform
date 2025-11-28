@@ -69,7 +69,7 @@ def _run_epoch(
             if is_training:
                 trainer.optimizer.zero_grad(set_to_none=True)
 
-            with torch.cuda.amp.autocast(enabled=trainer.use_mixed_precision):
+            with torch.amp.autocast("cuda", enabled=trainer.use_mixed_precision):
                 outputs = trainer.model(inputs)
                 # Use compute_loss method to allow overriding (e.g., for distillation)
                 loss = trainer.compute_loss(outputs, targets, raw_inputs, processed_inputs=inputs)

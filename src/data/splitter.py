@@ -224,7 +224,12 @@ class DatasetScanner:
                 return True, cached_metadata, None
 
         # Validate file
-        is_valid, metadata, error = self.validator.validate_audio_file(file_path)
+        try:
+            # The validator raises DataLoadError on failure, returns (True, metadata, None) on success
+            is_valid, metadata, error = self.validator.validate_audio_file(file_path)
+        except Exception as e:
+            # Handle the error gracefully
+            return False, None, str(e)
 
         # Cache valid results
         if is_valid and metadata and self.cache:

@@ -19,7 +19,7 @@ configs/
 .genkit/
 *.7z
 *.zip
-models/
+/models/
 docs/
 .github/
 

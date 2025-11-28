@@ -26,6 +26,7 @@ logger = structlog.get_logger(__name__)
 
 from src.config.cuda_utils import get_cuda_validator
 from src.config.defaults import WakewordConfig
+from src.config.paths import paths  # NEW: Centralized paths
 from src.data.balanced_sampler import create_balanced_sampler_from_dataset
 from src.data.cmvn import compute_cmvn_from_dataset
 from src.data.dataset import WakewordDataset, load_dataset_splits
@@ -402,8 +403,8 @@ def start_training(
         training_state.add_log("Initializing training...")
 
         # Check if dataset splits exist
-        data_root = Path(config.data.data_root)
-        splits_dir = data_root / "splits"
+        # Use centralized paths
+        splits_dir = paths.SPLITS
         if not splits_dir.exists() or not (splits_dir / "train.json").exists():
             return (
                 "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.",
@@ -444,7 +445,7 @@ def start_training(
         # Handle CMVN
         cmvn_path = None
         if use_cmvn:
-            cmvn_path = data_root / "cmvn_stats.json"
+            cmvn_path = paths.CMVN_STATS
             if not cmvn_path.exists():
                 training_state.add_log("Computing CMVN statistics (first time only)...")
                 # Load datasets temporarily without CMVN to compute stats
@@ -468,8 +469,14 @@ def start_training(
         )
         
         # NEW: Optimize config for GPU pipeline
-        config.training.num_workers = min(config.training.num_workers, 16)
+        import os
+        # Use min(16, cpu_count) for workers
+        optimal_workers = min(16, os.cpu_count() or 1)
+        config.training.num_workers = optimal_workers
         config.training.pin_memory = True
+        
+        # Prefetch factor (only if workers > 0)
+        prefetch_factor = 4 if optimal_workers > 0 else None
 
         train_ds = WakewordDataset(
             manifest_path=splits_dir / "train.json",
@@ -477,8 +484,8 @@ def start_training(
             audio_duration=config.data.audio_duration,
             augment=True,
             augmentation_config=aug_config,
-            background_noise_dir=data_root / "raw" / "background",
-            rir_dir=data_root / "raw" / "rirs",
+            background_noise_dir=paths.BACKGROUND_NOISE,
+            rir_dir=paths.RIRS,
             device="cuda",
             feature_type=feature_type,
             n_mels=config.data.n_mels,
@@ -539,6 +546,7 @@ def start_training(
                     persistent_workers=True
                     if config.training.num_workers > 0
                     else False,
+                    prefetch_factor=prefetch_factor,
                 )
                 training_state.add_log(
                     f"✅ Balanced sampler enabled (ratio {sampler_ratio_pos}:{sampler_ratio_neg}:{sampler_ratio_hard})"
@@ -555,6 +563,7 @@ def start_training(
                     persistent_workers=True
                     if config.training.num_workers > 0
                     else False,
+                    prefetch_factor=prefetch_factor,
                 )
         else:
             training_state.train_loader = DataLoader(
@@ -564,6 +573,7 @@ def start_training(
                 num_workers=config.training.num_workers,
                 pin_memory=True,
                 persistent_workers=True if config.training.num_workers > 0 else False,
+                prefetch_factor=prefetch_factor,
             )
 
         training_state.val_loader = DataLoader(
@@ -573,6 +583,7 @@ def start_training(
             num_workers=config.training.num_workers,
             pin_memory=True,
             persistent_workers=True if config.training.num_workers > 0 else False,
+            prefetch_factor=prefetch_factor,
         )
 
         training_state.total_batches = len(training_state.train_loader)
@@ -631,7 +642,7 @@ def start_training(
                 training_state.add_log(f"⚠️ LR Finder failed: {e}")
 
         # Create checkpoint directory
-        checkpoint_dir = Path("models/checkpoints")
+        checkpoint_dir = paths.CHECKPOINTS
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_manager = CheckpointManager(checkpoint_dir)
 
@@ -796,8 +807,8 @@ def start_hpo(
             return "❌ No configuration loaded. Please configure in Panel 2 first.", None
 
         config = config_state["config"]
-        data_root = Path(config.data.data_root)
-        splits_dir = data_root / "splits"
+        # Use centralized paths
+        splits_dir = paths.SPLITS
 
         if not splits_dir.exists() or not (splits_dir / "train.json").exists():
             return (
