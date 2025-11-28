@@ -3,14 +3,15 @@ Configuration Presets for Different Use Cases
 Provides optimized configurations for various scenarios
 """
 from typing import Dict
+
 from src.config.defaults import (
-    WakewordConfig,
-    DataConfig,
-    TrainingConfig,
-    ModelConfig,
     AugmentationConfig,
+    DataConfig,
+    LossConfig,
+    ModelConfig,
     OptimizerConfig,
-    LossConfig
+    TrainingConfig,
+    WakewordConfig,
 )
 
 
@@ -28,7 +29,7 @@ def get_default_preset() -> WakewordConfig:
         model=ModelConfig(),
         augmentation=AugmentationConfig(),
         optimizer=OptimizerConfig(),
-        loss=LossConfig()
+        loss=LossConfig(),
     )
 
 
@@ -46,24 +47,20 @@ def get_small_dataset_preset() -> WakewordConfig:
         config_name="small_dataset",
         description="Optimized for small datasets (<10k samples) with aggressive augmentation",
         data=DataConfig(
-            sample_rate=16000,
-            audio_duration=1.5,
-            n_mfcc=0,
-            n_fft=400,
-            n_mels=64
+            sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64
         ),
         training=TrainingConfig(
             batch_size=16,  # Smaller batch for limited data
             epochs=100,  # More epochs
             learning_rate=0.0005,  # Lower LR
             early_stopping_patience=15,
-            num_workers=4
+            num_workers=4,
         ),
         model=ModelConfig(
             architecture="mobilenetv3",  # Smaller model to avoid overfitting
             num_classes=2,
             pretrained=False,
-            dropout=0.5  # Higher dropout for regularization
+            dropout=0.5,  # Higher dropout for regularization
         ),
         augmentation=AugmentationConfig(
             time_stretch_min=0.70,  # More aggressive stretching
@@ -75,21 +72,21 @@ def get_small_dataset_preset() -> WakewordConfig:
             noise_snr_max=25.0,
             rir_prob=0.5,  # Higher RIR usage for acoustic variety
             rir_dry_wet_min=0.2,  # More aggressive reverb range
-            rir_dry_wet_max=0.8
+            rir_dry_wet_max=0.8,
         ),
         optimizer=OptimizerConfig(
             optimizer="adam",
             weight_decay=1e-3,  # Stronger regularization
             scheduler="cosine",
             gradient_clip=1.0,
-            mixed_precision=True
+            mixed_precision=True,
         ),
         loss=LossConfig(
             loss_function="focal_loss",  # Better for imbalanced small datasets
             label_smoothing=0.0,  # Not used with focal_loss
             class_weights="balanced",
-            hard_negative_weight=3.0  # Strong emphasis on hard negatives
-        )
+            hard_negative_weight=3.0,  # Strong emphasis on hard negatives
+        ),
     )
 
 
@@ -107,24 +104,20 @@ def get_large_dataset_preset() -> WakewordConfig:
         config_name="large_dataset",
         description="Optimized for large datasets (>100k samples) with faster training",
         data=DataConfig(
-            sample_rate=16000,
-            audio_duration=1.5,
-            n_mfcc=0,
-            n_fft=400,
-            n_mels=64
+            sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64
         ),
         training=TrainingConfig(
             batch_size=128,  # Larger batch for better GPU utilization
             epochs=30,  # Fewer epochs needed with large data
             learning_rate=0.002,  # Higher LR for faster convergence
             early_stopping_patience=8,
-            num_workers=16  # More workers for throughput
+            num_workers=16,  # More workers for throughput
         ),
         model=ModelConfig(
             architecture="resnet18",  # Larger model capacity
             num_classes=2,
             pretrained=False,
-            dropout=0.2  # Less dropout - less overfitting risk with large data
+            dropout=0.2,  # Less dropout - less overfitting risk with large data
         ),
         augmentation=AugmentationConfig(
             time_stretch_min=0.85,  # Less aggressive - data already diverse
@@ -136,7 +129,7 @@ def get_large_dataset_preset() -> WakewordConfig:
             noise_snr_max=20.0,
             rir_prob=0.25,
             rir_dry_wet_min=0.4,  # Lighter reverb
-            rir_dry_wet_max=0.6
+            rir_dry_wet_max=0.6,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
@@ -144,14 +137,14 @@ def get_large_dataset_preset() -> WakewordConfig:
             scheduler="cosine",
             warmup_epochs=3,
             gradient_clip=1.0,
-            mixed_precision=True
+            mixed_precision=True,
         ),
         loss=LossConfig(
             loss_function="cross_entropy",
             label_smoothing=0.05,
             class_weights="balanced",
-            hard_negative_weight=2.0  # Moderate emphasis
-        )
+            hard_negative_weight=2.0,  # Moderate emphasis
+        ),
     )
 
 
@@ -173,20 +166,20 @@ def get_fast_training_preset() -> WakewordConfig:
             audio_duration=1.0,  # Shorter audio for speed
             n_mfcc=0,
             n_fft=400,
-            n_mels=64
+            n_mels=64,
         ),
         training=TrainingConfig(
             batch_size=64,
             epochs=20,  # Fewer epochs for rapid iteration
             learning_rate=0.003,  # Higher LR for faster convergence
             early_stopping_patience=5,
-            num_workers=6
+            num_workers=6,
         ),
         model=ModelConfig(
             architecture="mobilenetv3",  # Fast, lightweight architecture
             num_classes=2,
             pretrained=False,
-            dropout=0.3
+            dropout=0.3,
         ),
         augmentation=AugmentationConfig(
             time_stretch_min=0.95,  # Minimal augmentation for speed
@@ -198,21 +191,21 @@ def get_fast_training_preset() -> WakewordConfig:
             noise_snr_max=20.0,
             rir_prob=0.1,  # Minimal RIR usage
             rir_dry_wet_min=0.5,  # Light reverb only
-            rir_dry_wet_max=0.7
+            rir_dry_wet_max=0.7,
         ),
         optimizer=OptimizerConfig(
             optimizer="adam",
             weight_decay=1e-4,
             scheduler="step",
             gradient_clip=1.0,
-            mixed_precision=True
+            mixed_precision=True,
         ),
         loss=LossConfig(
             loss_function="cross_entropy",
             label_smoothing=0.05,
             class_weights="balanced",
-            hard_negative_weight=1.5
-        )
+            hard_negative_weight=1.5,
+        ),
     )
 
 
@@ -234,20 +227,20 @@ def get_high_accuracy_preset() -> WakewordConfig:
             audio_duration=2.0,  # Longer context for better accuracy
             n_mfcc=0,
             n_fft=400,
-            n_mels=64
+            n_mels=64,
         ),
         training=TrainingConfig(
             batch_size=24,  # Smaller batch for better generalization
             epochs=100,  # More training time
             learning_rate=0.0005,  # Lower LR for stability
             early_stopping_patience=20,
-            num_workers=4
+            num_workers=4,
         ),
         model=ModelConfig(
             architecture="resnet18",  # Strong, accurate architecture
             num_classes=2,
             pretrained=False,
-            dropout=0.4  # Balanced dropout
+            dropout=0.4,  # Balanced dropout
         ),
         augmentation=AugmentationConfig(
             time_stretch_min=0.75,  # Wide range for robustness
@@ -259,7 +252,7 @@ def get_high_accuracy_preset() -> WakewordConfig:
             noise_snr_max=25.0,
             rir_prob=0.4,  # High RIR for acoustic variety
             rir_dry_wet_min=0.2,  # Wide reverb range
-            rir_dry_wet_max=0.8
+            rir_dry_wet_max=0.8,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
@@ -267,7 +260,7 @@ def get_high_accuracy_preset() -> WakewordConfig:
             scheduler="cosine",
             warmup_epochs=10,
             gradient_clip=0.5,  # Stricter clipping for stability
-            mixed_precision=True
+            mixed_precision=True,
         ),
         loss=LossConfig(
             loss_function="focal_loss",  # Better for hard examples
@@ -276,8 +269,8 @@ def get_high_accuracy_preset() -> WakewordConfig:
             focal_gamma=2.5,  # Higher gamma for hard examples
             class_weights="balanced",
             hard_negative_weight=3.0,  # Strong emphasis on hard negatives
-            sampler_strategy="weighted"
-        )
+            sampler_strategy="weighted",
+        ),
     )
 
 
@@ -296,23 +289,23 @@ def get_edge_deployment_preset() -> WakewordConfig:
         description="Optimized for edge devices (mobile/IoT) with small model size",
         data=DataConfig(
             sample_rate=16000,
-            audio_duration=1.2,  # Shorter for faster inference
+            audio_duration=1.0,  # "Hey Katya" fits in 1s, optimal for ESP32 RAM
             n_mfcc=0,
             n_fft=400,
-            n_mels=64
+            n_mels=40,  # Reduced for MCU efficiency
         ),
         training=TrainingConfig(
             batch_size=48,
             epochs=60,
             learning_rate=0.001,
             early_stopping_patience=12,
-            num_workers=4
+            num_workers=4,
         ),
         model=ModelConfig(
             architecture="mobilenetv3",  # Lightweight for edge devices
             num_classes=2,
             pretrained=False,
-            dropout=0.25  # Lower dropout for better inference accuracy
+            dropout=0.25,  # Lower dropout for better inference accuracy
         ),
         augmentation=AugmentationConfig(
             time_stretch_min=0.85,  # Moderate augmentation for robustness
@@ -324,21 +317,21 @@ def get_edge_deployment_preset() -> WakewordConfig:
             noise_snr_max=20.0,
             rir_prob=0.3,  # Real-world acoustics
             rir_dry_wet_min=0.4,
-            rir_dry_wet_max=0.6
+            rir_dry_wet_max=0.6,
         ),
         optimizer=OptimizerConfig(
             optimizer="adam",
             weight_decay=1e-4,
             scheduler="cosine",
             gradient_clip=1.0,
-            mixed_precision=True  # Critical for edge deployment
+            mixed_precision=True,  # Critical for edge deployment
         ),
         loss=LossConfig(
             loss_function="cross_entropy",
             label_smoothing=0.08,  # Slight smoothing for generalization
             class_weights="balanced",
-            hard_negative_weight=2.5  # Reduce false positives
-        )
+            hard_negative_weight=2.5,  # Reduce false positives
+        ),
     )
 
 
@@ -349,7 +342,7 @@ PRESETS: Dict[str, callable] = {
     "Large Dataset (>100k samples)": get_large_dataset_preset,
     "Fast Training": get_fast_training_preset,
     "High Accuracy": get_high_accuracy_preset,
-    "Edge Deployment": get_edge_deployment_preset
+    "Edge Deployment": get_edge_deployment_preset,
 }
 
 
@@ -369,8 +362,7 @@ def get_preset(preset_name: str) -> WakewordConfig:
     if preset_name not in PRESETS:
         available = ", ".join(PRESETS.keys())
         raise ValueError(
-            f"Preset '{preset_name}' not found. "
-            f"Available presets: {available}"
+            f"Preset '{preset_name}' not found. " f"Available presets: {available}"
         )
 
     return PRESETS[preset_name]()

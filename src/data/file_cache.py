@@ -2,14 +2,15 @@
 File Cache for Dataset Operations
 Caches file metadata to speed up subsequent scans
 """
-import json
 import hashlib
-from pathlib import Path
-from typing import Dict, Optional, Any
+import json
 from datetime import datetime
-import logging
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class FileCache:
@@ -37,7 +38,7 @@ class FileCache:
         """Load cache from disk"""
         if self.cache_file.exists():
             try:
-                with open(self.cache_file, 'r') as f:
+                with open(self.cache_file, "r") as f:
                     self.cache = json.load(f)
                 logger.info(f"Loaded cache with {len(self.cache)} entries")
             except Exception as e:
@@ -49,7 +50,7 @@ class FileCache:
     def _save_cache(self):
         """Save cache to disk"""
         try:
-            with open(self.cache_file, 'w') as f:
+            with open(self.cache_file, "w") as f:
                 json.dump(self.cache, f, indent=2)
             logger.debug(f"Saved cache with {len(self.cache)} entries")
         except Exception as e:
@@ -116,7 +117,7 @@ class FileCache:
             key = self._get_file_key(file_path)
 
             # Add cache timestamp
-            metadata['_cached_at'] = datetime.now().isoformat()
+            metadata["_cached_at"] = datetime.now().isoformat()
 
             self.cache[key] = metadata
             logger.debug(f"Cached metadata for {file_path.name}")
@@ -142,9 +143,9 @@ class FileCache:
             Dictionary with cache stats
         """
         return {
-            'total_entries': len(self.cache),
-            'cache_file': str(self.cache_file),
-            'cache_exists': self.cache_file.exists()
+            "total_entries": len(self.cache),
+            "cache_file": str(self.cache_file),
+            "cache_exists": self.cache_file.exists(),
         }
 
 

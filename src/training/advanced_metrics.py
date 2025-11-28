@@ -2,496 +2,457 @@
 Advanced Metrics for Wakeword Detection
 Includes: FAH, threshold selection, EER, pAUC, DET curves
 """
-import torch
-import numpy as np
-from typing import Dict, Tuple, Optional, List
-from dataclasses import dataclass
-import logging
-from sklearn.metrics import roc_curve, auc, roc_auc_score
+from __future__ import annotations
 
-logger = logging.getLogger(__name__)
+import math
+from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
+
+import numpy as np
+import torch
+
+try:
+    from sklearn.metrics import auc, roc_auc_score, roc_curve
+
+    _HAS_SK = True
+except Exception:
+    _HAS_SK = False
+
+
+# ------------------------------- helpers ------------------------------------ #
+
+
+def _to_numpy(x) -> np.ndarray:
+    if isinstance(x, torch.Tensor):
+        x = x.detach().cpu().numpy()
+    return np.asarray(x)
+
+
+def _probs_from_logits(
+    logits: torch.Tensor | np.ndarray, positive_index: int = 1
+) -> np.ndarray:
+    """
+    Accepts (N,2) logits or (N,) probs. Returns (N,) positive-class probs.
+    """
+    if isinstance(logits, torch.Tensor):
+        logits = logits.detach().cpu().numpy()
+    logits = np.asarray(logits)
+    if logits.ndim == 2 and logits.shape[1] == 2:
+        z = logits - logits.max(axis=1, keepdims=True)  # stable softmax
+        ex = np.exp(z)
+        p = ex / ex.sum(axis=1, keepdims=True)
+        return p[:, positive_index]
+    if logits.ndim == 1:
+        return logits
+    raise ValueError(f"Expected (N,2) logits or (N,) probs, got shape {logits.shape}")
+
+
+def _confusion_counts(
+    y_true: np.ndarray, y_pred: np.ndarray
+) -> Tuple[int, int, int, int]:
+    tp = int(((y_true == 1) & (y_pred == 1)).sum())
+    tn = int(((y_true == 0) & (y_pred == 0)).sum())
+    fp = int(((y_true == 0) & (y_pred == 1)).sum())
+    fn = int(((y_true == 1) & (y_pred == 0)).sum())
+    return tp, tn, fp, fn
+
+
+def _safe_div(n: float, d: float) -> float:
+    return float(n) / float(d) if d else 0.0
+
+
+# ------------------------------- dataclass ----------------------------------- #
 
 
 @dataclass
 class ThresholdMetrics:
-    """Metrics at a specific threshold"""
     threshold: float
-    tpr: float  # True Positive Rate (Recall)
-    fpr: float  # False Positive Rate
-    fnr: float  # False Negative Rate
+    tpr: float
+    fpr: float
     precision: float
-    f1_score: float
-    fah: float  # False Alarms per Hour
+    recall: float
+    f1: float
     accuracy: float
+    tp: int
+    tn: int
+    fp: int
+    fn: int
+    fah: Optional[float] = None  # false accepts per hour
+    fnr: Optional[float] = None  # false negative rate
 
 
-def calculate_fah(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
+# --------------------------- core metric routines --------------------------- #
+
+
+def _metrics_from_probs_at_threshold(
+    y: np.ndarray,
+    probs: np.ndarray,
     threshold: float,
-    total_seconds: float
-) -> float:
-    """
-    Calculate False Alarms per Hour
+    *,
+    total_seconds: Optional[float] = None,
+) -> ThresholdMetrics:
+    y_pred = (probs >= threshold).astype(np.int64)
+    tp, tn, fp, fn = _confusion_counts(y, y_pred)
+    tpr = _safe_div(tp, tp + fn)  # recall
+    fpr = _safe_div(fp, fp + tn)
+    fnr = _safe_div(fn, tp + fn)  # false negative rate
+    precision = _safe_div(tp, tp + fp)
+    recall = tpr
+    f1 = (
+        _safe_div(2 * precision * recall, precision + recall)
+        if (precision + recall)
+        else 0.0
+    )
+    accuracy = _safe_div(tp + tn, tp + tn + fp + fn)
 
-    Args:
-        logits: Model logits (N, 2) - REVERSED format [positive, negative]
-        labels: Ground truth labels (N,)
-        threshold: Classification threshold
-        total_seconds: Total duration of audio in seconds
+    fah = None
+    if total_seconds:
+        neg_seconds = (y == 0).sum() * float(total_seconds)
+        hours = neg_seconds / 3600.0
+        fah = _safe_div(fp, hours)
 
-    Returns:
-        False alarms per hour
-    """
-    # Get probabilities for positive class (index 0 due to reversed logits)
-    probs = torch.softmax(logits, dim=1)[:, 0]
-
-    # Predictions at threshold
-    predictions = (probs >= threshold).long()
-
-    # False positives
-    fp = ((predictions == 1) & (labels == 0)).sum().item()
-
-    # Calculate FAH
-    total_hours = total_seconds / 3600.0
-    fah = fp / (total_hours + 1e-9)
-
-    return fah
-
-
-def find_threshold_for_target_fah(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    total_seconds: float,
-    target_fah: float,
-    step: float = 0.0025
-) -> Tuple[float, float]:
-    """
-    Find threshold that achieves target FAH while maximizing TPR
-
-    Args:
-        logits: Model logits (N, 2) - REVERSED format [positive, negative]
-        labels: Ground truth labels (N,)
-        total_seconds: Total audio duration
-        target_fah: Target false alarms per hour
-        step: Grid search step size
-
-    Returns:
-        Tuple of (threshold, tpr)
-    """
-    probs = torch.softmax(logits, dim=1)[:, 0]
-
-    thresholds = torch.linspace(0, 1, int(1/step) + 1)
-    best_threshold = 0.5
-    best_tpr = 0.0
-
-    total_hours = total_seconds / 3600.0
-    positive_count = (labels == 1).sum().item()
-
-    for threshold in thresholds:
-        # Predictions
-        predictions = (probs >= threshold).long()
-
-        # Calculate FP and TP
-        fp = ((predictions == 1) & (labels == 0)).sum().item()
-        tp = ((predictions == 1) & (labels == 1)).sum().item()
-
-        # Calculate FAH and TPR
-        fah = fp / (total_hours + 1e-9)
-        tpr = tp / max(positive_count, 1)
-
-        # Check if FAH meets target
-        if fah <= target_fah and tpr > best_tpr:
-            best_threshold = threshold.item()
-            best_tpr = tpr
-
-    return best_threshold, best_tpr
-
-
-def calculate_eer(
-    logits: torch.Tensor,
-    labels: torch.Tensor
-) -> Tuple[float, float]:
-    """
-    Calculate Equal Error Rate (EER)
-
-    The point where FPR = FNR
-
-    Args:
-        logits: Model logits - REVERSED format [positive, negative]
-        labels: Ground truth labels
-
-    Returns:
-        Tuple of (eer, threshold)
-    """
-    probs = torch.softmax(logits, dim=1)[:, 0].cpu().numpy()
-    labels_np = labels.cpu().numpy()
-
-    # Calculate FPR and TPR
-    fpr, tpr, thresholds = roc_curve(labels_np, probs)
-
-    # FNR = 1 - TPR
-    fnr = 1 - tpr
-
-    # Find where FPR = FNR
-    eer_idx = np.nanargmin(np.absolute(fnr - fpr))
-    eer = fpr[eer_idx]
-    eer_threshold = thresholds[eer_idx]
-
-    return float(eer), float(eer_threshold)
-
-
-def calculate_pauc(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    max_fpr: float = 0.1
-) -> float:
-    """
-    Calculate partial Area Under ROC Curve (pAUC)
-
-    Focuses on low FPR region which is critical for wakeword detection
-
-    Args:
-        logits: Model logits - REVERSED format [positive, negative]
-        labels: Ground truth labels
-        max_fpr: Maximum FPR for partial AUC
-
-    Returns:
-        Partial AUC value
-    """
-    probs = torch.softmax(logits, dim=1)[:, 0].cpu().numpy()
-    labels_np = labels.cpu().numpy()
-
-    # Calculate ROC curve
-    fpr, tpr, _ = roc_curve(labels_np, probs)
-
-    # Find index where FPR exceeds max_fpr
-    idx = np.where(fpr <= max_fpr)[0]
-
-    if len(idx) == 0:
-        return 0.0
-
-    # Calculate partial AUC
-    fpr_partial = fpr[idx]
-    tpr_partial = tpr[idx]
-
-    # Normalize to [0, 1] range
-    pauc = auc(fpr_partial, tpr_partial) / max_fpr
-
-    return float(pauc)
+    return ThresholdMetrics(
+        threshold=float(threshold),
+        tpr=tpr,
+        fpr=fpr,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        accuracy=accuracy,
+        tp=tp,
+        tn=tn,
+        fp=fp,
+        fn=fn,
+        fah=fah,
+        fnr=fnr,
+    )
 
 
 def calculate_metrics_at_threshold(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
     threshold: float,
-    total_seconds: Optional[float] = None
+    *,
+    positive_index: int = 1,
+    total_seconds: Optional[float] = None,
 ) -> ThresholdMetrics:
-    """
-    Calculate all metrics at a specific threshold
-
-    Args:
-        logits: Model logits - REVERSED format [positive, negative]
-        labels: Ground truth labels
-        threshold: Classification threshold
-        total_seconds: Total audio duration (for FAH calculation)
-
-    Returns:
-        ThresholdMetrics object
-    """
-    probs = torch.softmax(logits, dim=1)[:, 0]
-    predictions = (probs >= threshold).long()
-
-    # Confusion matrix
-    tp = ((predictions == 1) & (labels == 1)).sum().item()
-    tn = ((predictions == 0) & (labels == 0)).sum().item()
-    fp = ((predictions == 1) & (labels == 0)).sum().item()
-    fn = ((predictions == 0) & (labels == 1)).sum().item()
-
-    # Metrics
-    tpr = tp / max(tp + fn, 1)
-    fpr = fp / max(fp + tn, 1)
-    fnr = fn / max(fn + tp, 1)
-
-    precision = tp / max(tp + fp, 1)
-    f1 = 2 * (precision * tpr) / max(precision + tpr, 1e-9)
-    accuracy = (tp + tn) / max(tp + tn + fp + fn, 1)
-
-    # Calculate FAH if total_seconds provided
-    if total_seconds is not None:
-        total_hours = total_seconds / 3600.0
-        fah = fp / max(total_hours, 1e-9)
-    else:
-        fah = 0.0
-
-    return ThresholdMetrics(
-        threshold=threshold,
-        tpr=tpr,
-        fpr=fpr,
-        fnr=fnr,
-        precision=precision,
-        f1_score=f1,
-        fah=fah,
-        accuracy=accuracy
+    y = _to_numpy(labels).astype(np.int64)
+    probs = _probs_from_logits(logits, positive_index)
+    return _metrics_from_probs_at_threshold(
+        y, probs, threshold, total_seconds=total_seconds
     )
+
+
+def calculate_fah(
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    threshold: float,
+    *,
+    positive_index: int = 1,
+    total_seconds: float = 1.0,
+) -> float:
+    m = calculate_metrics_at_threshold(
+        logits,
+        labels,
+        threshold,
+        positive_index=positive_index,
+        total_seconds=total_seconds,
+    )
+    return float(m.fah if m.fah is not None else 0.0)
+
+
+def find_threshold_for_target_fah(
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    target_fah: float,
+    *,
+    positive_index: int = 1,
+    total_seconds: float = 1.0,
+    search_points: int = 2001,
+) -> ThresholdMetrics:
+    y = _to_numpy(labels).astype(np.int64)
+    probs = _probs_from_logits(logits, positive_index)
+    grid = np.linspace(0.0, 1.0, num=search_points, dtype=np.float64)
+
+    best_ok: Optional[ThresholdMetrics] = None
+    best_any: Optional[ThresholdMetrics] = None
+    best_any_fah = math.inf
+
+    for th in grid:
+        m = _metrics_from_probs_at_threshold(
+            y, probs, float(th), total_seconds=total_seconds
+        )
+        if m.fah is not None and m.fah < best_any_fah:
+            best_any_fah = m.fah
+            best_any = m
+        if m.fah is not None and m.fah <= target_fah:
+            if (
+                best_ok is None
+                or (m.tpr > best_ok.tpr)
+                or (m.tpr == best_ok.tpr and m.threshold > best_ok.threshold)
+            ):
+                best_ok = m
+
+    return best_ok if best_ok is not None else best_any
+
+
+def calculate_eer(
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    *,
+    positive_index: int = 1,
+    search_points: int = 2001,
+) -> Tuple[float, float]:
+    y = _to_numpy(labels).astype(np.int64)
+    probs = _probs_from_logits(logits, positive_index)
+    thresholds = np.linspace(0.0, 1.0, num=search_points, dtype=np.float64)
+
+    best_gap = math.inf
+    eer, eer_th = 1.0, 1.0
+    for th in thresholds:
+        m = _metrics_from_probs_at_threshold(y, probs, float(th))
+        fnr = _safe_div(m.fn, m.tp + m.fn)
+        gap = abs(m.fpr - fnr)
+        if gap < best_gap:
+            best_gap = gap
+            eer = 0.5 * (m.fpr + fnr)
+            eer_th = float(th)
+    return float(eer), float(eer_th)
+
+
+def calculate_pauc(
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    *,
+    positive_index: int = 1,
+    fpr_max: float = 0.1,
+) -> float:
+    y = _to_numpy(labels).astype(np.int64)
+    probs = _probs_from_logits(logits, positive_index)
+
+    if _HAS_SK:
+        fpr, tpr, _ = roc_curve(y, probs, drop_intermediate=False)
+        mask = fpr <= fpr_max
+        if not np.any(mask):
+            return 0.0
+        fpr_c = np.concatenate([[0.0], fpr[mask]])
+        tpr_c = np.concatenate([[0.0], tpr[mask]])
+        raw = auc(fpr_c, tpr_c)
+        return float(raw / fpr_max) if fpr_max > 0 else 0.0
+
+    thr = np.unique(np.concatenate(([0.0, 1.0], probs)))
+    roc = []
+    for t in thr:
+        m = _metrics_from_probs_at_threshold(y, probs, float(t))
+        roc.append((m.fpr, m.tpr))
+    roc = np.array(sorted(roc))
+    grid = np.linspace(0.0, fpr_max, num=200)
+    tprs = np.interp(grid, roc[:, 0], roc[:, 1], left=0.0, right=1.0)
+    raw = np.trapz(tprs, grid)
+    return float(raw / fpr_max) if fpr_max > 0 else 0.0
+
+
+def calculate_roc_auc(
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    *,
+    positive_index: int = 1,
+) -> Optional[float]:
+    y = _to_numpy(labels).astype(np.int64)
+    probs = _probs_from_logits(logits, positive_index)
+    if y.min() == y.max():
+        return None
+    if _HAS_SK:
+        try:
+            return float(roc_auc_score(y, probs))
+        except Exception:
+            return None
+    thr = np.linspace(0, 1, 501)
+    roc = []
+    for t in thr:
+        m = _metrics_from_probs_at_threshold(y, probs, float(t))
+        roc.append((m.fpr, m.tpr))
+    roc = np.array(sorted(roc))
+    return float(np.trapz(roc[:, 1], roc[:, 0]))
 
 
 def calculate_det_curve(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    num_points: int = 100
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calculate Detection Error Tradeoff (DET) curve
-
-    DET curve plots FNR vs FPR (both on normal deviate scale in practice)
-
-    Args:
-        logits: Model logits - REVERSED format [positive, negative]
-        labels: Ground truth labels
-        num_points: Number of points in curve
-
-    Returns:
-        Tuple of (fpr_points, fnr_points)
-    """
-    probs = torch.softmax(logits, dim=1)[:, 0].cpu().numpy()
-    labels_np = labels.cpu().numpy()
-
-    # Calculate ROC curve
-    fpr, tpr, _ = roc_curve(labels_np, probs)
-
-    # FNR = 1 - TPR
-    fnr = 1 - tpr
-
-    return fpr, fnr
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    *,
+    positive_index: int = 1,
+    points: int = 501,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    y = _to_numpy(labels).astype(np.int64)
+    probs = _probs_from_logits(logits, positive_index)
+    thresholds = np.linspace(0.0, 1.0, num=points, dtype=np.float64)
+    fprs, fnrs = [], []
+    for th in thresholds:
+        m = _metrics_from_probs_at_threshold(y, probs, float(th))
+        fnr = _safe_div(m.fn, m.tp + m.fn)
+        fprs.append(m.fpr)
+        fnrs.append(fnr)
+    return np.asarray(fprs), np.asarray(fnrs), thresholds
 
 
 def grid_search_threshold(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    total_seconds: float,
-    step: float = 0.0025
-) -> List[ThresholdMetrics]:
-    """
-    Perform grid search over thresholds
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    *,
+    positive_index: int = 1,
+    objective: str = "youden",  # "youden" | "f1" | "accuracy" | "tpr"
+    search_points: int = 2001,
+) -> ThresholdMetrics:
+    y = _to_numpy(labels).astype(np.int64)
+    probs = _probs_from_logits(logits, positive_index)
+    grid = np.linspace(0.0, 1.0, num=search_points, dtype=np.float64)
 
-    Args:
-        logits: Model logits
-        labels: Ground truth labels
-        total_seconds: Total audio duration
-        step: Grid step size
+    best: Optional[ThresholdMetrics] = None
+    best_score = -math.inf
 
-    Returns:
-        List of ThresholdMetrics for each threshold
-    """
-    thresholds = torch.linspace(0, 1, int(1/step) + 1)
-    metrics_list = []
+    for th in grid:
+        m = _metrics_from_probs_at_threshold(y, probs, float(th))
+        if objective == "f1":
+            score = m.f1
+        elif objective == "accuracy":
+            score = m.accuracy
+        elif objective == "tpr":
+            score = m.tpr
+        elif objective == "youden":
+            score = m.tpr - m.fpr
+        else:
+            raise ValueError(f"Unknown objective: {objective}")
 
-    for threshold in thresholds:
-        metrics = calculate_metrics_at_threshold(
-            logits, labels, threshold.item(), total_seconds
-        )
-        metrics_list.append(metrics)
+        if score > best_score or (
+            score == best_score and th > (best.threshold if best else -1)
+        ):
+            best_score = score
+            best = m
 
-    return metrics_list
+    return best
+
+
+# ------------------- back-compat convenience aggregators -------------------- #
 
 
 def find_operating_point(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    total_seconds: float,
-    target_fah: float,
-    step: float = 0.0025
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    *,
+    positive_index: int = 1,
+    target_fah: Optional[float] = None,
+    total_seconds: float = 1.0,
+    objective: str = "youden",
+    search_points: int = 2001,
 ) -> ThresholdMetrics:
     """
-    Find operating point that meets target FAH while maximizing recall
-
-    Args:
-        logits: Model logits
-        labels: Ground truth labels
-        total_seconds: Total audio duration
-        target_fah: Target false alarms per hour
-        step: Grid step size
-
-    Returns:
-        ThresholdMetrics at operating point
+    Back-compat wrapper used by UI. If target_fah is given, meet it with max TPR.
+    Else maximize objective.
     """
-    # Grid search
-    all_metrics = grid_search_threshold(logits, labels, total_seconds, step)
-
-    # Find best threshold that meets FAH constraint
-    best_metrics = None
-    best_tpr = 0.0
-
-    for metrics in all_metrics:
-        if metrics.fah <= target_fah and metrics.tpr > best_tpr:
-            best_metrics = metrics
-            best_tpr = metrics.tpr
-
-    if best_metrics is None:
-        logger.warning(
-            f"Could not find threshold meeting target FAH={target_fah}. "
-            f"Returning threshold with lowest FAH."
+    if target_fah is not None:
+        m = find_threshold_for_target_fah(
+            logits,
+            labels,
+            target_fah,
+            positive_index=positive_index,
+            total_seconds=total_seconds,
+            search_points=search_points,
         )
-        best_metrics = min(all_metrics, key=lambda m: m.fah)
-
-    return best_metrics
+        return m
+    return grid_search_threshold(
+        logits,
+        labels,
+        positive_index=positive_index,
+        objective=objective,
+        search_points=search_points,
+    )
 
 
 def calculate_comprehensive_metrics(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    total_seconds: float,
-    target_fah: float = 1.0
-) -> Dict:
+    logits: torch.Tensor | np.ndarray,
+    labels: torch.Tensor | np.ndarray,
+    *,
+    positive_index: int = 1,
+    threshold: Optional[float] = None,  # fixed threshold, else choose best
+    target_fah: Optional[float] = None,  # if set, overrides objective search
+    total_seconds: float = 1.0,
+    fpr_max: float = 0.1,
+    search_points: int = 2001,
+) -> Dict[str, object]:
     """
-    Calculate comprehensive metrics suite
-
-    Args:
-        logits: Model logits - REVERSED format [positive, negative]
-        labels: Ground truth labels
-        total_seconds: Total audio duration
-        target_fah: Target FAH for operating point
-
-    Returns:
-        Dictionary with all metrics
+    One-shot summary used by panels. Returns scalar metrics and operating point.
     """
-    logger.info("Calculating comprehensive metrics...")
+    y = _to_numpy(labels).astype(np.int64)
+    probs = _probs_from_logits(logits, positive_index)
 
-    # Standard ROC-AUC (use index 0 for positive class due to reversed logits)
-    try:
-        roc_auc = roc_auc_score(
-            labels.cpu().numpy(),
-            torch.softmax(logits, dim=1)[:, 0].cpu().numpy()
+    roc_auc = calculate_roc_auc(probs, y, positive_index=1)
+    eer, eer_th = calculate_eer(probs, y, positive_index=1, search_points=search_points)
+    pauc = calculate_pauc(probs, y, positive_index=1, fpr_max=fpr_max)
+
+    if threshold is not None:
+        op = _metrics_from_probs_at_threshold(
+            y, probs, float(threshold), total_seconds=total_seconds
         )
-    except:
-        roc_auc = 0.0
+    else:
+        op = find_operating_point(
+            probs,
+            y,
+            positive_index=1,
+            target_fah=target_fah,
+            total_seconds=total_seconds,
+            objective="youden",
+            search_points=search_points,
+        )
 
-    # EER
-    eer, eer_threshold = calculate_eer(logits, labels)
-
-    # pAUC (FPR <= 0.1)
-    pauc = calculate_pauc(logits, labels, max_fpr=0.1)
-
-    # Operating point at target FAH
-    operating_point = find_operating_point(
-        logits, labels, total_seconds, target_fah
-    )
-
-    # Metrics at EER threshold
-    eer_metrics = calculate_metrics_at_threshold(
-        logits, labels, eer_threshold, total_seconds
-    )
-
-    results = {
-        'roc_auc': roc_auc,
-        'eer': eer,
-        'eer_threshold': eer_threshold,
-        'pauc_at_fpr_0.1': pauc,
-        'operating_point': {
-            'threshold': operating_point.threshold,
-            'tpr': operating_point.tpr,
-            'fpr': operating_point.fpr,
-            'fnr': operating_point.fnr,
-            'precision': operating_point.precision,
-            'f1_score': operating_point.f1_score,
-            'fah': operating_point.fah,
-            'target_fah': target_fah
+    return {
+        "roc_auc": None if roc_auc is None else float(roc_auc),
+        "eer": float(eer),
+        "eer_threshold": float(eer_th),
+        "pauc_at_fpr_0.1": float(pauc),
+        "operating_point": {
+            "threshold": float(op.threshold),
+            "tpr": float(op.tpr),
+            "fpr": float(op.fpr),
+            "precision": float(op.precision),
+            "recall": float(op.recall),
+            "f1_score": float(op.f1),
+            "accuracy": float(op.accuracy),
+            "tp": int(op.tp),
+            "tn": int(op.tn),
+            "fp": int(op.fp),
+            "fn": int(op.fn),
+            "fah": None if op.fah is None else float(op.fah),
+            "fnr": None if op.fnr is None else float(op.fnr),
+            "target_fah": None if target_fah is None else float(target_fah),
         },
-        'eer_point': {
-            'threshold': eer_threshold,
-            'tpr': eer_metrics.tpr,
-            'fpr': eer_metrics.fpr,
-            'fnr': eer_metrics.fnr,
-            'fah': eer_metrics.fah
-        }
     }
 
-    logger.info(f"Comprehensive metrics calculated:")
-    logger.info(f"  ROC-AUC: {roc_auc:.4f}")
-    logger.info(f"  EER: {eer:.4f} @ threshold={eer_threshold:.4f}")
-    logger.info(f"  pAUC (FPR<=0.1): {pauc:.4f}")
-    logger.info(f"  Operating Point (FAH<={target_fah}):")
-    logger.info(f"    Threshold: {operating_point.threshold:.4f}")
-    logger.info(f"    TPR: {operating_point.tpr:.4f}")
-    logger.info(f"    FPR: {operating_point.fpr:.4f}")
-    logger.info(f"    FAH: {operating_point.fah:.2f}")
 
-    return results
+# ------------------------------- sanity check -------------------------------- #
 
 
-if __name__ == "__main__":
-    # Test advanced metrics
-    print("Advanced Metrics Test")
-    print("=" * 60)
+def sanity_check_positive_index(
+    logits: torch.Tensor | np.ndarray, positive_index: int = 1
+) -> bool:
+    """
+    Logits must be (N,2) or probs (N,). Average prob must lie in (0,1).
+    """
+    probs = _probs_from_logits(logits, positive_index)
+    mean_p = float(np.clip(probs.mean(), 1e-7, 1 - 1e-7))
+    return 0.0 < mean_p < 1.0
 
-    # Create dummy data
-    num_samples = 1000
-    num_positive = 200
 
-    # Simulate logits (random but biased toward correct class)
-    logits = torch.randn(num_samples, 2)
-    labels = torch.cat([
-        torch.ones(num_positive),
-        torch.zeros(num_samples - num_positive)
-    ]).long()
-
-    # Shuffle
-    perm = torch.randperm(num_samples)
-    logits = logits[perm]
-    labels = labels[perm]
-
-    # Bias logits toward correct answers
-    for i in range(num_samples):
-        logits[i, labels[i]] += 2.0
-
-    print(f"Test data created:")
-    print(f"  Samples: {num_samples}")
-    print(f"  Positive: {num_positive}")
-    print(f"  Negative: {num_samples - num_positive}")
-
-    # Assume 10 hours of audio
-    total_seconds = 10 * 3600
-
-    # Test FAH calculation
-    print(f"\n1. Testing FAH calculation...")
-    fah = calculate_fah(logits, labels, threshold=0.5, total_seconds=total_seconds)
-    print(f"  FAH @ threshold=0.5: {fah:.2f}")
-
-    # Test threshold finding for target FAH
-    print(f"\n2. Finding threshold for target FAH=1.0...")
-    threshold, tpr = find_threshold_for_target_fah(
-        logits, labels, total_seconds, target_fah=1.0
-    )
-    print(f"  Threshold: {threshold:.4f}")
-    print(f"  TPR: {tpr:.4f}")
-
-    # Test EER
-    print(f"\n3. Calculating EER...")
-    eer, eer_threshold = calculate_eer(logits, labels)
-    print(f"  EER: {eer:.4f}")
-    print(f"  EER threshold: {eer_threshold:.4f}")
-
-    # Test pAUC
-    print(f"\n4. Calculating pAUC...")
-    pauc = calculate_pauc(logits, labels, max_fpr=0.1)
-    print(f"  pAUC (FPR<=0.1): {pauc:.4f}")
-
-    # Test operating point finding
-    print(f"\n5. Finding operating point...")
-    op_metrics = find_operating_point(
-        logits, labels, total_seconds, target_fah=1.0
-    )
-    print(f"  Threshold: {op_metrics.threshold:.4f}")
-    print(f"  TPR: {op_metrics.tpr:.4f}")
-    print(f"  FPR: {op_metrics.fpr:.4f}")
-    print(f"  FAH: {op_metrics.fah:.2f}")
-    print(f"  F1: {op_metrics.f1_score:.4f}")
-
-    # Test comprehensive metrics
-    print(f"\n6. Calculating comprehensive metrics...")
-    comp_metrics = calculate_comprehensive_metrics(
-        logits, labels, total_seconds, target_fah=1.0
-    )
-
-    print("\n✅ Advanced metrics test complete")
+__all__ = [
+    "ThresholdMetrics",
+    "calculate_metrics_at_threshold",
+    "calculate_fah",
+    "find_threshold_for_target_fah",
+    "calculate_eer",
+    "calculate_pauc",
+    "calculate_roc_auc",
+    "calculate_det_curve",
+    "grid_search_threshold",
+    "find_operating_point",
+    "calculate_comprehensive_metrics",
+    "sanity_check_positive_index",
+]

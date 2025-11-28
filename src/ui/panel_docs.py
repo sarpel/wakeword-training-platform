@@ -16,12 +16,15 @@ def create_docs_panel() -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 📚 Documentation & Knowledge Base")
-        gr.Markdown("Complete guide to wakeword training, best practices, and troubleshooting.")
+        gr.Markdown(
+            "Complete guide to wakeword training, best practices, and troubleshooting."
+        )
 
         with gr.Tabs():
             # Introduction
             with gr.TabItem("🏠 Introduction"):
-                gr.Markdown("""
+                gr.Markdown(
+                    """
 # Welcome to Wakeword Training Platform
 
 ## What is a Wakeword?
@@ -72,11 +75,13 @@ This platform provides a complete pipeline for training custom wakeword detectio
 6. Export to ONNX in Panel 5
 
 Let's get started! 🚀
-                """)
+                """
+                )
 
             # Dataset Preparation
             with gr.TabItem("📊 Dataset Preparation"):
-                gr.Markdown("""
+                gr.Markdown(
+                    """
 # Dataset Preparation Guide
 
 ## Dataset Types
@@ -202,11 +207,13 @@ dataset_root/
 | Unique Speakers | 20 | 50 | 200+ |
 | Recording Hours | 2h | 10h | 50h+ |
 | Pos:Neg Ratio | 1:5 | 1:8 | 1:10 |
-                """)
+                """
+                )
 
             # Training Configuration
             with gr.TabItem("⚙️ Configuration Guide"):
-                gr.Markdown("""
+                gr.Markdown(
+                    """
 # Training Configuration Guide
 
 ## Basic Parameters
@@ -379,11 +386,13 @@ dataset_root/
 - MobileNetV3
 - Optimized for size
 - Quantization-aware training
-                """)
+                """
+                )
 
             # Training Process
             with gr.TabItem("🚀 Training Process"):
-                gr.Markdown("""
+                gr.Markdown(
+                    """
 # Training Process Guide
 
 ## Metrics Explained
@@ -550,11 +559,13 @@ Epoch | Train Loss | Val Loss | Train Acc | Val Acc
 5. **Test Thoroughly**: Final test on unseen test set
 6. **Real-World Testing**: Test with actual use cases
 7. **Iterate**: Training is iterative, expect multiple runs
-                """)
+                """
+                )
 
             # Evaluation & Deployment
             with gr.TabItem("🎯 Evaluation Guide"):
-                gr.Markdown("""
+                gr.Markdown(
+                    """
 # Evaluation & Deployment Guide
 
 ## Evaluation Strategies
@@ -718,11 +729,13 @@ Epoch | Train Loss | Val Loss | Train Acc | Val Acc
 ✅ Monitoring & logging in place
 ✅ A/B testing plan ready
 ✅ Rollback strategy defined
-                """)
+                """
+                )
 
             # Troubleshooting
             with gr.TabItem("🔧 Troubleshooting"):
-                gr.Markdown("""
+                gr.Markdown(
+                    """
 # Troubleshooting Guide
 
 ## Installation Issues
@@ -1018,11 +1031,13 @@ If issues persist:
 ### "ValueError: Expected input to be 2D, got 3D"
 - **Cause**: Shape mismatch
 - **Fix**: Check model input requirements
-                """)
+                """
+                )
 
             # Glossary
             with gr.TabItem("📖 Glossary"):
-                gr.Markdown("""
+                gr.Markdown(
+                    """
 # Glossary
 
 ## A
@@ -1171,10 +1186,13 @@ If issues persist:
 - **RNN**: Recurrent Neural Network
 - **LSTM**: Long Short-Term Memory
 - **GRU**: Gated Recurrent Unit
-                """)
+                """
+                )
 
         gr.Markdown("---")
-        gr.Markdown("*This documentation is comprehensive. Use the tabs above to navigate topics.*")
+        gr.Markdown(
+            "*This documentation is comprehensive. Use the tabs above to navigate topics.*"
+        )
 
     return panel
 

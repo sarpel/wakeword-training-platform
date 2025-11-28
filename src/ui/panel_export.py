@@ -5,25 +5,27 @@ Panel 5: ONNX Export
 - Model validation and benchmarking
 - Performance comparison
 """
-import gradio as gr
-import torch
-from pathlib import Path
-from typing import List, Tuple, Dict, Optional
-import pandas as pd
-import logging
 import time
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-from src.export import (
+import gradio as gr
+import pandas as pd
+import structlog
+import torch
+
+from src.export.onnx_exporter import (
     export_model_to_onnx,
     validate_onnx_model,
-    benchmark_onnx_model
+    benchmark_onnx_model,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ExportState:
     """Global export state manager"""
+
     def __init__(self):
         self.last_export_path: Optional[Path] = None
         self.last_checkpoint: Optional[Path] = None
@@ -66,7 +68,8 @@ def export_to_onnx(
     opset_version: int,
     dynamic_batch: bool,
     quantize_fp16: bool,
-    quantize_int8: bool
+    quantize_int8: bool,
+    export_tflite: bool = False,
 ) -> Tuple[str, str]:
     """
     Export PyTorch model to ONNX
@@ -78,6 +81,7 @@ def export_to_onnx(
         dynamic_batch: Enable dynamic batch size
         quantize_fp16: Apply FP16 quantization
         quantize_int8: Apply INT8 quantization
+        export_tflite: Export to TFLite (via onnx2tf)
 
     Returns:
         Tuple of (status_message, log_message)
@@ -113,6 +117,7 @@ def export_to_onnx(
         log += f"Dynamic batch: {dynamic_batch}\n"
         log += f"FP16 quantization: {quantize_fp16}\n"
         log += f"INT8 quantization: {quantize_int8}\n"
+        log += f"TFLite Export: {export_tflite}\n"
         log += "-" * 60 + "\n"
 
         # Export
@@ -123,11 +128,12 @@ def export_to_onnx(
             dynamic_batch=dynamic_batch,
             quantize_fp16=quantize_fp16,
             quantize_int8=quantize_int8,
-            device='cuda'
+            export_tflite=export_tflite,
+            device="cuda",
         )
 
-        if not results.get('success', False):
-            error_msg = results.get('error', 'Unknown error')
+        if not results.get("success", False):
+            error_msg = results.get("error", "Unknown error")
             log += f"❌ Export failed: {error_msg}\n"
             return f"❌ Export failed: {error_msg}", log
 
@@ -141,17 +147,24 @@ def export_to_onnx(
         log += f"   File size: {results['file_size_mb']:.2f} MB\n"
         log += f"   Path: {output_path}\n"
 
-        if quantize_fp16 and 'fp16_path' in results:
+        if quantize_fp16 and "fp16_path" in results:
             log += f"\n✅ FP16 model exported\n"
             log += f"   File size: {results['fp16_size_mb']:.2f} MB\n"
             log += f"   Reduction: {results['fp16_reduction']:.1f}%\n"
             log += f"   Path: {results['fp16_path']}\n"
 
-        if quantize_int8 and 'int8_path' in results:
+        if quantize_int8 and "int8_path" in results:
             log += f"\n✅ INT8 model exported\n"
             log += f"   File size: {results['int8_size_mb']:.2f} MB\n"
             log += f"   Reduction: {results['int8_reduction']:.1f}%\n"
             log += f"   Path: {results['int8_path']}\n"
+
+        if export_tflite and results.get("tflite_success", False):
+            log += f"\n✅ TFLite model exported\n"
+            log += f"   File size: {results['tflite_size_mb']:.2f} MB\n"
+            log += f"   Path: {results['tflite_path']}\n"
+        elif export_tflite:
+            log += f"\n❌ TFLite export failed: {results.get('tflite_error')}\n"
 
         log += f"\n" + "=" * 60 + "\n"
         log += f"✅ Export complete!\n"
@@ -160,11 +173,14 @@ def export_to_onnx(
         status += f"Model: {results['architecture']}\n"
         status += f"File: {output_filename} ({results['file_size_mb']:.2f} MB)"
 
-        if quantize_fp16 and 'fp16_path' in results:
+        if quantize_fp16 and "fp16_path" in results:
             status += f"\nFP16: {results['fp16_size_mb']:.2f} MB ({results['fp16_reduction']:.1f}% smaller)"
 
-        if quantize_int8 and 'int8_path' in results:
+        if quantize_int8 and "int8_path" in results:
             status += f"\nINT8: {results['int8_size_mb']:.2f} MB ({results['int8_reduction']:.1f}% smaller)"
+
+        if export_tflite and results.get("tflite_success", False):
+            status += f"\nTFLite: {results['tflite_size_mb']:.2f} MB"
 
         logger.info("Export complete")
 
@@ -198,8 +214,8 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         logger.info(f"Validating ONNX model: {export_state.last_export_path}")
 
         # Load PyTorch model for comparison
-        checkpoint = torch.load(export_state.last_checkpoint, map_location='cuda')
-        config_data = checkpoint['config']
+        checkpoint = torch.load(export_state.last_checkpoint, map_location="cuda")
+        config_data = checkpoint["config"]
 
         # Convert config dict to WakewordConfig object if needed
         from src.config.defaults import WakewordConfig
@@ -216,10 +232,10 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
             architecture=config.model.architecture,
             num_classes=config.model.num_classes,
             pretrained=False,
-            dropout=config.model.dropout
+            dropout=config.model.dropout,
         )
-        pytorch_model.load_state_dict(checkpoint['model_state_dict'])
-        pytorch_model.to('cuda')
+        pytorch_model.load_state_dict(checkpoint["model_state_dict"])
+        pytorch_model.to("cuda")
         pytorch_model.eval()
 
         # Create sample input
@@ -231,37 +247,41 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         n_samples = int(sample_rate * duration)
         n_frames = n_samples // hop_length + 1
 
-        sample_input = torch.randn(1, 1, n_mels, n_frames).to('cuda')
+        sample_input = torch.randn(1, 1, n_mels, n_frames).to("cuda")
 
         # Validate ONNX model
         validation_results = validate_onnx_model(
             onnx_path=export_state.last_export_path,
             pytorch_model=pytorch_model,
             sample_input=sample_input,
-            device='cuda'
+            device="cuda",
         )
 
         export_state.validation_results = validation_results
 
         # Build model info
         model_info = {
-            "Status": "✅ Valid" if validation_results['valid'] else "❌ Invalid",
+            "Status": "✅ Valid" if validation_results["valid"] else "❌ Invalid",
             "File Size": f"{validation_results.get('file_size_mb', 0):.2f} MB",
-            "Graph Nodes": validation_results.get('graph', 0),
-            "Input Shape": str(validation_results.get('inputs', [])),
-            "Output Shape": str(validation_results.get('outputs', [])),
+            "Graph Nodes": validation_results.get("graph", 0),
+            "Input Shape": str(validation_results.get("inputs", [])),
+            "Output Shape": str(validation_results.get("outputs", [])),
         }
 
-        if validation_results.get('inference_success', False):
+        if validation_results.get("inference_success", False):
             model_info["Inference"] = "✅ Success"
 
-        if validation_results.get('numerically_equivalent', False):
-            model_info["Numerical Match"] = f"✅ Max diff: {validation_results['max_difference']:.6f}"
-        elif 'max_difference' in validation_results:
-            model_info["Numerical Match"] = f"⚠️ Max diff: {validation_results['max_difference']:.6f}"
+        if validation_results.get("numerically_equivalent", False):
+            model_info[
+                "Numerical Match"
+            ] = f"✅ Max diff: {validation_results['max_difference']:.6f}"
+        elif "max_difference" in validation_results:
+            model_info[
+                "Numerical Match"
+            ] = f"⚠️ Max diff: {validation_results['max_difference']:.6f}"
 
         # Benchmark if validation successful
-        if validation_results.get('valid', False):
+        if validation_results.get("valid", False):
             logger.info("Running performance benchmark...")
 
             benchmark_results = benchmark_onnx_model(
@@ -269,7 +289,7 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
                 pytorch_model=pytorch_model,
                 sample_input=sample_input,
                 num_runs=100,
-                device='cuda'
+                device="cuda",
             )
 
             export_state.benchmark_results = benchmark_results
@@ -277,17 +297,21 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
             # Build performance comparison table
             perf_data = []
 
-            perf_data.append({
-                'Framework': 'PyTorch (FP32)',
-                'Inference Time (ms)': f"{benchmark_results['pytorch_time_ms']:.2f}",
-                'Speedup': '1.00x'
-            })
+            perf_data.append(
+                {
+                    "Framework": "PyTorch (FP32)",
+                    "Inference Time (ms)": f"{benchmark_results['pytorch_time_ms']:.2f}",
+                    "Speedup": "1.00x",
+                }
+            )
 
-            perf_data.append({
-                'Framework': 'ONNX',
-                'Inference Time (ms)': f"{benchmark_results['onnx_time_ms']:.2f}",
-                'Speedup': f"{benchmark_results['speedup']:.2f}x"
-            })
+            perf_data.append(
+                {
+                    "Framework": "ONNX",
+                    "Inference Time (ms)": f"{benchmark_results['onnx_time_ms']:.2f}",
+                    "Speedup": f"{benchmark_results['speedup']:.2f}x",
+                }
+            )
 
             perf_df = pd.DataFrame(perf_data)
 
@@ -321,7 +345,10 @@ def download_onnx_model() -> Tuple[str, Optional[str]]:
 
     logger.info(f"Preparing download: {export_state.last_export_path}")
 
-    return str(export_state.last_export_path), f"✅ Ready to download: {export_state.last_export_path.name}"
+    return (
+        str(export_state.last_export_path),
+        f"✅ Ready to download: {export_state.last_export_path.name}",
+    )
 
 
 def create_export_panel() -> gr.Blocks:
@@ -333,7 +360,9 @@ def create_export_panel() -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 📦 ONNX Export")
-        gr.Markdown("Convert trained PyTorch models to ONNX format for deployment with quantization options.")
+        gr.Markdown(
+            "Convert trained PyTorch models to ONNX format for deployment with quantization options."
+        )
 
         gr.Markdown("### Select Model Checkpoint")
 
@@ -342,7 +371,9 @@ def create_export_panel() -> gr.Blocks:
                 choices=get_available_checkpoints(),
                 label="Model Checkpoint",
                 info="Select a trained model to export",
-                value=get_available_checkpoints()[0] if get_available_checkpoints()[0] != "No checkpoints available" else None
+                value=get_available_checkpoints()[0]
+                if get_available_checkpoints()[0] != "No checkpoints available"
+                else None,
             )
             refresh_checkpoints_btn = gr.Button("🔄 Refresh", scale=0)
 
@@ -358,20 +389,20 @@ def create_export_panel() -> gr.Blocks:
                     label="Output Filename",
                     value="wakeword_model.onnx",
                     placeholder="model.onnx",
-                    info="Exported model filename"
+                    info="Exported model filename",
                 )
 
                 opset_version = gr.Dropdown(
                     choices=[11, 12, 13, 14, 15, 16],
                     value=14,
                     label="ONNX Opset Version",
-                    info="Version 14 recommended for best compatibility"
+                    info="Version 14 recommended for best compatibility",
                 )
 
                 dynamic_batch = gr.Checkbox(
                     label="Dynamic Batch Size",
                     value=True,
-                    info="Allow variable batch size during inference (recommended)"
+                    info="Allow variable batch size during inference (recommended)",
                 )
 
             with gr.Column():
@@ -380,16 +411,24 @@ def create_export_panel() -> gr.Blocks:
                 quantize_fp16 = gr.Checkbox(
                     label="FP16 Quantization (Float16)",
                     value=False,
-                    info="Half precision: ~50% smaller, minimal accuracy loss"
+                    info="Half precision: ~50% smaller, minimal accuracy loss",
                 )
 
                 quantize_int8 = gr.Checkbox(
                     label="INT8 Quantization (8-bit Integer)",
                     value=False,
-                    info="8-bit: ~75% smaller, slight accuracy loss"
+                    info="8-bit: ~75% smaller, slight accuracy loss",
+                )
+                
+                export_tflite = gr.Checkbox(
+                    label="Export to TFLite (via onnx2tf)",
+                    value=False,
+                    info="Convert ONNX to TFLite for embedded devices",
                 )
 
-                gr.Markdown("**Note**: Quantization reduces model size and improves inference speed")
+                gr.Markdown(
+                    "**Note**: Quantization reduces model size and improves inference speed"
+                )
 
         with gr.Row():
             export_btn = gr.Button("🚀 Export to ONNX", variant="primary", scale=2)
@@ -404,7 +443,7 @@ def create_export_panel() -> gr.Blocks:
                 label="Status",
                 value="Ready to export. Select a checkpoint and configure settings above.",
                 lines=5,
-                interactive=False
+                interactive=False,
             )
 
         with gr.Row():
@@ -413,7 +452,7 @@ def create_export_panel() -> gr.Blocks:
                 lines=12,
                 value="Configure export settings and click 'Export to ONNX' to begin...\n",
                 interactive=False,
-                autoscroll=True
+                autoscroll=True,
             )
 
         gr.Markdown("---")
@@ -425,7 +464,7 @@ def create_export_panel() -> gr.Blocks:
                 gr.Markdown("**Model Information**")
                 model_info = gr.JSON(
                     label="ONNX Model Details",
-                    value={"status": "Export a model to see details"}
+                    value={"status": "Export a model to see details"},
                 )
 
             with gr.Column():
@@ -433,14 +472,11 @@ def create_export_panel() -> gr.Blocks:
                 performance_comparison = gr.Dataframe(
                     headers=["Framework", "Inference Time (ms)", "Speedup"],
                     label="PyTorch vs ONNX Benchmark",
-                    interactive=False
+                    interactive=False,
                 )
 
         with gr.Row():
-            download_file = gr.File(
-                label="Download ONNX Model",
-                visible=False
-            )
+            download_file = gr.File(label="Download ONNX Model", visible=False)
             download_btn = gr.Button("⬇️ Download ONNX Model", variant="primary")
 
         # Event handlers
@@ -448,12 +484,13 @@ def create_export_panel() -> gr.Blocks:
             checkpoints = get_available_checkpoints()
             return gr.update(
                 choices=checkpoints,
-                value=checkpoints[0] if checkpoints[0] != "No checkpoints available" else None
+                value=checkpoints[0]
+                if checkpoints[0] != "No checkpoints available"
+                else None,
             )
 
         refresh_checkpoints_btn.click(
-            fn=refresh_checkpoints_handler,
-            outputs=[checkpoint_selector]
+            fn=refresh_checkpoints_handler, outputs=[checkpoint_selector]
         )
 
         export_btn.click(
@@ -464,15 +501,16 @@ def create_export_panel() -> gr.Blocks:
                 opset_version,
                 dynamic_batch,
                 quantize_fp16,
-                quantize_int8
+                quantize_int8,
+                export_tflite,
             ],
-            outputs=[export_status, export_log]
+            outputs=[export_status, export_log],
         )
 
         validate_btn.click(
             fn=validate_exported_model,
             inputs=[output_filename],
-            outputs=[model_info, performance_comparison]
+            outputs=[model_info, performance_comparison],
         )
 
         def download_handler():
@@ -483,8 +521,7 @@ def create_export_panel() -> gr.Blocks:
                 return None, status, gr.update(visible=False)
 
         download_btn.click(
-            fn=download_handler,
-            outputs=[download_file, export_status, download_file]
+            fn=download_handler, outputs=[download_file, export_status, download_file]
         )
 
     return panel

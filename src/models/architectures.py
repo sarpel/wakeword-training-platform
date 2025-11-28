@@ -2,11 +2,11 @@
 Model Architectures for Wakeword Detection
 Supports: ResNet18, MobileNetV3, LSTM, GRU, TCN
 """
+import logging
+
 import torch
 import torch.nn as nn
 import torchvision.models as models
-from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class ResNet18Wakeword(nn.Module):
         num_classes: int = 2,
         pretrained: bool = False,
         dropout: float = 0.3,
-        input_channels: int = 1
+        input_channels: int = 1,
     ):
         """
         Initialize ResNet18 for wakeword detection
@@ -41,15 +41,13 @@ class ResNet18Wakeword(nn.Module):
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
             self.resnet.conv1 = nn.Conv2d(
-                input_channels, 64,
-                kernel_size=7, stride=2, padding=3, bias=False
+                input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False
             )
 
         # Replace final fully connected layer
         num_features = self.resnet.fc.in_features
         self.resnet.fc = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(num_features, num_classes)
+            nn.Dropout(dropout), nn.Linear(num_features, num_classes)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -73,7 +71,7 @@ class MobileNetV3Wakeword(nn.Module):
         num_classes: int = 2,
         pretrained: bool = False,
         dropout: float = 0.3,
-        input_channels: int = 1
+        input_channels: int = 1,
     ):
         """
         Initialize MobileNetV3 for wakeword detection
@@ -97,8 +95,7 @@ class MobileNetV3Wakeword(nn.Module):
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
             self.mobilenet.features[0][0] = nn.Conv2d(
-                input_channels, 16,
-                kernel_size=3, stride=2, padding=1, bias=False
+                input_channels, 16, kernel_size=3, stride=2, padding=1, bias=False
             )
 
         # Replace classifier
@@ -107,7 +104,7 @@ class MobileNetV3Wakeword(nn.Module):
             nn.Linear(num_features, 1024),
             nn.Hardswish(),
             nn.Dropout(dropout),
-            nn.Linear(1024, num_classes)
+            nn.Linear(1024, num_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -133,7 +130,7 @@ class LSTMWakeword(nn.Module):
         num_layers: int = 2,
         num_classes: int = 2,
         bidirectional: bool = True,
-        dropout: float = 0.3
+        dropout: float = 0.3,
     ):
         """
         Initialize LSTM for wakeword detection
@@ -159,14 +156,13 @@ class LSTMWakeword(nn.Module):
             num_layers=num_layers,
             batch_first=True,
             dropout=dropout if num_layers > 1 else 0,
-            bidirectional=bidirectional
+            bidirectional=bidirectional,
         )
 
         # Output layer
         lstm_output_size = hidden_size * 2 if bidirectional else hidden_size
         self.fc = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(lstm_output_size, num_classes)
+            nn.Dropout(dropout), nn.Linear(lstm_output_size, num_classes)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -205,7 +201,7 @@ class GRUWakeword(nn.Module):
         num_layers: int = 2,
         num_classes: int = 2,
         bidirectional: bool = True,
-        dropout: float = 0.3
+        dropout: float = 0.3,
     ):
         """
         Initialize GRU for wakeword detection
@@ -231,14 +227,13 @@ class GRUWakeword(nn.Module):
             num_layers=num_layers,
             batch_first=True,
             dropout=dropout if num_layers > 1 else 0,
-            bidirectional=bidirectional
+            bidirectional=bidirectional,
         )
 
         # Output layer
         gru_output_size = hidden_size * 2 if bidirectional else hidden_size
         self.fc = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(gru_output_size, num_classes)
+            nn.Dropout(dropout), nn.Linear(gru_output_size, num_classes)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -275,7 +270,7 @@ class TemporalConvNet(nn.Module):
         input_channels: int = 40,
         num_channels: list = [64, 128, 256],
         kernel_size: int = 3,
-        dropout: float = 0.3
+        dropout: float = 0.3,
     ):
         """
         Initialize TCN
@@ -292,16 +287,19 @@ class TemporalConvNet(nn.Module):
         num_levels = len(num_channels)
 
         for i in range(num_levels):
-            dilation = 2 ** i
+            dilation = 2**i
             in_channels = input_channels if i == 0 else num_channels[i - 1]
             out_channels = num_channels[i]
 
             layers.append(
                 TemporalBlock(
-                    in_channels, out_channels,
-                    kernel_size, stride=1, dilation=dilation,
+                    in_channels,
+                    out_channels,
+                    kernel_size,
+                    stride=1,
+                    dilation=dilation,
                     padding=(kernel_size - 1) * dilation,
-                    dropout=dropout
+                    dropout=dropout,
                 )
             )
 
@@ -331,27 +329,39 @@ class TemporalBlock(nn.Module):
         stride: int,
         dilation: int,
         padding: int,
-        dropout: float = 0.3
+        dropout: float = 0.3,
     ):
         """Initialize temporal block"""
         super().__init__()
 
         self.conv1 = nn.Conv1d(
-            in_channels, out_channels, kernel_size,
-            stride=stride, padding=padding, dilation=dilation
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
         )
         self.relu1 = nn.ReLU()
         self.dropout1 = nn.Dropout(dropout)
 
         self.conv2 = nn.Conv1d(
-            out_channels, out_channels, kernel_size,
-            stride=stride, padding=padding, dilation=dilation
+            out_channels,
+            out_channels,
+            kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
         )
         self.relu2 = nn.ReLU()
         self.dropout2 = nn.Dropout(dropout)
 
         # Downsample for residual connection if needed
-        self.downsample = nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels else None
+        self.downsample = (
+            nn.Conv1d(in_channels, out_channels, 1)
+            if in_channels != out_channels
+            else None
+        )
         self.relu = nn.ReLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -365,7 +375,7 @@ class TemporalBlock(nn.Module):
         out = self.dropout2(out)
 
         # Trim to match input size
-        out = out[:, :, :x.size(2)]
+        out = out[:, :, : x.size(2)]
 
         # Residual connection
         res = x if self.downsample is None else self.downsample(x)
@@ -381,7 +391,7 @@ class TCNWakeword(nn.Module):
         num_channels: list = [64, 128, 256],
         kernel_size: int = 3,
         num_classes: int = 2,
-        dropout: float = 0.3
+        dropout: float = 0.3,
     ):
         """
         Initialize TCN for wakeword detection
@@ -399,7 +409,7 @@ class TCNWakeword(nn.Module):
             input_channels=input_size,
             num_channels=num_channels,
             kernel_size=kernel_size,
-            dropout=dropout
+            dropout=dropout,
         )
 
         # Global average pooling and classifier
@@ -407,7 +417,7 @@ class TCNWakeword(nn.Module):
             nn.AdaptiveAvgPool1d(1),
             nn.Flatten(),
             nn.Dropout(dropout),
-            nn.Linear(num_channels[-1], num_classes)
+            nn.Linear(num_channels[-1], num_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -434,11 +444,52 @@ class TCNWakeword(nn.Module):
         return output
 
 
+class TinyConvWakeword(nn.Module):
+    """
+    Tiny CNN for embedded devices (ESP32/Arduino)
+    Size: ~50KB parameters
+    Compute: ~2M FLOPs
+    """
+    def __init__(self, num_classes=2, input_channels=1, dropout=0.3, **kwargs):
+        super().__init__()
+        self.features = nn.Sequential(
+            # Block 1
+            nn.Conv2d(input_channels, 16, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True),
+            
+            # Block 2
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            
+            # Block 3 (Depthwise Separable mostly for efficiency, here just standard small)
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            
+            # Block 4
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+        )
+        
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(dropout),
+            nn.Linear(64, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.pool(x)
+        x = self.classifier(x)
+        return x
+
+
 def create_model(
-    architecture: str,
-    num_classes: int = 2,
-    pretrained: bool = False,
-    **kwargs
+    architecture: str, num_classes: int = 2, pretrained: bool = False, **kwargs
 ) -> nn.Module:
     """
     Factory function to create models
@@ -461,45 +512,52 @@ def create_model(
         return ResNet18Wakeword(
             num_classes=num_classes,
             pretrained=pretrained,
-            dropout=kwargs.get('dropout', 0.3),
-            input_channels=kwargs.get('input_channels', 1)
+            dropout=kwargs.get("dropout", 0.3),
+            input_channels=kwargs.get("input_channels", 1),
         )
 
     elif architecture == "mobilenetv3":
         return MobileNetV3Wakeword(
             num_classes=num_classes,
             pretrained=pretrained,
-            dropout=kwargs.get('dropout', 0.3),
-            input_channels=kwargs.get('input_channels', 1)
+            dropout=kwargs.get("dropout", 0.3),
+            input_channels=kwargs.get("input_channels", 1),
         )
 
     elif architecture == "lstm":
         return LSTMWakeword(
-            input_size=kwargs.get('input_size', 40),
-            hidden_size=kwargs.get('hidden_size', 128),
-            num_layers=kwargs.get('num_layers', 2),
+            input_size=kwargs.get("input_size", 40),
+            hidden_size=kwargs.get("hidden_size", 128),
+            num_layers=kwargs.get("num_layers", 2),
             num_classes=num_classes,
-            bidirectional=kwargs.get('bidirectional', True),
-            dropout=kwargs.get('dropout', 0.3)
+            bidirectional=kwargs.get("bidirectional", True),
+            dropout=kwargs.get("dropout", 0.3),
         )
 
     elif architecture == "gru":
         return GRUWakeword(
-            input_size=kwargs.get('input_size', 40),
-            hidden_size=kwargs.get('hidden_size', 128),
-            num_layers=kwargs.get('num_layers', 2),
+            input_size=kwargs.get("input_size", 40),
+            hidden_size=kwargs.get("hidden_size", 128),
+            num_layers=kwargs.get("num_layers", 2),
             num_classes=num_classes,
-            bidirectional=kwargs.get('bidirectional', True),
-            dropout=kwargs.get('dropout', 0.3)
+            bidirectional=kwargs.get("bidirectional", True),
+            dropout=kwargs.get("dropout", 0.3),
         )
 
     elif architecture == "tcn":
         return TCNWakeword(
-            input_size=kwargs.get('input_size', 40),
-            num_channels=kwargs.get('num_channels', [64, 128, 256]),
-            kernel_size=kwargs.get('kernel_size', 3),
+            input_size=kwargs.get("input_size", 40),
+            num_channels=kwargs.get("num_channels", [64, 128, 256]),
+            kernel_size=kwargs.get("kernel_size", 3),
             num_classes=num_classes,
-            dropout=kwargs.get('dropout', 0.3)
+            dropout=kwargs.get("dropout", 0.3),
+        )
+
+    elif architecture == "tiny_conv":
+        return TinyConvWakeword(
+            num_classes=num_classes,
+            input_channels=kwargs.get("input_channels", 1),
+            dropout=kwargs.get("dropout", 0.3),
         )
 
     else:

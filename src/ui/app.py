@@ -2,10 +2,16 @@
 Main Gradio Application
 Wakeword Training Platform with 6 panels
 """
-import gradio as gr
-import sys
+import warnings
+
+# Suppress specific warnings
+warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
+
 import asyncio
+import sys
 from pathlib import Path
+
+import gradio as gr
 
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -14,14 +20,14 @@ if sys.platform.startswith("win"):
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.cuda_utils import enforce_cuda, get_cuda_validator
-from src.config.logger import get_logger
-from src.ui.panel_dataset import create_dataset_panel
+from src.config.cuda_utils import enforce_cuda
+from src.config.logger import get_data_logger, setup_logging
 from src.ui.panel_config import create_config_panel
-from src.ui.panel_training import create_training_panel
+from src.ui.panel_dataset import create_dataset_panel
+from src.ui.panel_docs import create_docs_panel
 from src.ui.panel_evaluation import create_evaluation_panel
 from src.ui.panel_export import create_export_panel
-from src.ui.panel_docs import create_docs_panel
+from src.ui.panel_training import create_training_panel
 
 
 def suppress_windows_asyncio_errors():
@@ -32,15 +38,19 @@ def suppress_windows_asyncio_errors():
     shutdown already-closed sockets (common with WebSocket disconnects).
     This handler suppresses these specific harmless errors to keep terminal clean.
     """
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
+
         def handle_exception(loop, context):
             # Check if this is the specific harmless error
-            exception = context.get('exception')
+            exception = context.get("exception")
             if isinstance(exception, ConnectionResetError):
                 # Check if it's from _ProactorBasePipeTransport
-                message = context.get('message', '')
-                if '_ProactorBasePipeTransport' in message or \
-                   '_call_connection_lost' in str(context.get('source_traceback', '')):
+                message = context.get("message", "")
+                if (
+                    "_ProactorBasePipeTransport" in message
+                    or "_call_connection_lost"
+                    in str(context.get("source_traceback", ""))
+                ):
                     # Silently ignore this error
                     return
 
@@ -74,7 +84,7 @@ def find_available_port(start_port: int = 7860, end_port: int = 7870) -> int:
     for port in range(start_port, end_port + 1):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('', port))
+                s.bind(("", port))
                 return port
         except OSError:
             continue
@@ -91,7 +101,7 @@ def create_app() -> gr.Blocks:
         Gradio Blocks app
     """
     # Validate CUDA
-    logger = get_logger("app")
+    logger = get_data_logger("app")
     logger.info("Starting Wakeword Training Platform")
 
     cuda_validator = enforce_cuda()
@@ -105,27 +115,30 @@ def create_app() -> gr.Blocks:
         .gradio-container {
             max-width: 1400px !important;
         }
-        """
+        """,
     ) as app:
-
         # Global state for sharing data between panels
-        global_state = gr.State(value={'config': None})
+        global_state = gr.State(value={"config": None})
 
         # Header
-        gr.Markdown("""
+        gr.Markdown(
+            """
         # 🎙️ Wakeword Training Platform
         ### GPU-Accelerated Custom Wakeword Detection Model Training
 
         Complete pipeline from dataset management to model deployment.
-        """)
+        """
+        )
 
         # Display GPU info
         gpu_info = cuda_validator.get_device_info()
-        gr.Markdown(f"""
+        gr.Markdown(
+            f"""
         **GPU Status**: ✅ {gpu_info['device_count']} GPU(s) available |
         **CUDA Version**: {gpu_info['cuda_version']} |
         **Active Device**: {gpu_info['devices'][0]['name']} ({gpu_info['devices'][0]['total_memory_gb']} GB)
-        """)
+        """
+        )
 
         gr.Markdown("---")
 
@@ -141,7 +154,7 @@ def create_app() -> gr.Blocks:
                 panel_training = create_training_panel(global_state)
 
             with gr.TabItem("🎯 4. Evaluation", id=4):
-                panel_evaluation = create_evaluation_panel()
+                panel_evaluation = create_evaluation_panel(global_state)
 
             with gr.TabItem("📦 5. ONNX Export", id=5):
                 panel_export = create_export_panel()
@@ -151,10 +164,67 @@ def create_app() -> gr.Blocks:
 
         # Footer
         gr.Markdown("---")
-        gr.Markdown("""
+        gr.Markdown(
+            """
         **Wakeword Training Platform v1.0** | Reliability-focused implementation |
         GPU-accelerated with PyTorch & CUDA
-        """)
+        """
+        )
+        
+        # Wire up the Auto-Start Pipeline button from Panel 1
+        # We access the button and handler exposed by create_dataset_panel
+        # and connect inputs from other panels that we now have access to.
+        # Note: create_training_panel returns a Block, but we didn't modify it to expose inputs.
+        # However, we can access components if they were assigned to the block object or returned.
+        
+        # Actually, create_training_panel just returns the `panel` object. 
+        # We cannot easily access internal components of `panel_training` unless we modify it too.
+        # BUT, for the "Auto-Start" button, we assumed default values or passed state.
+        # 
+        # Let's look at `panel_dataset.auto_start_handler` signature.
+        # It requires Training Params. 
+        # 
+        # Since we cannot get the *live* values from Panel 3 components (because we don't have references to them),
+        # we will use sensible defaults for the pipeline, OR rely on the "Loaded Config" step in the handler
+        # which tries to load `configs/wakeword_config.yaml`.
+        #
+        # So we just need to wire the button to the handler, passing the Panel 1 inputs we DO have references to (via panel_dataset.inputs)
+        # and hardcode/default the others, trusting the handler's config loading logic.
+        
+        if hasattr(panel_dataset, "auto_start_btn"):
+            ds_inputs = panel_dataset.inputs
+            
+            panel_dataset.auto_start_btn.click(
+                fn=panel_dataset.auto_start_handler,
+                inputs=[
+                    ds_inputs["root_path"],
+                    ds_inputs["skip_val"],
+                    ds_inputs["feature_type"],
+                    ds_inputs["sample_rate"],
+                    ds_inputs["audio_duration"],
+                    ds_inputs["n_mels"],
+                    ds_inputs["hop_length"],
+                    ds_inputs["n_fft"],
+                    ds_inputs["batch_size"],
+                    ds_inputs["output_dir"],
+                    ds_inputs["train"],
+                    ds_inputs["val"],
+                    ds_inputs["test"],
+                    # Training defaults (can be adjusted here if needed)
+                    gr.State(True),  # use_cmvn
+                    gr.State(True),  # use_ema
+                    gr.State(0.999), # ema_decay
+                    gr.State(True),  # use_balanced_sampler
+                    gr.State(1),     # pos ratio
+                    gr.State(1),     # neg ratio
+                    gr.State(1),     # hard ratio
+                    gr.State(False), # run_lr_finder
+                    gr.State(False), # use_wandb
+                    gr.State("wakeword-training"), # wandb_project
+                    global_state,    # The global state dict
+                ],
+                outputs=[panel_dataset.auto_log]
+            )
 
     logger.info("Application created successfully")
     return app
@@ -164,7 +234,7 @@ def launch_app(
     server_name: str = "0.0.0.0",
     server_port: int = None,
     share: bool = False,
-    inbrowser: bool = True
+    inbrowser: bool = True,
 ):
     """
     Launch the Gradio application
@@ -175,9 +245,9 @@ def launch_app(
         share: Create public share link
         inbrowser: Open browser automatically
     """
-    logger = get_logger("app")
-
-    # Suppress Windows asyncio connection errors
+    # Setup logging
+    setup_logging()
+    logger = get_data_logger("app")
     suppress_windows_asyncio_errors()
 
     # Find available port if not specified
@@ -200,7 +270,7 @@ def launch_app(
             inbrowser=inbrowser,
             show_error=True,
             show_api=False,
-            quiet=False
+            quiet=False,
         )
     except OSError as e:
         if "address already in use" in str(e).lower():
@@ -215,7 +285,7 @@ def launch_app(
                     share=share,
                     inbrowser=inbrowser,
                     show_error=True,
-                    quiet=False
+                    quiet=False,
                 )
             else:
                 logger.error("No available ports found in range 7860-7870")

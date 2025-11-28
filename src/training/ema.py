@@ -2,13 +2,13 @@
 Exponential Moving Average (EMA) for model parameters
 Maintains shadow copy of model weights for more stable inference
 """
+from typing import Optional
+
+import structlog
 import torch
 import torch.nn as nn
-from typing import Optional
-import logging
-from copy import deepcopy
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class EMA:
@@ -22,10 +22,7 @@ class EMA:
     """
 
     def __init__(
-        self,
-        model: nn.Module,
-        decay: float = 0.999,
-        device: Optional[str] = None
+        self, model: nn.Module, decay: float = 0.999, device: Optional[str] = None
     ):
         """
         Initialize EMA
@@ -107,16 +104,16 @@ class EMA:
     def state_dict(self) -> dict:
         """Get EMA state dict for checkpointing"""
         return {
-            'shadow_params': self.shadow_params,
-            'decay': self.decay,
-            'num_updates': self.num_updates
+            "shadow_params": self.shadow_params,
+            "decay": self.decay,
+            "num_updates": self.num_updates,
         }
 
     def load_state_dict(self, state_dict: dict):
         """Load EMA state from checkpoint"""
-        self.shadow_params = state_dict['shadow_params']
-        self.decay = state_dict['decay']
-        self.num_updates = state_dict['num_updates']
+        self.shadow_params = state_dict["shadow_params"]
+        self.decay = state_dict["decay"]
+        self.num_updates = state_dict["num_updates"]
 
 
 class EMAScheduler:
@@ -132,7 +129,7 @@ class EMAScheduler:
         initial_decay: float = 0.999,
         final_decay: float = 0.9995,
         warmup_epochs: int = 0,
-        final_epochs: int = 10
+        final_epochs: int = 10,
     ):
         """
         Initialize EMA scheduler
@@ -180,7 +177,9 @@ class EMAScheduler:
             progress = (epoch - self.warmup_epochs) / max(
                 (total_epochs - self.final_epochs - self.warmup_epochs), 1
             )
-            decay = self.initial_decay + (self.final_decay - self.initial_decay) * progress
+            decay = (
+                self.initial_decay + (self.final_decay - self.initial_decay) * progress
+            )
 
         # Update EMA decay
         self.ema.decay = decay
@@ -192,7 +191,7 @@ def create_ema(
     model: nn.Module,
     decay: float = 0.999,
     use_scheduler: bool = True,
-    total_epochs: Optional[int] = None
+    total_epochs: Optional[int] = None,
 ) -> tuple:
     """
     Create EMA and optional scheduler
@@ -217,7 +216,7 @@ def create_ema(
             initial_decay=decay,
             final_decay=0.9995,
             warmup_epochs=0,
-            final_epochs=10
+            final_epochs=10,
         )
 
         return ema, scheduler
@@ -231,13 +230,11 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Create dummy model
-    model = nn.Sequential(
-        nn.Linear(10, 20),
-        nn.ReLU(),
-        nn.Linear(20, 2)
-    )
+    model = nn.Sequential(nn.Linear(10, 20), nn.ReLU(), nn.Linear(20, 2))
 
-    print(f"Created test model with {sum(p.numel() for p in model.parameters())} parameters")
+    print(
+        f"Created test model with {sum(p.numel() for p in model.parameters())} parameters"
+    )
 
     # Get initial weights
     initial_weight = model[0].weight.data.clone()
@@ -259,7 +256,7 @@ if __name__ == "__main__":
         ema.update()
 
     final_weight = model[0].weight.data.clone()
-    shadow_weight = ema.shadow_params['0.weight']
+    shadow_weight = ema.shadow_params["0.weight"]
 
     print(f"Weight changes:")
     print(f"  Initial weight mean: {initial_weight.mean():.6f}")
@@ -278,7 +275,9 @@ if __name__ == "__main__":
     ema.restore(original_params)
     restored_weight = model[0].weight.data.clone()
 
-    assert torch.allclose(restored_weight, final_weight), "Parameters not restored correctly"
+    assert torch.allclose(
+        restored_weight, final_weight
+    ), "Parameters not restored correctly"
     print(f"  ✅ Parameters restored correctly")
 
     # Test scheduler
@@ -286,11 +285,7 @@ if __name__ == "__main__":
 
     ema2 = EMA(model, decay=0.999)
     scheduler = EMAScheduler(
-        ema2,
-        initial_decay=0.999,
-        final_decay=0.9995,
-        warmup_epochs=5,
-        final_epochs=10
+        ema2, initial_decay=0.999, final_decay=0.9995, warmup_epochs=5, final_epochs=10
     )
 
     total_epochs = 50
