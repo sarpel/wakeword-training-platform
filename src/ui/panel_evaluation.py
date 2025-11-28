@@ -116,7 +116,12 @@ def load_model(model_path: str) -> str:
             n_mfcc=info["config"].data.n_mfcc,
             n_fft=info["config"].data.n_fft,
             hop_length=info["config"].data.hop_length,
+            config=info["config"],  # Pass config object
         )
+
+        # NEW: Force audio_processor to eval mode
+        if hasattr(evaluator, "audio_processor"):
+            evaluator.audio_processor.eval()
 
         # Update state
         eval_state.model = model
@@ -531,6 +536,11 @@ def evaluate_test_set(
         logger.info(f"Evaluating test set: {test_path}")
 
         # Load test dataset
+        # Use configured feature type and fallback to raw audio for robustness
+        # Determine dataset root based on provided path to splits/test.json -> ../../
+        # If test_path is "data/splits/test.json", dataset root is "data"
+        dataset_root_inferred = test_path.parent.parent
+        
         test_dataset = WakewordDataset(
             manifest_path=test_path,
             sample_rate=eval_state.model_info["config"].data.sample_rate,
@@ -542,6 +552,17 @@ def evaluate_test_set(
             n_mfcc=eval_state.model_info["config"].data.n_mfcc,
             n_fft=eval_state.model_info["config"].data.n_fft,
             hop_length=eval_state.model_info["config"].data.hop_length,
+            use_precomputed_features_for_training=eval_state.model_info["config"].data.use_precomputed_features_for_training,
+            npy_cache_features=eval_state.model_info["config"].data.npy_cache_features,
+            fallback_to_audio=True, # Enable fallback to prevent crashes
+            # CMVN not typically applied during evaluation unless consistent with training pipeline.
+            # Assuming evaluator handles normalization or model includes it.
+            # If model was trained with CMVN, dataset should apply it?
+            # BUT wait, evaluator.py handles evaluation logic.
+            # Let's check if CMVN path exists
+            cmvn_path=dataset_root_inferred / "cmvn_stats.json",
+            apply_cmvn=True if (dataset_root_inferred / "cmvn_stats.json").exists() else False,
+            return_raw_audio=True, # IMPORTANT: Use GPU pipeline for consistency with training
         )
 
         logger.info(f"Loaded {len(test_dataset)} test samples")

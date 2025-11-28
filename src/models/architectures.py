@@ -444,6 +444,50 @@ class TCNWakeword(nn.Module):
         return output
 
 
+class TinyConvWakeword(nn.Module):
+    """
+    Tiny CNN for embedded devices (ESP32/Arduino)
+    Size: ~50KB parameters
+    Compute: ~2M FLOPs
+    """
+    def __init__(self, num_classes=2, input_channels=1, dropout=0.3, **kwargs):
+        super().__init__()
+        self.features = nn.Sequential(
+            # Block 1
+            nn.Conv2d(input_channels, 16, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True),
+            
+            # Block 2
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            
+            # Block 3 (Depthwise Separable mostly for efficiency, here just standard small)
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            
+            # Block 4
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+        )
+        
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(dropout),
+            nn.Linear(64, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.pool(x)
+        x = self.classifier(x)
+        return x
+
+
 def create_model(
     architecture: str, num_classes: int = 2, pretrained: bool = False, **kwargs
 ) -> nn.Module:
@@ -506,6 +550,13 @@ def create_model(
             num_channels=kwargs.get("num_channels", [64, 128, 256]),
             kernel_size=kwargs.get("kernel_size", 3),
             num_classes=num_classes,
+            dropout=kwargs.get("dropout", 0.3),
+        )
+
+    elif architecture == "tiny_conv":
+        return TinyConvWakeword(
+            num_classes=num_classes,
+            input_channels=kwargs.get("input_channels", 1),
             dropout=kwargs.get("dropout", 0.3),
         )
 

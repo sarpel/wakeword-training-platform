@@ -11,6 +11,8 @@ import structlog
 import torch
 import torch.nn as nn
 import numpy as np
+import subprocess
+import shutil
 
 try:
     import onnx
@@ -147,6 +149,85 @@ class ONNXExporter:
             logger.exception(e)
             return {"success": False, "error": str(e)}
 
+    def export_to_tflite(self, onnx_path: Path, output_path: Path, sample_input: torch.Tensor = None) -> Dict[str, Any]:
+        """
+        Export ONNX model to TFLite using onnx2tf
+        
+        Args:
+            onnx_path: Path to ONNX model
+            output_path: Path to save .tflite file
+            sample_input: Optional sample input for calibration/verification
+            
+        Returns:
+            Dictionary with export results
+        """
+        logger.info(f"Exporting to TFLite: {output_path}")
+        
+        try:
+            # Using onnx2tf via subprocess
+            # onnx2tf -i input.onnx -o output_folder
+            
+            output_folder = output_path.parent / "tflite_export"
+            output_folder.mkdir(parents=True, exist_ok=True)
+            
+            cmd = [
+                "onnx2tf",
+                "-i", str(onnx_path),
+                "-o", str(output_folder),
+                "-ois", "input:1,1,64,151" # Force input shape if dynamic batch is issue, or assume fixed
+                # TODO: Determine input shape dynamically from self.sample_input_shape
+            ]
+            
+            # Dynamic shape handling
+            # For TFLite, fixed batch size 1 is usually preferred
+            input_shape_str = ",".join(map(str, self.sample_input_shape))
+            cmd = [
+                "onnx2tf",
+                "-i", str(onnx_path),
+                "-o", str(output_folder),
+                "-ois", f"input:{input_shape_str}" 
+            ]
+            
+            logger.info(f"Running command: {' '.join(cmd)}")
+            
+            process = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True
+            )
+            
+            # onnx2tf saves as saved_model and .tflite in the output folder
+            # We need to find the .tflite file
+            tflite_files = list(output_folder.glob("*.tflite"))
+            
+            if not tflite_files:
+                raise FileNotFoundError("onnx2tf did not generate a .tflite file")
+                
+            # Move the tflite file to requested output_path
+            generated_tflite = tflite_files[0]
+            shutil.move(str(generated_tflite), str(output_path))
+            
+            # Cleanup output folder
+            # shutil.rmtree(output_folder) # Optional: keep saved_model?
+            
+            file_size_mb = output_path.stat().st_size / (1024 * 1024)
+            
+            logger.info(f"✅ TFLite model exported: {output_path}")
+            
+            return {
+                "success": True,
+                "path": str(output_path),
+                "file_size_mb": file_size_mb
+            }
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"onnx2tf failed: {e.stderr}")
+            return {"success": False, "error": f"onnx2tf failed: {e.stderr}"}
+        except Exception as e:
+            logger.error(f"TFLite export failed: {e}")
+            return {"success": False, "error": str(e)}
+
     def _quantize_fp16(self, onnx_path: Path) -> Path:
         """
         Apply FP16 quantization to ONNX model
@@ -216,6 +297,7 @@ def export_model_to_onnx(
     dynamic_batch: bool = True,
     quantize_fp16: bool = False,
     quantize_int8: bool = False,
+    export_tflite: bool = False, # New param
     device: str = "cuda",
 ) -> Dict:
     """
@@ -301,6 +383,24 @@ def export_model_to_onnx(
 
     # Export
     results = exporter.export(export_config)
+
+    # TFLite Export (Optional)
+    if export_tflite and results["success"]:
+        logger.info("Starting TFLite export...")
+        tflite_path = output_path.with_suffix(".tflite")
+        
+        # Create dummy input for calibration/shape
+        dummy_input = torch.randn(*sample_input_shape)
+        
+        # Use the base ONNX model for conversion (not quantized)
+        onnx_base_path = Path(results["path"])
+        
+        tflite_results = exporter.export_to_tflite(onnx_base_path, tflite_path)
+        
+        results["tflite_path"] = tflite_results.get("path")
+        results["tflite_size_mb"] = tflite_results.get("file_size_mb")
+        results["tflite_success"] = tflite_results.get("success")
+        results["tflite_error"] = tflite_results.get("error")
 
     # Add model info
     results["architecture"] = config.model.architecture

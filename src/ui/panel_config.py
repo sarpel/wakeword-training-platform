@@ -167,7 +167,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 gr.Markdown("### Model Parameters")
                 with gr.Row():
                     architecture = gr.Dropdown(
-                        choices=["resnet18", "mobilenetv3", "lstm", "gru", "tcn"],
+                        choices=["resnet18", "mobilenetv3", "lstm", "gru", "tcn", "tiny_conv"],
                         value="resnet18",
                         label="Model Architecture",
                         info="ResNet18 recommended for accuracy",

@@ -69,6 +69,7 @@ def export_to_onnx(
     dynamic_batch: bool,
     quantize_fp16: bool,
     quantize_int8: bool,
+    export_tflite: bool = False,
 ) -> Tuple[str, str]:
     """
     Export PyTorch model to ONNX
@@ -80,6 +81,7 @@ def export_to_onnx(
         dynamic_batch: Enable dynamic batch size
         quantize_fp16: Apply FP16 quantization
         quantize_int8: Apply INT8 quantization
+        export_tflite: Export to TFLite (via onnx2tf)
 
     Returns:
         Tuple of (status_message, log_message)
@@ -115,6 +117,7 @@ def export_to_onnx(
         log += f"Dynamic batch: {dynamic_batch}\n"
         log += f"FP16 quantization: {quantize_fp16}\n"
         log += f"INT8 quantization: {quantize_int8}\n"
+        log += f"TFLite Export: {export_tflite}\n"
         log += "-" * 60 + "\n"
 
         # Export
@@ -125,6 +128,7 @@ def export_to_onnx(
             dynamic_batch=dynamic_batch,
             quantize_fp16=quantize_fp16,
             quantize_int8=quantize_int8,
+            export_tflite=export_tflite,
             device="cuda",
         )
 
@@ -155,6 +159,13 @@ def export_to_onnx(
             log += f"   Reduction: {results['int8_reduction']:.1f}%\n"
             log += f"   Path: {results['int8_path']}\n"
 
+        if export_tflite and results.get("tflite_success", False):
+            log += f"\n✅ TFLite model exported\n"
+            log += f"   File size: {results['tflite_size_mb']:.2f} MB\n"
+            log += f"   Path: {results['tflite_path']}\n"
+        elif export_tflite:
+            log += f"\n❌ TFLite export failed: {results.get('tflite_error')}\n"
+
         log += f"\n" + "=" * 60 + "\n"
         log += f"✅ Export complete!\n"
 
@@ -167,6 +178,9 @@ def export_to_onnx(
 
         if quantize_int8 and "int8_path" in results:
             status += f"\nINT8: {results['int8_size_mb']:.2f} MB ({results['int8_reduction']:.1f}% smaller)"
+
+        if export_tflite and results.get("tflite_success", False):
+            status += f"\nTFLite: {results['tflite_size_mb']:.2f} MB"
 
         logger.info("Export complete")
 
@@ -405,6 +419,12 @@ def create_export_panel() -> gr.Blocks:
                     value=False,
                     info="8-bit: ~75% smaller, slight accuracy loss",
                 )
+                
+                export_tflite = gr.Checkbox(
+                    label="Export to TFLite (via onnx2tf)",
+                    value=False,
+                    info="Convert ONNX to TFLite for embedded devices",
+                )
 
                 gr.Markdown(
                     "**Note**: Quantization reduces model size and improves inference speed"
@@ -482,6 +502,7 @@ def create_export_panel() -> gr.Blocks:
                 dynamic_batch,
                 quantize_fp16,
                 quantize_int8,
+                export_tflite,
             ],
             outputs=[export_status, export_log],
         )

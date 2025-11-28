@@ -56,6 +56,14 @@ def evaluate_with_advanced_metrics(
         for inputs, targets, _ in loader:
             inputs = inputs.to(evaluator.device)
 
+            # NEW: GPU Processing Pipeline for Raw Audio
+            # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
+            if inputs.ndim <= 3:
+                inputs = evaluator.audio_processor(inputs)
+            
+            # Apply memory format optimization
+            inputs = inputs.to(memory_format=torch.channels_last)
+
             with torch.cuda.amp.autocast():
                 logits = evaluator.model(inputs)
             # Convert to float32 immediately after inference to ensure compatibility

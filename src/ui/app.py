@@ -170,6 +170,61 @@ def create_app() -> gr.Blocks:
         GPU-accelerated with PyTorch & CUDA
         """
         )
+        
+        # Wire up the Auto-Start Pipeline button from Panel 1
+        # We access the button and handler exposed by create_dataset_panel
+        # and connect inputs from other panels that we now have access to.
+        # Note: create_training_panel returns a Block, but we didn't modify it to expose inputs.
+        # However, we can access components if they were assigned to the block object or returned.
+        
+        # Actually, create_training_panel just returns the `panel` object. 
+        # We cannot easily access internal components of `panel_training` unless we modify it too.
+        # BUT, for the "Auto-Start" button, we assumed default values or passed state.
+        # 
+        # Let's look at `panel_dataset.auto_start_handler` signature.
+        # It requires Training Params. 
+        # 
+        # Since we cannot get the *live* values from Panel 3 components (because we don't have references to them),
+        # we will use sensible defaults for the pipeline, OR rely on the "Loaded Config" step in the handler
+        # which tries to load `configs/wakeword_config.yaml`.
+        #
+        # So we just need to wire the button to the handler, passing the Panel 1 inputs we DO have references to (via panel_dataset.inputs)
+        # and hardcode/default the others, trusting the handler's config loading logic.
+        
+        if hasattr(panel_dataset, "auto_start_btn"):
+            ds_inputs = panel_dataset.inputs
+            
+            panel_dataset.auto_start_btn.click(
+                fn=panel_dataset.auto_start_handler,
+                inputs=[
+                    ds_inputs["root_path"],
+                    ds_inputs["skip_val"],
+                    ds_inputs["feature_type"],
+                    ds_inputs["sample_rate"],
+                    ds_inputs["audio_duration"],
+                    ds_inputs["n_mels"],
+                    ds_inputs["hop_length"],
+                    ds_inputs["n_fft"],
+                    ds_inputs["batch_size"],
+                    ds_inputs["output_dir"],
+                    ds_inputs["train"],
+                    ds_inputs["val"],
+                    ds_inputs["test"],
+                    # Training defaults (can be adjusted here if needed)
+                    gr.State(True),  # use_cmvn
+                    gr.State(True),  # use_ema
+                    gr.State(0.999), # ema_decay
+                    gr.State(True),  # use_balanced_sampler
+                    gr.State(1),     # pos ratio
+                    gr.State(1),     # neg ratio
+                    gr.State(1),     # hard ratio
+                    gr.State(False), # run_lr_finder
+                    gr.State(False), # use_wandb
+                    gr.State("wakeword-training"), # wandb_project
+                    global_state,    # The global state dict
+                ],
+                outputs=[panel_dataset.auto_log]
+            )
 
     logger.info("Application created successfully")
     return app

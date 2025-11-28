@@ -255,9 +255,12 @@ class WakewordDataset(Dataset):
             if features_tensor.shape != expected_shape:
                 logger.warning(
                     f"Shape mismatch for {npy_path}: "
-                    f"expected {expected_shape}, got {features_tensor.shape}"
+                    f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
                 )
-                return None
+                # Trigger fallback
+                if not self.fallback_to_audio:
+                     raise FileNotFoundError(f"NPY shape mismatch for {file_path} and fallback_to_audio=False")
+                return None # Return None to trigger fallback
 
             # Cache if enabled
             if self.feature_cache is not None:

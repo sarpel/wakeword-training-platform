@@ -17,6 +17,11 @@ data/
 configs/
 .serena/
 .genkit/
-models/
 *.7z
 *.zip
+models/
+docs/
+.github/
+
+
+

@@ -52,7 +52,7 @@ class TrainingConfig:
     early_stopping_patience: int = 15
 
     # Hardware
-    num_workers: int = 16
+    num_workers: int = 16  # Updated default to 16 for 7950X
     pin_memory: bool = True
     persistent_workers: bool = True
 
@@ -71,7 +71,7 @@ class TrainingConfig:
 class ModelConfig:
     """Model architecture configuration"""
 
-    architecture: str = "resnet18"  # resnet18, mobilenetv3, lstm, gru, tcn
+    architecture: str = "resnet18"  # resnet18, mobilenetv3, lstm, gru, tcn, tiny_conv
     num_classes: int = 2  # Binary classification
     pretrained: bool = False  # Use pretrained weights (ImageNet)
     dropout: float = 0.3

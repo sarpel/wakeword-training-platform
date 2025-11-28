@@ -127,8 +127,12 @@ class FeatureExtractor(nn.Module):
         elif waveform.dim() == 2:
             # Assume (batch, samples) or (1, samples)
             squeeze_output = False
+        elif waveform.dim() == 3 and waveform.shape[1] == 1:
+             # (batch, 1, samples) -> (batch, samples)
+             waveform = waveform.squeeze(1)
+             squeeze_output = False
         else:
-            raise ValueError(f"Expected 1D or 2D waveform, got shape {original_shape}")
+            raise ValueError(f"Expected 1D or 2D waveform (or 3D with 1 channel), got shape {original_shape}")
 
         # Extract features
         if self.feature_type == "mel":

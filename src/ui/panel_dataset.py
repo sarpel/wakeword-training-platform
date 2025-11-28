@@ -797,6 +797,137 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             except Exception as e:
                 return f"❌ Error during validation: {str(e)}\n{traceback.format_exc()}"
 
+        def auto_start_handler(
+            root_path: str,
+            skip_val: bool,
+            # Feature extraction params
+            feature_type: str,
+            sample_rate: int,
+            audio_duration: float,
+            n_mels: int,
+            hop_length: int,
+            n_fft: int,
+            batch_size: int,
+            output_dir: str,
+            # Split params
+            train: float,
+            val: float,
+            test: float,
+            # Training params
+            use_cmvn: bool,
+            use_ema: bool,
+            ema_decay: float,
+            use_balanced_sampler: bool,
+            sampler_ratio_pos: int,
+            sampler_ratio_neg: int,
+            sampler_ratio_hard: int,
+            run_lr_finder: bool,
+            use_wandb: bool,
+            wandb_project: str,
+            state: gr.State,
+            progress=gr.Progress(),
+        ):
+            """Orchestrates the full pipeline: Scan -> Extract -> Split -> Config -> Train"""
+            
+            logs = []
+            def log(msg):
+                logs.append(msg)
+                logger.info(msg)
+                return "\n".join(logs)
+
+            try:
+                # 1. Scan Datasets
+                progress(0.0, desc="Step 1/5: Scanning Datasets...")
+                log("--- STEP 1: SCANNING DATASETS ---")
+                stats, scan_msg, _ = scan_datasets_handler(root_path, skip_val)
+                if "error" in stats:
+                    return log(f"❌ Scan Failed: {stats['error']}")
+                log(scan_msg)
+
+                # 2. Feature Extraction
+                progress(0.2, desc="Step 2/5: Extracting Features...")
+                log("\n--- STEP 2: EXTRACTING FEATURES ---")
+                log(f"Extracting {feature_type} features to {output_dir}...")
+                extract_report = batch_extract_handler(
+                    root_path, feature_type, sample_rate, audio_duration, 
+                    n_mels, hop_length, n_fft, batch_size, output_dir
+                )
+                if "❌ Error" in extract_report:
+                    return log(f"❌ Extraction Failed:\n{extract_report}")
+                log("Feature extraction completed.")
+
+                # 3. Split Dataset
+                progress(0.5, desc="Step 3/5: Splitting Datasets...")
+                log("\n--- STEP 3: SPLITTING DATASETS ---")
+                split_msg, _ = split_datasets_handler(root_path, train, val, test, output_dir)
+                if "❌" in split_msg:
+                    return log(f"❌ Split Failed: {split_msg}")
+                log(split_msg)
+
+                # 4. Load Config
+                progress(0.7, desc="Step 4/5: Loading Configuration...")
+                log("\n--- STEP 4: PREPARING CONFIGURATION ---")
+                
+                from src.config.defaults import WakewordConfig, DataConfig, TrainingConfig, ModelConfig
+                
+                # Create config matching UI parameters
+                config = WakewordConfig()
+                config.data = DataConfig(
+                    sample_rate=int(sample_rate),
+                    audio_duration=float(audio_duration),
+                    n_mels=int(n_mels),
+                    n_fft=int(n_fft),
+                    hop_length=int(hop_length),
+                    feature_type=feature_type,
+                    use_precomputed_features_for_training=True,
+                    npy_feature_dir=output_dir
+                )
+                
+                # Try to load saved config if exists to preserve model params
+                config_path = Path("configs/wakeword_config.yaml")
+                if config_path.exists():
+                    try:
+                        loaded_config = WakewordConfig.load(config_path)
+                        # Update data params to match UI but keep model params
+                        loaded_config.data = config.data 
+                        config = loaded_config
+                        log(f"Loaded saved configuration from {config_path}")
+                    except Exception as e:
+                        log(f"⚠️ Failed to load saved config, using defaults: {e}")
+                
+                # Update state with config
+                if state is None:
+                    state = {}
+                state["config"] = config
+                
+                # 5. Start Training
+                progress(0.9, desc="Step 5/5: Starting Training...")
+                log("\n--- STEP 5: STARTING TRAINING ---")
+                
+                from src.ui.panel_training import start_training
+                
+                # Call start_training with the state containing our config
+                train_msg, _, _, _, _, _ = start_training(
+                    state, use_cmvn, use_ema, ema_decay, 
+                    use_balanced_sampler, sampler_ratio_pos, sampler_ratio_neg, sampler_ratio_hard,
+                    run_lr_finder, use_wandb, wandb_project
+                )
+                
+                log(f"Training Launch Result: {train_msg}")
+                
+                if "✅" in train_msg:
+                    log("\n✅ PIPELINE STARTED SUCCESSFULLY!")
+                    log("Switch to 'Model Training' tab to view progress.")
+                else:
+                    log("\n❌ FAILED TO START TRAINING")
+
+                return log(f"Pipeline Finished.\nLast status: {train_msg}")
+
+            except Exception as e:
+                err = traceback.format_exc()
+                logger.error(err)
+                return log(f"❌ CRITICAL ERROR IN AUTO-START:\n{str(e)}\n{err}")
+
         # Connect event handlers
         scan_button.click(
             fn=scan_datasets_handler,
@@ -851,6 +982,71 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             ],
             outputs=[analysis_log],
         )
+
+        gr.Markdown("---")
+        with gr.Row():
+            auto_start_btn = gr.Button("🚀 AUTO-START TRAINING (Full Pipeline)", variant="primary", scale=2)
+            auto_log = gr.Textbox(label="Pipeline Log", lines=10, interactive=False)
+
+        # Note: We need inputs from Panel 2/3 here. Since we can't easily access them across files without passing 
+        # explicit components, we will assume default values or need the user to pass them.
+        # Ideally, this button should be in the Main App where all components are visible.
+        # However, requested in Panel 1. We will try to use the state if components are not available, 
+        # BUT Gradio events require component references.
+        # 
+        # WORKAROUND: We will define the button here but the caller (app.py) usually wires it up.
+        # BUT `create_dataset_panel` is self-contained. 
+        # 
+        # Since we can't access components from other panels here, we will create HIDDEN inputs for the required training params
+        # that match defaults, or require the user to set them in the pipeline code. 
+        # A better approach for a "Single Button" is to assume reasonable defaults for training 
+        # (which we did in the handler) OR allow passing state. 
+        #
+        # Since we are in `create_dataset_panel`, we only have access to Dataset Panel inputs.
+        # To make this work, we need to expose the `auto_start_handler` so `app.py` can wire it up with 
+        # inputs from ALL panels. 
+        
+        # For now, we will just expose the button object as an attribute of the panel or return it?
+        # No, `create_dataset_panel` returns a Block.
+        # 
+        # Let's attach the handler to the button using the inputs AVAILABLE IN THIS PANEL
+        # and for others (Training params), we will use default values defined in the function 
+        # signature if they are not wired.
+        
+        # Actually, `app.py` is where the global state lives. 
+        # We will define the button here, but we can't fully wire it without inputs from Panel 3.
+        # 
+        # REVISED PLAN: We will implement the UI elements here. 
+        # The `app.py` will need to access this button to wire it to `auto_start_handler` 
+        # with inputs from ALL panels.
+        #
+        # To facilitate this, we will return the button instance along with the panel? 
+        # Or make `auto_start_btn` a member of the returned object?
+        # Gradio Blocks doesn't easily support that.
+        #
+        # Let's do this: We will add the button here, but we will NOT click() it here.
+        # We will export `auto_start_btn` and `auto_start_handler` so `app.py` can connect them.
+        
+        panel.auto_start_btn = auto_start_btn
+        panel.auto_log = auto_log
+        panel.auto_start_handler = auto_start_handler
+        
+        # We also need to export inputs to feed into the handler from app.py
+        panel.inputs = {
+            "root_path": dataset_root,
+            "skip_val": skip_validation,
+            "feature_type": extract_feature_type,
+            "sample_rate": extract_sample_rate,
+            "audio_duration": extract_duration,
+            "n_mels": extract_n_mels,
+            "hop_length": extract_hop_length,
+            "n_fft": extract_n_fft,
+            "batch_size": extract_batch_size,
+            "output_dir": extract_output_dir,
+            "train": train_ratio,
+            "val": val_ratio,
+            "test": test_ratio,
+        }
 
     return panel
 

@@ -31,6 +31,8 @@ from src.training.optimizer_factory import (
     get_learning_rate,
 )
 from src.training.training_loop import train_epoch, validate_epoch
+import threading
+import shutil
 
 
 @dataclass
@@ -44,6 +46,7 @@ class TrainingState:
     best_val_fpr: float = 1.0
     epochs_without_improvement: int = 0
     training_time: float = 0.0
+    should_stop: bool = False  # Added external stop flag
 
 
 class Trainer:
@@ -82,6 +85,9 @@ class Trainer:
         self.device = device
         self.config = config
         self.use_ema = use_ema
+
+        # External stop control
+        self.stop_event = threading.Event()
 
         # Move model to GPU
         self.model = model.to(device)
@@ -269,6 +275,10 @@ class Trainer:
                     logger.info(f"Early stopping triggered after {epoch+1} epochs")
                     break
 
+                if self.stop_event.is_set():
+                    logger.info(f"Training stopped by user after {epoch+1} epochs")
+                    break
+
                 self._call_callbacks(
                     "on_epoch_end", epoch, train_loss, val_loss, val_metrics
                 )
@@ -320,6 +330,8 @@ class Trainer:
             "best_fpr_epoch": best_fpr_epoch,
         }
 
+        self._call_callbacks("on_train_end")
+
         return results
 
     def _update_scheduler(self, val_loss: float) -> None:
@@ -343,7 +355,7 @@ class Trainer:
         if val_loss < self.state.best_val_loss:
             self.state.best_val_loss = val_loss
 
-        if val_fpr < self.state.best_val_fpr:
+        if val_fpr < self.state.best_val_fpr and self.state.epoch > 0:
             self.state.best_val_fpr = val_fpr
 
         # Primary metric: val_f1 (for early stopping)
@@ -369,6 +381,10 @@ class Trainer:
         for callback in self.callbacks:
             if hasattr(callback, event):
                 getattr(callback, event)(*args, **kwargs)
+
+    def stop(self):
+        """Signal the trainer to stop at the next available opportunity"""
+        self.stop_event.set()
 
 
 if __name__ == "__main__":

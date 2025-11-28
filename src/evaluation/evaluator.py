@@ -11,7 +11,8 @@ import torch
 import torch.nn as nn
 
 from src.config.cuda_utils import enforce_cuda
-from src.data.audio_utils import AudioProcessor
+from src.data.audio_utils import AudioProcessor as CpuAudioProcessor # Renamed for clarity
+from src.data.processor import AudioProcessor as GpuAudioProcessor # This is the one we want
 from src.data.feature_extraction import FeatureExtractor
 from src.training.metrics import MetricsCalculator, MetricResults
 from src.evaluation.file_evaluator import evaluate_file, evaluate_files
@@ -38,6 +39,7 @@ class ModelEvaluator:
         n_mfcc: int = 0,
         n_fft: int = 400,
         hop_length: int = 160,
+        config: Dict = None,
     ):
         """
         Initialize model evaluator
@@ -66,8 +68,12 @@ class ModelEvaluator:
         self.model.eval()
 
         # Audio processor
-        self.audio_processor = AudioProcessor(
-            target_sr=sample_rate, target_duration=audio_duration
+        # Create CMVN path
+        cmvn_path = Path("data/cmvn_stats.json")
+        self.audio_processor = GpuAudioProcessor(
+            config=config, # Use passed config
+            cmvn_path=cmvn_path if cmvn_path.exists() else None,
+            device=device
         )
 
         # Normalize feature type (handle legacy 'mel_spectrogram')

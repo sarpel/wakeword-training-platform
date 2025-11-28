@@ -1,4 +1,5 @@
 import tempfile
+import shutil
 from pathlib import Path
 
 import optuna
@@ -46,6 +47,7 @@ class Objective:
         self.config = config
         self.train_loader = train_loader
         self.val_loader = val_loader
+        self.best_f1 = -1.0
 
     def __call__(self, trial: optuna.trial.Trial) -> float:
         """Run a single training trial with a set of hyperparameters."""
@@ -104,6 +106,7 @@ class Objective:
             shuffle=True,
             num_workers=self.config.training.num_workers,
             pin_memory=self.config.training.pin_memory,
+            persistent_workers=True if self.config.training.num_workers > 0 else False
         )
         val_loader_trial = DataLoader(
             self.val_loader.dataset,
@@ -111,6 +114,7 @@ class Objective:
             shuffle=False,
             num_workers=self.config.training.num_workers,
             pin_memory=self.config.training.pin_memory,
+            persistent_workers=True if self.config.training.num_workers > 0 else False
         )
 
         # Create a temporary directory for checkpoints for this trial
@@ -162,6 +166,18 @@ class Objective:
                     return 0.0
 
                 metric = best_f1
+
+                # Save if best so far
+                if metric > self.best_f1:
+                    self.best_f1 = metric
+                    # Create models dir if not exists
+                    save_path = Path("models/hpo_best_model.pt")
+                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    source_path = checkpoint_dir / "best_model.pt"
+                    if source_path.exists():
+                        shutil.copy(source_path, save_path)
+                        logger.info(f"New best HPO model saved to {save_path} (F1: {metric:.4f})")
 
             except optuna.TrialPruned:
                 raise

@@ -319,7 +319,7 @@ def training_worker():
                     f"FPR: {val_metrics.fpr:.2%} - FNR: {val_metrics.fnr:.2%}"
                 )
 
-            def on_batch_end(self, batch_idx, loss, acc):
+            def on_batch_end(self, batch_idx, loss, acc, **kwargs):
                 training_state.current_batch = batch_idx + 1
                 training_state.current_train_loss = loss
                 training_state.current_train_acc = acc
@@ -455,6 +455,7 @@ def start_training(
                     n_fft=config.data.n_fft,
                     hop_length=config.data.hop_length,
                     use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
+                    fallback_to_audio=True, # Force fallback to avoid shape mismatch crashes during CMVN
                     apply_cmvn=False,
                 )
                 compute_cmvn_from_dataset(temp_train_ds, cmvn_path, max_samples=1000)
@@ -465,7 +466,7 @@ def start_training(
         )
         
         # NEW: Optimize config for GPU pipeline
-        config.training.num_workers = min(config.training.num_workers, 8)
+        config.training.num_workers = min(config.training.num_workers, 16)
         config.training.pin_memory = True
 
         train_ds = WakewordDataset(
@@ -700,6 +701,9 @@ def stop_training() -> str:
         return "⚠️ No training in progress"
 
     training_state.should_stop = True
+    if training_state.trainer:
+        training_state.trainer.stop()
+    
     training_state.add_log("Stop requested. Training will stop after current epoch...")
 
     return "⏹️ Stopping training..."
@@ -809,7 +813,7 @@ def start_hpo(
         # Optimize config for GPU pipeline
         # Reduce workers to prevent CPU saturation (GPU handles processing now)
         hpo_config = config.copy()
-        hpo_config.training.num_workers = min(hpo_config.training.num_workers, 8) 
+        hpo_config.training.num_workers = min(hpo_config.training.num_workers, 16) 
         hpo_config.training.pin_memory = True
         
         train_loader = DataLoader(

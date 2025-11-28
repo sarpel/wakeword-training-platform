@@ -92,7 +92,7 @@ def _run_epoch(
                 )
                 trainer.state.global_step += 1
                 trainer._call_callbacks(
-                    "on_batch_end", batch_idx, loss.item(), batch_acc
+                    "on_batch_end", batch_idx, loss.item(), batch_acc, step=trainer.state.global_step
                 )
             else:
                 pbar.set_postfix({"loss": f"{loss.item():.4f}"})
