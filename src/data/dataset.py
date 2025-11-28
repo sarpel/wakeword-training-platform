@@ -247,20 +247,23 @@ class WakewordDataset(Dataset):
             # Convert to tensor
             features_tensor = torch.from_numpy(np.array(features)).float()
 
-            # Validate shape
-            expected_shape = self.feature_extractor.get_output_shape(
-                int(self.audio_duration * self.sample_rate)
-            )
-
-            if features_tensor.shape != expected_shape:
-                logger.warning(
-                    f"Shape mismatch for {npy_path}: "
-                    f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
+            # Validate shape (only if feature_extractor is available)
+            # FIX: Guard against None feature_extractor when return_raw_audio=True
+            if self.feature_extractor is not None:
+                expected_shape = self.feature_extractor.get_output_shape(
+                    int(self.audio_duration * self.sample_rate)
                 )
-                # Trigger fallback
-                if not self.fallback_to_audio:
-                     raise FileNotFoundError(f"NPY shape mismatch for {file_path} and fallback_to_audio=False")
-                return None # Return None to trigger fallback
+
+                if features_tensor.shape != expected_shape:
+                    logger.warning(
+                        f"Shape mismatch for {npy_path}: "
+                        f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
+                    )
+                    # Trigger fallback
+                    # FIX: Use npy_path instead of undefined file_path variable
+                    if not self.fallback_to_audio:
+                         raise FileNotFoundError(f"NPY shape mismatch for {npy_path} and fallback_to_audio=False")
+                    return None  # Return None to trigger fallback
 
             # Cache if enabled
             if self.feature_cache is not None:

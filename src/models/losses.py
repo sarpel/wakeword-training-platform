@@ -57,9 +57,9 @@ class LabelSmoothingCrossEntropy(nn.Module):
         target_one_hot = F.one_hot(target, num_classes).float()
 
         # Apply label smoothing
-        smooth_target = target_one_hot * self.confidence + (1 - target_one_hot) * (
-            self.smoothing / (num_classes - 1)
-        )
+        # FIX: Guard against division by zero when num_classes == 1
+        smoothing_value = self.smoothing / max(num_classes - 1, 1)
+        smooth_target = target_one_hot * self.confidence + (1 - target_one_hot) * smoothing_value
 
         # Calculate loss
         loss = -torch.sum(smooth_target * log_probs, dim=-1)

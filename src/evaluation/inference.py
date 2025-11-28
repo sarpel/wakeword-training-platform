@@ -15,13 +15,18 @@ try:
     import sounddevice as sd
 except ImportError:
     sd = None
-    structlog.warning("sounddevice not installed. Microphone inference not available.")
+    # FIX: Use logger instance instead of structlog module directly
+    # The warning will be logged when logger is initialized below
 
 from src.config.cuda_utils import enforce_cuda
 from src.data.audio_utils import AudioProcessor
 from src.data.feature_extraction import FeatureExtractor
 
 logger = structlog.get_logger(__name__)
+
+# Log warning about sounddevice after logger is initialized
+if sd is None:
+    logger.warning("sounddevice not installed. Microphone inference not available.")
 
 
 class MicrophoneInference:

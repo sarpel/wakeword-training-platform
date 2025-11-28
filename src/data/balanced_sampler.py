@@ -97,7 +97,14 @@ class BalancedBatchSampler(Sampler):
             else float("inf")
         )
 
-        num_batches = int(min(max_batches_pos, max_batches_neg, max_batches_hard))
+        min_batches = min(max_batches_pos, max_batches_neg, max_batches_hard)
+        
+        # FIX: Guard against infinite value when all sample counts are zero
+        # This can happen if all n_xxx are zero or all idx_xxx are empty
+        if min_batches == float("inf") or min_batches < 0:
+            num_batches = 0
+        else:
+            num_batches = int(min_batches)
 
         # Generate batches
         for i in range(num_batches):
@@ -140,7 +147,12 @@ class BalancedBatchSampler(Sampler):
             else float("inf")
         )
 
-        return int(min(max_batches_pos, max_batches_neg, max_batches_hard))
+        min_batches = min(max_batches_pos, max_batches_neg, max_batches_hard)
+        
+        # FIX: Guard against infinite value when all sample counts are zero
+        if min_batches == float("inf") or min_batches < 0:
+            return 0
+        return int(min_batches)
 
 
 def create_balanced_sampler_from_dataset(
