@@ -1,0 +1,1 @@
+add security features to the server, I will use it open to the web, with cloudflared tunnel to reach with my own domain name. So make necessary additions for cors, admin login panel etc (if necessary) but include some kind of authorization mechanism. It shouldnt blindly respond to all requests or show the traffic to strangers.

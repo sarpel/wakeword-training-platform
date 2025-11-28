@@ -48,7 +48,28 @@ These are the most important numbers to check to see if your model is actually l
 
 ---
 
-## 3. How to Read a Training Log
+## 3. New Training Features (Google-Tier Upgrade)
+
+The platform now includes advanced techniques to reach "Google-level" performance.
+
+### 🧠 Knowledge Distillation (The Teacher)
+*   **What it is:** We use a massive, smart brain (Wav2Vec 2.0) to teach your smaller model (MobileNet).
+*   **Why use it?** It forces your small model to learn patterns it would miss on its own.
+*   **How to enable:** Set `distillation.enabled = True` in config.
+
+### 📉 Quantization Aware Training (QAT)
+*   **What it is:** Training the model while pretending it's running on a cheap chip (INT8).
+*   **Why use it?** If you plan to put this on an ESP32 or Arduino, this is mandatory.
+*   **How to enable:** Set `qat.enabled = True` in config.
+
+### 📏 Triplet Loss (Metric Learning)
+*   **What it is:** A training method that pulls "wakeword" sounds closer together and pushes "confusing" sounds away.
+*   **Why use it?** Reduces false alarms from similar words (e.g., "Hey Cat" vs "Hey Katya").
+*   **How to enable:** Set `loss.loss_function = 'triplet_loss'`.
+
+---
+
+## 4. How to Read a Training Log
 
 Here is an example from your log and what it means:
 
@@ -65,14 +86,14 @@ Epoch 3 [Val]: Accuracy: 0.9065 | F1: 0.0270 | FPR: 0.0032 | FNR: 0.9859
 
 ---
 
-## 4. Signs of a "Good" Training Run
+## 5. Signs of a "Good" Training Run
 
 1.  **Loss decreases steadily:** It doesn't jump around wildly.
 2.  **F1 Score climbs:** It starts near 0 and grows to 0.8 or 0.9.
 3.  **FPR stays low:** It doesn't explode to 10% or 20%.
 4.  **FNR drops:** It starts high (missing everything) and drops below 10%.
 
-## 5. Common Failure Patterns
+## 6. Common Failure Patterns
 
 | Symptom | Diagnosis | Solution |
 | :--- | :--- | :--- |
@@ -80,4 +101,3 @@ Epoch 3 [Val]: Accuracy: 0.9065 | F1: 0.0270 | FPR: 0.0032 | FNR: 0.9859
 | **Loss goes UP** | "Overfitting." Model is memorizing data. | Stop training early, increase Dropout, or get more data. |
 | **FPR is huge (>20%)** | "Trigger Happy." Model thinks everything is a wakeword. | Add more background noise to your negative dataset. |
 | **Loss is NaN** | "Exploding Gradients." The math broke. | Lower the learning rate significantly. |
-

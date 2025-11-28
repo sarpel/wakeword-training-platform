@@ -45,6 +45,9 @@ def _run_epoch(
             inputs = inputs.to(trainer.device, non_blocking=True)
             targets = targets.to(trainer.device, non_blocking=True)
 
+            # Keep reference to raw inputs (for distillation)
+            raw_inputs = inputs
+
             # NEW: GPU Processing Pipeline
             # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
             if inputs.ndim <= 3:
@@ -62,7 +65,8 @@ def _run_epoch(
 
             with torch.cuda.amp.autocast(enabled=trainer.use_mixed_precision):
                 outputs = trainer.model(inputs)
-                loss = trainer.criterion(outputs, targets)
+                # Use compute_loss method to allow overriding (e.g., for distillation)
+                loss = trainer.compute_loss(outputs, targets, raw_inputs)
 
             if is_training:
                 trainer.scaler.scale(loss).backward()

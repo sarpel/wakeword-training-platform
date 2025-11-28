@@ -20,7 +20,7 @@ torch.backends.cudnn.benchmark = True
 from src.config.cuda_utils import enforce_cuda
 from src.config.seed_utils import set_seed
 from src.data.augmentation import SpecAugment
-from src.data.processor import AudioProcessor  # NEW
+from src.data.processor import AudioProcessor  # FIXED
 from src.models.losses import create_loss_function
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.ema import EMA, EMAScheduler
@@ -385,6 +385,20 @@ class Trainer:
     def stop(self):
         """Signal the trainer to stop at the next available opportunity"""
         self.stop_event.set()
+
+    def compute_loss(self, outputs: torch.Tensor, targets: torch.Tensor, inputs: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Compute loss. Can be overridden for distillation or custom logic.
+        
+        Args:
+            outputs: Model predictions
+            targets: Ground truth labels
+            inputs: Original inputs (optional, for distillation/teacher)
+            
+        Returns:
+            Loss tensor
+        """
+        return self.criterion(outputs, targets)
 
 
 if __name__ == "__main__":

@@ -156,12 +156,15 @@ class OptimizerConfig:
 class LossConfig:
     """Loss function configuration"""
 
-    loss_function: str = "cross_entropy"  # cross_entropy, focal_loss
+    loss_function: str = "cross_entropy"  # cross_entropy, focal_loss, triplet_loss
     label_smoothing: float = 0.05
 
     # Focal loss parameters
     focal_alpha: float = 0.25
     focal_gamma: float = 2.0
+
+    # Triplet loss parameters
+    triplet_margin: float = 1.0
 
     # Class weighting
     class_weights: str = "balanced"  # balanced, none, custom
@@ -170,6 +173,38 @@ class LossConfig:
     # Sampling strategy
     sampler_strategy: str = "weighted"  # weighted, balanced, none
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class QATConfig:
+    """Quantization Aware Training configuration"""
+
+    enabled: bool = False
+    backend: str = "fbgemm"  # fbgemm (x86), qnnpack (ARM)
+    
+    # When to start QAT (usually after some epochs of normal training)
+    start_epoch: int = 5
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class DistillationConfig:
+    """Knowledge Distillation configuration"""
+
+    enabled: bool = False
+    teacher_model_path: str = ""  # Path to pretrained teacher checkpoint
+    teacher_architecture: str = "wav2vec2" 
+    
+    # Distillation parameters
+    temperature: float = 2.0
+    alpha: float = 0.5  # Weight for distillation loss (1-alpha for student loss)
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -186,6 +221,10 @@ class WakewordConfig:
     augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     loss: LossConfig = field(default_factory=LossConfig)
+    
+    # New optional configurations
+    qat: QATConfig = field(default_factory=QATConfig)
+    distillation: DistillationConfig = field(default_factory=DistillationConfig)
 
     # Metadata
     config_name: str = "default"
@@ -202,6 +241,8 @@ class WakewordConfig:
             "augmentation": self.augmentation.to_dict(),
             "optimizer": self.optimizer.to_dict(),
             "loss": self.loss.to_dict(),
+            "qat": self.qat.to_dict(),
+            "distillation": self.distillation.to_dict(),
         }
 
     @classmethod
@@ -216,6 +257,8 @@ class WakewordConfig:
             augmentation=AugmentationConfig(**config_dict.get("augmentation", {})),
             optimizer=OptimizerConfig(**config_dict.get("optimizer", {})),
             loss=LossConfig(**config_dict.get("loss", {})),
+            qat=QATConfig(**config_dict.get("qat", {})),
+            distillation=DistillationConfig(**config_dict.get("distillation", {})),
         )
 
     def save(self, path: Path):
@@ -267,6 +310,8 @@ __all__ = [
     "AugmentationConfig",
     "OptimizerConfig",
     "LossConfig",
+    "QATConfig",
+    "DistillationConfig",
     "WakewordConfig",
     "get_default_config",
 ]
