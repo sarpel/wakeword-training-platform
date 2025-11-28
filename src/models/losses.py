@@ -260,8 +260,9 @@ class TripletLoss(nn.Module):
         # For each anchor, find the hardest negative (min distance)
         # We add max_dist to positives so they don't interfere with min
         max_dist = dists.max()
-        # FIX: Also add penalty to diagonal to exclude self-comparisons
-        dists_with_penalty = dists + max_dist * (mask_pos.float())  # mask_pos includes diagonal
+        # Use mask_pos (which includes diagonal) to exclude both positive pairs
+        # and self-comparisons from negative mining
+        dists_with_penalty = dists + max_dist * mask_pos.float()
         hardest_neg_dist = dists_with_penalty.min(dim=1)[0]
         
         # Calculate Triplet Loss: max(d(a, p) - d(a, n) + margin, 0)

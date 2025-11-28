@@ -108,11 +108,8 @@ class AudioProcessor(nn.Module):
         # Apply CMVN if available
         if self.cmvn is not None:
             # CMVN expects (B, C, T) but features are (B, 1, H, W)
-            # We need to handle this - squeeze channel, apply CMVN, unsqueeze
-            # Actually, looking at CMVN.normalize(), it handles (B, C, T)
             # Our features are (B, 1, n_mels, time)
-            # Squeeze channel: (B, n_mels, time)
-            batch_size = features.shape[0]
+            # Squeeze channel: (B, n_mels, time), apply CMVN, then unsqueeze
             features_squeezed = features.squeeze(1)  # (B, n_mels, time)
             features_normalized = self.cmvn.normalize(features_squeezed)
             features = features_normalized.unsqueeze(1)  # (B, 1, n_mels, time)
@@ -147,7 +144,7 @@ class AudioProcessor(nn.Module):
             pad_left = pad_amount // 2
             pad_right = pad_amount - pad_left
             # F.pad expects (left, right) for last dimension
-            return torch.nn.functional.pad(waveform, (pad_left, pad_right), mode='constant', value=0)
+            return torch.nn.functional.pad(waveform, (pad_left, pad_right), mode='constant', value=0.0)
 
     def get_output_shape(self, input_samples: int = None) -> tuple:
         """
