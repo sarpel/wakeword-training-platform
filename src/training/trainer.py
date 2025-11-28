@@ -20,7 +20,9 @@ torch.backends.cudnn.benchmark = True
 from src.config.cuda_utils import enforce_cuda
 from src.config.seed_utils import set_seed
 from src.data.augmentation import SpecAugment
-from src.data.processor import AudioProcessor  # FIXED
+# Import the correct AudioProcessor implementation; the previous path pointed to
+# a non-existent module and prevented the trainer from being imported at all.
+from src.data.audio_utils import AudioProcessor  # FIXED
 from src.models.losses import create_loss_function
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.ema import EMA, EMAScheduler

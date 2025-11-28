@@ -32,17 +32,19 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Security Scheme
-security = HTTPBearer()
+# Security Scheme: make Authorization optional when no API key is configured so the
+# service can run in open mode during development/testing instead of returning 403.
+security = HTTPBearer(auto_error=False)
 
-async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
+async def verify_api_key(
+    credentials: HTTPAuthorizationCredentials | None = Security(security),
+):
+    # When no API key is configured we run in open mode and skip header enforcement
     if not API_KEY:
-        # If no API Key is configured, allow access (or warn)
-        # For this request, we assume if it's unset, it's open, but user asked for security features.
-        # So we will log a warning if used without key in prod, but here we just pass if None.
         return credentials
 
-    if credentials.credentials != API_KEY:
+    # If a key is configured we require the Authorization header to be present and match
+    if credentials is None or credentials.credentials != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API Key")
     return credentials
 
@@ -98,12 +100,12 @@ async def verify_audio(file: UploadFile = File(...)):
     """
     if engine is None:
         raise HTTPException(status_code=503, detail="Inference engine not initialized")
-        
+
     try:
         audio_bytes = await file.read()
-        
+
         if len(audio_bytes) == 0:
-             raise HTTPException(status_code=400, detail="Empty file received")
+            raise HTTPException(status_code=400, detail="Empty file received")
              
         result = engine.predict(audio_bytes)
         return result
