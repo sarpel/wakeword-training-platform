@@ -45,13 +45,23 @@ def suppress_windows_asyncio_errors():
             exception = context.get("exception")
             
             # Check for ConnectionResetError (WinError 10054)
+            # This is very common on Windows when clients disconnect abruptly
             if isinstance(exception, ConnectionResetError):
-                if getattr(exception, 'winerror', 0) == 10054:
-                    return
+                return
+                
+            # Check for OSError with 10054
+            if isinstance(exception, OSError) and getattr(exception, 'winerror', 0) == 10054:
+                return
                 
             # Check message for ProactorBasePipeTransport
             message = context.get("message", "")
             if "_ProactorBasePipeTransport" in message:
+                return
+                
+            # Check handle string for ProactorBasePipeTransport
+            # The error often comes from _call_connection_lost
+            handle = context.get("handle")
+            if handle and "_ProactorBasePipeTransport" in str(handle):
                 return
                 
             if "source_traceback" in context:
@@ -203,6 +213,7 @@ def create_app() -> gr.Blocks:
                 inputs=[
                     ds_inputs["root_path"],
                     ds_inputs["skip_val"],
+                    ds_inputs["move_unqualified"],
                     ds_inputs["feature_type"],
                     ds_inputs["sample_rate"],
                     ds_inputs["audio_duration"],

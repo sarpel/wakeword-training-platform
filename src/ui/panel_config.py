@@ -182,9 +182,14 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                         maximum=0.9,
                         value=0.3,
                         step=0.05,
-                        label="Dropout",
                         info="Dropout rate to prevent overfitting",
                     )
+                    
+                    with gr.Accordion("RNN/LSTM Parameters", open=False):
+                        with gr.Row():
+                            hidden_size = gr.Number(label="Hidden Size", value=128)
+                            num_layers = gr.Slider(minimum=1, maximum=5, value=2, step=1, label="Num Layers")
+                            bidirectional = gr.Checkbox(label="Bidirectional", value=True)
 
             # Advanced Configuration Tab
             with gr.TabItem("Advanced Parameters"):
@@ -228,6 +233,15 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 with gr.Row():
                     noise_snr_min = gr.Number(label="Noise SNR Min (dB)", value=5)
                     noise_snr_max = gr.Number(label="Noise SNR Max (dB)", value=20)
+
+                with gr.Accordion("SpecAugment Parameters", open=False):
+                    use_spec_augment = gr.Checkbox(label="Use SpecAugment", value=True)
+                    with gr.Row():
+                        freq_mask_param = gr.Number(label="Freq Mask Param", value=15)
+                        time_mask_param = gr.Number(label="Time Mask Param", value=30)
+                    with gr.Row():
+                        n_freq_masks = gr.Number(label="Num Freq Masks", value=2)
+                        n_time_masks = gr.Number(label="Num Time Masks", value=2)
 
                 gr.Markdown("#### RIR Dry/Wet Mixing")
                 gr.Markdown(
@@ -274,6 +288,19 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     weight_decay = gr.Number(label="Weight Decay", value=1e-4)
                     gradient_clip = gr.Number(label="Gradient Clipping", value=1.0)
 
+                with gr.Accordion("Optimizer & Scheduler Details", open=False):
+                    with gr.Row():
+                        momentum = gr.Number(label="Momentum (SGD)", value=0.9)
+                        warmup_epochs = gr.Number(label="Warmup Epochs", value=3)
+                        min_lr = gr.Number(label="Min LR", value=1e-6)
+                    gr.Markdown("Scheduler Specifics")
+                    with gr.Row():
+                        step_size = gr.Number(label="Step Size", value=10)
+                        scheduler_gamma = gr.Number(label="Gamma", value=0.5)
+                    with gr.Row():
+                        scheduler_patience = gr.Number(label="Patience", value=5)
+                        scheduler_factor = gr.Number(label="Factor", value=0.5)
+
                 with gr.Row():
                     mixed_precision = gr.Checkbox(
                         label="Mixed Precision Training (FP16)",
@@ -312,10 +339,13 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                         label="Class Weights",
                     )
                     hard_negative_weight = gr.Number(
-                        label="Hard Negative Weight",
-                        value=1.5,
                         info="Weight multiplier for hard negative samples",
                     )
+                    
+                with gr.Row():
+                     focal_alpha = gr.Number(label="Focal Alpha", value=0.25)
+                     focal_gamma = gr.Number(label="Focal Gamma", value=2.0)
+                     sampler_strategy = gr.Dropdown(choices=["weighted", "balanced", "none"], value="weighted", label="Sampler Strategy")
 
                 gr.Markdown("### Checkpointing")
                 with gr.Row():
@@ -343,9 +373,9 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                         )
                         qat_backend = gr.Dropdown(
                             choices=["fbgemm", "qnnpack"], value="fbgemm",
-                            label="QAT Backend",
                             info="fbgemm (x86), qnnpack (ARM/Mobile)"
                         )
+                        qat_start_epoch = gr.Number(label="QAT Start Epoch", value=5)
                     
                     with gr.Column():
                         gr.Markdown("#### Knowledge Distillation")
@@ -411,69 +441,36 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
         # Collect all inputs for easier handling
         all_inputs = [
             # Data (0-5)
-            sample_rate,
-            audio_duration,
-            n_mfcc,
-            n_fft,
-            hop_length,
-            n_mels,
-            # NPY Features (6-10)
-            use_precomputed_features_for_training,
-            npy_cache_features,
-            fallback_to_audio,
-            npy_feature_dir,
-            npy_feature_type,
-            # Training (11-14, 34, 39) - Wait, indices are getting messy if I insert.
-            # I will append new ones to the end to preserve existing logic if possible, 
-            # BUT I modified the layout. The layout doesn't affect the list order.
-            # The layout doesn't affect the list order.
-            # Let's check the original list order.
-            batch_size,
-            epochs,
-            learning_rate,
-            early_stopping,
-            # Model (15-17)
-            architecture,
-            num_classes,
-            dropout,
-            # Augmentation (18-28)
-            time_stretch_min,
-            time_stretch_max,
-            pitch_shift_min,
-            pitch_shift_max,
-            background_noise_prob,
-            rir_prob,
-            noise_snr_min,
-            noise_snr_max,
-            # RIR Dry/Wet
-            rir_dry_wet_min,
-            rir_dry_wet_max,
-            rir_dry_wet_strategy,
-            # Optimizer (29-33)
-            optimizer,
-            scheduler,
-            weight_decay,
-            gradient_clip,
-            mixed_precision,
-            num_workers, # 34
-            # Loss (35-38)
-            loss_function,
-            label_smoothing,
-            class_weights,
-            hard_negative_weight,
-            # Checkpointing (39)
+            sample_rate, audio_duration, n_mfcc, n_fft, hop_length, n_mels,
+            # NPY (6-10)
+            use_precomputed_features_for_training, npy_cache_features, fallback_to_audio, npy_feature_dir, npy_feature_type,
+            # Training (11-14)
+            batch_size, epochs, learning_rate, early_stopping,
+            # Model (15-20)
+            architecture, num_classes, dropout, hidden_size, num_layers, bidirectional,
+            # Augmentation (21-31)
+            time_stretch_min, time_stretch_max, pitch_shift_min, pitch_shift_max, background_noise_prob, rir_prob, noise_snr_min, noise_snr_max,
+            rir_dry_wet_min, rir_dry_wet_max, rir_dry_wet_strategy,
+            # SpecAugment (32-36)
+            use_spec_augment, freq_mask_param, time_mask_param, n_freq_masks, n_time_masks,
+            # Optimizer (37-48)
+            optimizer, scheduler, weight_decay, gradient_clip, mixed_precision,
+            momentum, warmup_epochs, min_lr, step_size, scheduler_gamma, scheduler_patience, scheduler_factor,
+            # Workers (49)
+            num_workers,
+            # Loss (50-56)
+            loss_function, label_smoothing, class_weights, hard_negative_weight,
+            focal_alpha, focal_gamma, sampler_strategy,
+            # Checkpoint (57)
             checkpoint_frequency,
-            # NEW PARAMS (40-49)
-            time_shift_prob,
-            time_shift_min_ms,
-            time_shift_max_ms,
+            # Time Shift (58-60)
+            time_shift_prob, time_shift_min_ms, time_shift_max_ms,
+            # Triplet (61)
             triplet_margin,
-            qat_enabled,
-            qat_backend,
-            distillation_enabled,
-            teacher_arch,
-            dist_temp,
-            dist_alpha,
+            # QAT (62-64)
+            qat_enabled, qat_backend, qat_start_epoch,
+            # Distillation (65-68)
+            distillation_enabled, teacher_arch, dist_temp, dist_alpha
         ]
 
         # Event handlers with full implementation
@@ -486,8 +483,8 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 ModelConfig,
                 OptimizerConfig,
                 TrainingConfig,
-                QATConfig,           # NEW
-                DistillationConfig,  # NEW
+                QATConfig,
+                DistillationConfig,
             )
 
             return WakewordConfig(
@@ -511,83 +508,106 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     epochs=int(params[12]),
                     learning_rate=float(params[13]),
                     early_stopping_patience=int(params[14]),
-                    num_workers=int(params[34]),
-                    checkpoint_frequency=params[39],
+                    num_workers=int(params[49]),
+                    checkpoint_frequency=params[57],
                 ),
                 model=ModelConfig(
                     architecture=params[15],
                     num_classes=int(params[16]),
                     dropout=float(params[17]),
+                    hidden_size=int(params[18]),
+                    num_layers=int(params[19]),
+                    bidirectional=bool(params[20]),
                 ),
                 augmentation=AugmentationConfig(
-                    time_stretch_min=float(params[18]),
-                    time_stretch_max=float(params[19]),
-                    pitch_shift_min=int(params[20]),
-                    pitch_shift_max=int(params[21]),
-                    background_noise_prob=float(params[22]),
-                    rir_prob=float(params[23]),
-                    noise_snr_min=float(params[24]),
-                    noise_snr_max=float(params[25]),
-                    rir_dry_wet_min=float(params[26]),
-                    rir_dry_wet_max=float(params[27]),
-                    rir_dry_wet_strategy=str(params[28]),
-                    # New Augmentation params
-                    time_shift_prob=float(params[40]),
-                    time_shift_min_ms=int(params[41]),
-                    time_shift_max_ms=int(params[42]),
+                    time_stretch_min=float(params[21]),
+                    time_stretch_max=float(params[22]),
+                    pitch_shift_min=int(params[23]),
+                    pitch_shift_max=int(params[24]),
+                    background_noise_prob=float(params[25]),
+                    rir_prob=float(params[26]),
+                    noise_snr_min=float(params[27]),
+                    noise_snr_max=float(params[28]),
+                    rir_dry_wet_min=float(params[29]),
+                    rir_dry_wet_max=float(params[30]),
+                    rir_dry_wet_strategy=str(params[31]),
+                    # SpecAugment
+                    use_spec_augment=bool(params[32]),
+                    freq_mask_param=int(params[33]),
+                    time_mask_param=int(params[34]),
+                    n_freq_masks=int(params[35]),
+                    n_time_masks=int(params[36]),
+                    # Time Shift
+                    time_shift_prob=float(params[58]),
+                    time_shift_min_ms=int(params[59]),
+                    time_shift_max_ms=int(params[60]),
                 ),
                 optimizer=OptimizerConfig(
-                    optimizer=params[29],
-                    scheduler=params[30],
-                    weight_decay=float(params[31]),
-                    gradient_clip=float(params[32]),
-                    mixed_precision=bool(params[33]),
+                    optimizer=params[37],
+                    scheduler=params[38],
+                    weight_decay=float(params[39]),
+                    gradient_clip=float(params[40]),
+                    mixed_precision=bool(params[41]),
+                    momentum=float(params[42]),
+                    warmup_epochs=int(params[43]),
+                    min_lr=float(params[44]),
+                    step_size=int(params[45]),
+                    gamma=float(params[46]),
+                    patience=int(params[47]),
+                    factor=float(params[48]),
                 ),
                 loss=LossConfig(
-                    loss_function=params[35],
-                    label_smoothing=float(params[36]),
-                    class_weights=params[37],
-                    hard_negative_weight=float(params[38]),
-                    triplet_margin=float(params[43]),
+                    loss_function=params[50],
+                    label_smoothing=float(params[51]),
+                    class_weights=params[52],
+                    hard_negative_weight=float(params[53]),
+                    focal_alpha=float(params[54]),
+                    focal_gamma=float(params[55]),
+                    sampler_strategy=params[56],
+                    triplet_margin=float(params[61]),
                 ),
                 qat=QATConfig(
-                    enabled=bool(params[44]), 
-                    backend=params[45]
+                    enabled=bool(params[62]), 
+                    backend=params[63],
+                    start_epoch=int(params[64]),
                 ),
                 distillation=DistillationConfig(
-                    enabled=bool(params[46]), 
-                    teacher_architecture=params[47], 
-                    temperature=float(params[48]), 
-                    alpha=float(params[49])
+                    enabled=bool(params[65]), 
+                    teacher_architecture=params[66], 
+                    temperature=float(params[67]), 
+                    alpha=float(params[68])
                 )
             )
 
         def _config_to_params(config: WakewordConfig) -> List:
             """Convert WakewordConfig to UI parameters"""
             return [
-                # Data
+                # Data (0-5)
                 config.data.sample_rate,
                 config.data.audio_duration,
                 config.data.n_mfcc,
                 config.data.n_fft,
                 config.data.hop_length,
                 config.data.n_mels,
-                # NPY Features
+                # NPY (6-10)
                 config.data.use_precomputed_features_for_training,
                 config.data.npy_cache_features,
                 config.data.fallback_to_audio,
                 config.data.npy_feature_dir,
                 config.data.npy_feature_type,
-                # Training
+                # Training (11-14)
                 config.training.batch_size,
                 config.training.epochs,
                 config.training.learning_rate,
                 config.training.early_stopping_patience,
-                # Model
+                # Model (15-20)
                 config.model.architecture,
                 config.model.num_classes,
                 config.model.dropout,
-                # Augmentation
+                config.model.hidden_size,
+                config.model.num_layers,
+                config.model.bidirectional,
+                # Augmentation (21-31)
                 config.augmentation.time_stretch_min,
                 config.augmentation.time_stretch_max,
                 config.augmentation.pitch_shift_min,
@@ -596,35 +616,51 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 config.augmentation.rir_prob,
                 config.augmentation.noise_snr_min,
                 config.augmentation.noise_snr_max,
-                # RIR Dry/Wet
                 config.augmentation.rir_dry_wet_min,
                 config.augmentation.rir_dry_wet_max,
                 config.augmentation.rir_dry_wet_strategy,
-                # Optimizer
+                # SpecAugment (32-36)
+                config.augmentation.use_spec_augment,
+                config.augmentation.freq_mask_param,
+                config.augmentation.time_mask_param,
+                config.augmentation.n_freq_masks,
+                config.augmentation.n_time_masks,
+                # Optimizer (37-48)
                 config.optimizer.optimizer,
                 config.optimizer.scheduler,
                 config.optimizer.weight_decay,
                 config.optimizer.gradient_clip,
                 config.optimizer.mixed_precision,
+                config.optimizer.momentum,
+                config.optimizer.warmup_epochs,
+                config.optimizer.min_lr,
+                config.optimizer.step_size,
+                config.optimizer.gamma,
+                config.optimizer.patience,
+                config.optimizer.factor,
+                # Workers (49)
                 config.training.num_workers,
-                # Loss
+                # Loss (50-56)
                 config.loss.loss_function,
                 config.loss.label_smoothing,
                 config.loss.class_weights,
                 config.loss.hard_negative_weight,
-                # Checkpointing
+                config.loss.focal_alpha,
+                config.loss.focal_gamma,
+                config.loss.sampler_strategy,
+                # Checkpoint (57)
                 config.training.checkpoint_frequency,
-                # NEW PARAMS
-                # Augmentation (Time Shift) - Need to update defaults.py first
+                # Time Shift (58-60)
                 getattr(config.augmentation, "time_shift_prob", 0.0),
                 getattr(config.augmentation, "time_shift_min_ms", -100),
                 getattr(config.augmentation, "time_shift_max_ms", 100),
-                # Loss (Triplet)
+                # Triplet (61)
                 getattr(config.loss, "triplet_margin", 1.0),
-                # QAT
+                # QAT (62-64)
                 config.qat.enabled,
                 config.qat.backend,
-                # Distillation
+                config.qat.start_epoch,
+                # Distillation (65-68)
                 config.distillation.enabled,
                 config.distillation.teacher_architecture,
                 config.distillation.temperature,

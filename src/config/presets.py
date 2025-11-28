@@ -12,6 +12,7 @@ from src.config.defaults import (
     OptimizerConfig,
     TrainingConfig,
     WakewordConfig,
+    QATConfig,
 )
 
 
@@ -335,6 +336,70 @@ def get_edge_deployment_preset() -> WakewordConfig:
     )
 
 
+def get_esp32_no_psram_preset() -> WakewordConfig:
+    """
+    ESP32-S3 (No PSRAM) configuration
+
+    Optimized for:
+    - Strict memory constraints (<250KB RAM usage)
+    - TinyConv architecture (~60KB params)
+    - Reduced input features
+    - Int8 quantization readiness
+    """
+    return WakewordConfig(
+        config_name="esp32_no_psram",
+        description="Optimized for ESP32-S3 without PSRAM (TinyConv, <60KB params)",
+        data=DataConfig(
+            sample_rate=16000,
+            audio_duration=1.0,  # 1s is enough and saves RAM
+            n_mfcc=0,
+            n_fft=400,
+            n_mels=40,  # Reduced from 64 to 40 for memory
+        ),
+        training=TrainingConfig(
+            batch_size=32,
+            epochs=100,  # Tiny models need more epochs to converge
+            learning_rate=0.001,
+            early_stopping_patience=15,
+            num_workers=4,
+        ),
+        model=ModelConfig(
+            architecture="tiny_conv",
+            num_classes=2,
+            pretrained=False,
+            dropout=0.2,
+        ),
+        augmentation=AugmentationConfig(
+            time_stretch_min=0.8,
+            time_stretch_max=1.2,
+            pitch_shift_min=-2,
+            pitch_shift_max=2,
+            background_noise_prob=0.6,  # Heavy augmentation helps tiny models generalize
+            noise_snr_min=5.0,
+            noise_snr_max=20.0,
+            rir_prob=0.4,
+        ),
+        optimizer=OptimizerConfig(
+            optimizer="adamw",
+            weight_decay=1e-3,
+            scheduler="cosine",
+            gradient_clip=1.0,
+            mixed_precision=True,
+        ),
+        loss=LossConfig(
+            loss_function="focal_loss",  # Helps with hard examples
+            label_smoothing=0.0,
+            class_weights="balanced",
+            hard_negative_weight=3.0,
+        ),
+        qat=QATConfig(
+            enabled=True,  # Enable QAT by default for this target
+            backend="qnnpack",  # ARM backend
+            start_epoch=10,
+        ),
+    )
+
+
 # Preset registry
 PRESETS: Dict[str, callable] = {
     "Default": get_default_preset,
@@ -343,6 +408,7 @@ PRESETS: Dict[str, callable] = {
     "Fast Training": get_fast_training_preset,
     "High Accuracy": get_high_accuracy_preset,
     "Edge Deployment": get_edge_deployment_preset,
+    "ESP32-S3 (No PSRAM)": get_esp32_no_psram_preset,
 }
 
 

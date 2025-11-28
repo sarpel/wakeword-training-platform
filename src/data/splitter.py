@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
 import structlog
+import soundfile as sf
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -58,6 +59,7 @@ class DatasetScanner:
         self,
         progress_callback: Optional[Callable] = None,
         skip_validation: bool = False,
+        exclude_unqualified: bool = True,
     ) -> Dict:
         """
         Scan all dataset categories
@@ -118,11 +120,11 @@ class DatasetScanner:
                     progress_callback(overall_progress, f"{category_key}: {msg}")
 
                 category_result = self._scan_category(
-                    category_path, category_key, category_progress, skip_validation
+                    category_path, category_key, category_progress, skip_validation, exclude_unqualified
                 )
             else:
                 category_result = self._scan_category(
-                    category_path, category_key, None, skip_validation
+                    category_path, category_key, None, skip_validation, exclude_unqualified
                 )
 
             results["categories"][category_key] = category_result
@@ -243,6 +245,7 @@ class DatasetScanner:
         category_name: str,
         progress_callback: Optional[Callable] = None,
         skip_validation: bool = False,
+        exclude_unqualified: bool = True,
     ) -> Dict:
         """
         Scan a single category folder recursively with parallel processing
@@ -308,7 +311,7 @@ class DatasetScanner:
                         # Check quality
                         quality = self.validator.check_audio_quality(metadata)
 
-                        if quality.get("should_exclude", False):
+                        if quality.get("should_exclude", False) and exclude_unqualified:
                             # Exclude file
                             reason = quality.get(
                                 "exclude_reason", "Quality check failed"
@@ -415,6 +418,181 @@ class DatasetScanner:
             stats["categories"][category] = category_stats
 
         return stats
+
+    def get_low_quality_folders(
+        self, category: str = "negative", threshold: float = 100.0
+    ) -> list:
+        """
+        Get list of folders containing low quality files (score < threshold)
+
+        Args:
+            category: Dataset category to search
+            threshold: Quality score threshold (default 100.0 to catch all warnings)
+
+        Returns:
+            List of unique folder paths
+        """
+        if not self.dataset_info or "categories" not in self.dataset_info:
+            logger.warning("No scan results found. Run scan_datasets() first.")
+            return []
+
+        if category not in self.dataset_info["categories"]:
+            logger.warning(f"Category {category} not found in dataset")
+            return []
+
+        folders = set()
+        files = self.dataset_info["categories"][category].get("files", [])
+
+        for file_info in files:
+            if file_info.get("quality_score", 100) < threshold:
+                path = Path(file_info["path"])
+                folders.add(str(path.parent))
+
+        return sorted(list(folders))
+
+    def move_low_quality_files(self, threshold: float = 100.0) -> int:
+        """
+        Move low quality files to a 'lowquality' subdirectory within their category folder.
+        
+        Args:
+            threshold: Quality score threshold. Files with score < threshold will be moved.
+            
+        Returns:
+            Number of files moved.
+        """
+        if not self.dataset_info or "categories" not in self.dataset_info:
+            logger.warning("No scan results found. Run scan_datasets() first.")
+            return 0
+            
+        moved_count = 0
+        
+        for category, data in self.dataset_info["categories"].items():
+            if not data:
+                continue
+                
+            category_path = Path(data["path"])
+            low_quality_dir = category_path / "lowquality"
+            
+            # Collect files to move
+            files_to_move = []
+            
+            # 1. Check valid files with low quality score
+            for file_info in data.get("files", []):
+                if file_info.get("quality_score", 100) < threshold:
+                    files_to_move.append(Path(file_info["path"]))
+                    
+            # 2. Check excluded files (if they haven't been moved yet)
+            for file_info in data.get("excluded_files", []):
+                files_to_move.append(Path(file_info["path"]))
+                
+            if not files_to_move:
+                continue
+                
+            # Create destination directory
+            low_quality_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Moving {len(files_to_move)} low quality files to {low_quality_dir}")
+            
+            for src_path in files_to_move:
+                if not src_path.exists():
+                    continue
+                    
+                dest_path = low_quality_dir / src_path.name
+                
+                # Handle duplicate filenames
+                if dest_path.exists():
+                    timestamp = int(src_path.stat().st_mtime)
+                    dest_path = low_quality_dir / f"{src_path.stem}_{timestamp}{src_path.suffix}"
+                    
+                try:
+                    shutil.move(str(src_path), str(dest_path))
+                    moved_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to move {src_path}: {e}")
+                    
+        logger.info(f"Total low quality files moved: {moved_count}")
+        return moved_count
+
+    def trim_dataset_silence(
+        self,
+        output_dir: Optional[Path] = None,
+        top_db: float = 20.0,
+        overwrite: bool = False,
+        exclude_categories: list = ["background", "rirs"],
+    ) -> int:
+        """
+        Trim silence from all files in the dataset.
+
+        Args:
+            output_dir: Directory to save trimmed files. If None and overwrite=False, defaults to 'trimmed_dataset'.
+            top_db: Silence threshold in dB.
+            overwrite: If True, overwrite original files (DANGEROUS).
+            exclude_categories: List of categories to skip (default: background, rirs).
+
+        Returns:
+            Number of files processed.
+        """
+        if not self.dataset_info or "categories" not in self.dataset_info:
+            logger.warning("No scan results found. Run scan_datasets() first.")
+            return 0
+
+        if overwrite:
+            logger.warning("Overwriting original files with trimmed versions!")
+            output_dir = self.dataset_root
+        elif output_dir is None:
+            output_dir = self.dataset_root.parent / "trimmed_dataset"
+
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Trimming silence (top_db={top_db}) -> {output_dir}")
+        logger.info(f"Skipping categories: {exclude_categories}")
+
+        processed_count = 0
+        from src.data.audio_utils import AudioProcessor, AudioValidator
+
+        # Iterate through all categories
+        for category, data in self.dataset_info["categories"].items():
+            if not data:
+                continue
+            
+            if category in exclude_categories:
+                logger.info(f"Skipping excluded category: {category}")
+                continue
+
+            files = data.get("files", [])
+            if not files:
+                continue
+
+            # Create category output dir
+            category_out_dir = output_dir / category
+            category_out_dir.mkdir(parents=True, exist_ok=True)
+
+            logger.info(f"Processing {category} ({len(files)} files)...")
+
+            for file_info in tqdm(files, desc=f"Trimming {category}"):
+                src_path = Path(file_info["path"])
+                
+                # Determine destination path
+                if overwrite:
+                    dest_path = src_path
+                else:
+                    dest_path = category_out_dir / src_path.name
+
+                try:
+                    # Load audio
+                    audio, sr = AudioValidator.load_audio(src_path, mono=True)
+                    
+                    # Trim silence
+                    trimmed_audio = AudioProcessor.trim_silence(audio, top_db=top_db)
+                    
+                    # Save
+                    sf.write(str(dest_path), trimmed_audio, sr)
+                    processed_count += 1
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process {src_path}: {e}")
+
+        logger.info(f"Trimmed {processed_count} files.")
+        return processed_count
 
     def save_manifest(self, output_path: Path):
         """

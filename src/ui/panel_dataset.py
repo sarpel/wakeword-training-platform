@@ -80,6 +80,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     info="Only count files without validation (much faster for large datasets)",
                 )
 
+                move_unqualified_checkbox = gr.Checkbox(
+                    label="Move Unqualified Files",
+                    value=True,
+                    info="If ticked, move files with quality issues to 'unqualified_datasets' folder. If unticked, keep them in place.",
+                )
+
                 scan_button = gr.Button("🔍 Scan Datasets", variant="primary")
                 scan_status = gr.Textbox(
                     label="Scan Status",
@@ -303,7 +309,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
         # Event handlers with full implementation
         def scan_datasets_handler(
-            root_path: str, skip_val: bool, progress=gr.Progress()
+            root_path: str, skip_val: bool, move_unqualified: bool, progress=gr.Progress()
         ) -> Tuple[dict, str, str]:
             """Scan datasets and return statistics and health report"""
             global _current_scanner, _current_dataset_info
@@ -339,7 +345,9 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # Scan datasets with progress
                 progress(0, desc="Initializing scan...")
                 dataset_info = scanner.scan_datasets(
-                    progress_callback=update_progress, skip_validation=skip_val
+                    progress_callback=update_progress,
+                    skip_validation=skip_val,
+                    exclude_unqualified=move_unqualified,
                 )
 
                 # Get statistics
@@ -351,8 +359,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 _current_dataset_info = dataset_info
 
                 # Move excluded files
-                progress(0.96, desc="Moving excluded files...")
-                moved_count = scanner.move_excluded_files()
+                moved_count = 0
+                if move_unqualified:
+                    progress(0.96, desc="Moving excluded files...")
+                    moved_count = scanner.move_excluded_files()
+                else:
+                    logger.info("Skipping move of excluded files (option disabled)")
 
                 # Generate health report
                 progress(0.97, desc="Generating health report...")
@@ -885,6 +897,8 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
         def auto_start_handler(
             root_path: str,
             skip_val: bool,
+            move_unqualified: bool,
+            # Feature extraction params
             # Feature extraction params
             feature_type: str,
             sample_rate: int,
@@ -924,7 +938,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # 1. Scan Datasets
                 progress(0.0, desc="Step 1/5: Scanning Datasets...")
                 log("--- STEP 1: SCANNING DATASETS ---")
-                stats, scan_msg, _ = scan_datasets_handler(root_path, skip_val)
+                stats, scan_msg, _ = scan_datasets_handler(root_path, skip_val, move_unqualified)
                 if "error" in stats:
                     return log(f"❌ Scan Failed: {stats['error']}")
                 log(scan_msg)
@@ -1016,7 +1030,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
         # Connect event handlers
         scan_button.click(
             fn=scan_datasets_handler,
-            inputs=[dataset_root, skip_validation],
+            inputs=[dataset_root, skip_validation, move_unqualified_checkbox],
             outputs=[stats_display, scan_status, health_report],
         )
 
@@ -1086,6 +1100,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
     panel.inputs = {
         "root_path": dataset_root,
         "skip_val": skip_validation,
+        "move_unqualified": move_unqualified_checkbox,
         "feature_type": extract_feature_type,
         "sample_rate": extract_sample_rate,
         "audio_duration": extract_duration,
