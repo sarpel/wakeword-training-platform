@@ -44,7 +44,8 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(se
         logger.warning("API_KEY is not set. Denying request for security.")
         raise HTTPException(status_code=503, detail="Server authentication not configured")
 
-    if credentials.credentials != API_KEY:
+    # If a key is configured we require the Authorization header to be present and match
+    if credentials is None or credentials.credentials != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API Key")
     return credentials
 

@@ -150,7 +150,11 @@ class AudioAugmentation(nn.Module):
                 logger.warning(f"Failed to load RIR {rir_file}: {e}")
 
         if loaded_rirs:
-            self.register_buffer("rirs", self._pad_and_stack(loaded_rirs))
+            # BUG FIX: Use register_buffer properly by unregistering old buffer first
+            stacked_rirs = self._pad_and_stack(loaded_rirs)
+            # Delete existing buffer if it exists
+            delattr(self, "rirs")
+            self.register_buffer("rirs", stacked_rirs)
 
     def time_stretch(self, waveform: torch.Tensor) -> torch.Tensor:
         """Batch time stretch using interpolation"""

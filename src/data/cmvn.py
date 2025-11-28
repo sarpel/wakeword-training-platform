@@ -211,6 +211,9 @@ class CMVN(nn.Module):
         self.mean = torch.tensor(stats_dict["mean"], dtype=torch.float32, device=device)
         self.std = torch.tensor(stats_dict["std"], dtype=torch.float32, device=device)
         self.count = torch.tensor(stats_dict["count"], dtype=torch.long, device=device)
+        self.mean.data = loaded_mean.data
+        self.std.data = loaded_std.data
+        self.count.data = loaded_count.data
         self.eps = stats_dict.get("eps", 1e-8)
         self._initialized = True
 

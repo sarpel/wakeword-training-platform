@@ -28,6 +28,12 @@ def _run_epoch(
     epoch_loss = 0.0
     num_batches = len(dataloader)
 
+    # Guard against empty dataloaders to avoid division by zero and undefined metrics
+    # Earlier versions would crash here when filters yielded no batches, obscuring the
+    # real configuration issue and leaving the training run in an inconsistent state.
+    if num_batches == 0:
+        raise ValueError("Dataloader is empty; cannot run epoch without batches")
+
     pbar_desc = f"Epoch {epoch+1}/{trainer.config.training.epochs} ["
     pbar_desc += "Train" if is_training else "Val"
     pbar_desc += "]"
