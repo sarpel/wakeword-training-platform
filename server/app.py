@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import logging
+import secrets
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,7 +43,8 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(se
         # So we will log a warning if used without key in prod, but here we just pass if None.
         return credentials
 
-    if credentials.credentials != API_KEY:
+    # FIX: Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(credentials.credentials, API_KEY):
         raise HTTPException(status_code=403, detail="Invalid API Key")
     return credentials
 

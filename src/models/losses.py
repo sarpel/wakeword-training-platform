@@ -235,24 +235,47 @@ class TripletLoss(nn.Module):
         mask_pos = target.eq(target.t()) # (B, B)
         mask_neg = ~mask_pos
         
+        # FIX: Exclude diagonal (self-comparisons) from positive mask
+        # A sample compared to itself is not a valid positive pair
+        diag_mask = torch.eye(batch_size, dtype=torch.bool, device=embeddings.device)
+        mask_pos_no_diag = mask_pos & ~diag_mask
+        
+        # FIX: Check if we have valid positive and negative pairs
+        # If all samples are same class, we can't compute triplet loss meaningfully
+        has_valid_pos = mask_pos_no_diag.any(dim=1)  # At least one positive per anchor
+        has_valid_neg = mask_neg.any(dim=1)  # At least one negative per anchor
+        valid_anchors = has_valid_pos & has_valid_neg
+        
+        if not valid_anchors.any():
+            # No valid triplets possible, return zero loss
+            return torch.tensor(0.0, device=embeddings.device, requires_grad=True)
+        
         # For each anchor, find the hardest positive (max distance)
         # We multiply by mask to zero out negatives, but we need to handle cases where 
         # valid positives are smaller than 0 (not possible for distance)
         # Maximize dist(a, p)
         # dists * mask_pos gives distances for positives, 0 for negatives
-        hardest_pos_dist = (dists * mask_pos.float()).max(dim=1)[0]
+        hardest_pos_dist = (dists * mask_pos_no_diag.float()).max(dim=1)[0]
         
         # For each anchor, find the hardest negative (min distance)
         # We add max_dist to positives so they don't interfere with min
         max_dist = dists.max()
-        dists_with_penalty = dists + max_dist * mask_pos.float()
+        # FIX: Also add penalty to diagonal to exclude self-comparisons
+        dists_with_penalty = dists + max_dist * (mask_pos.float())  # mask_pos includes diagonal
         hardest_neg_dist = dists_with_penalty.min(dim=1)[0]
         
         # Calculate Triplet Loss: max(d(a, p) - d(a, n) + margin, 0)
         triplet_loss = F.relu(hardest_pos_dist - hardest_neg_dist + self.margin)
         
-        # Return mean loss
-        return triplet_loss.mean()
+        # Only include loss from valid anchors
+        triplet_loss = triplet_loss * valid_anchors.float()
+        
+        # Return mean loss (over valid anchors only)
+        num_valid = valid_anchors.sum()
+        if num_valid > 0:
+            return triplet_loss.sum() / num_valid
+        else:
+            return torch.tensor(0.0, device=embeddings.device, requires_grad=True)
 
 
 def create_loss_function(

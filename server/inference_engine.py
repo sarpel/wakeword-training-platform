@@ -49,8 +49,16 @@ class InferenceEngine:
         Convert raw bytes to float tensor.
         Assumes 16kHz mono PCM16.
         """
+        # FIX: Ensure audio data length is a multiple of 2 (int16 = 2 bytes)
+        if len(audio_data) % 2 != 0:
+            audio_data = audio_data[:-1]  # Trim last byte if odd
+        
         # Convert bytes to numpy int16
         audio_np = np.frombuffer(audio_data, dtype=np.int16)
+        
+        # FIX: Guard against empty audio data
+        if len(audio_np) == 0:
+            raise ValueError("Empty audio data received")
         
         # Convert to float32 [-1, 1]
         audio_float = audio_np.astype(np.float32) / 32768.0
