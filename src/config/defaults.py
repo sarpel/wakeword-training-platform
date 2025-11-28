@@ -96,6 +96,11 @@ class AugmentationConfig:
     pitch_shift_min: int = -2  # semitones
     pitch_shift_max: int = 2  # semitones
 
+    # Time shift (New)
+    time_shift_prob: float = 0.0
+    time_shift_min_ms: int = -100
+    time_shift_max_ms: int = 100
+
     # Noise augmentation (CPU-based)
     background_noise_prob: float = 0.5
     noise_snr_min: float = 5.0  # dB

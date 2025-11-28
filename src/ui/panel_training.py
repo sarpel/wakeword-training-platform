@@ -32,9 +32,11 @@ from src.data.dataset import WakewordDataset, load_dataset_splits
 from src.exceptions import WakewordException
 from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
+from src.training.distillation_trainer import DistillationTrainer
 from src.training.hpo import run_hpo
 from src.training.lr_finder import LRFinder
 from src.training.metrics import MetricResults  # Imported MetricResults
+from src.training.qat_utils import prepare_model_for_qat
 from src.training.trainer import Trainer
 from src.training.wandb_callback import WandbCallback
 
@@ -587,6 +589,14 @@ def start_training(
 
         training_state.add_log(f"Model created: {config.model.architecture}")
 
+        # Prepare for QAT if enabled
+        if config.qat.enabled:
+            training_state.add_log(f"Preparing model for Quantization Aware Training (Backend: {config.qat.backend})...")
+            # We need a dummy input for some QAT preparations (though our current impl doesn't strictly require it)
+            # But let's be safe and pass it if we have dimensions
+            training_state.model = prepare_model_for_qat(training_state.model, config.qat)
+            training_state.add_log("✅ Model prepared for QAT")
+
         # Run LR Finder if enabled
         optimal_lr = None
         if run_lr_finder:
@@ -628,7 +638,12 @@ def start_training(
         training_state.add_log("Initializing trainer...")
 
         # Create trainer with EMA if enabled
-        training_state.trainer = Trainer(
+        TrainerClass = DistillationTrainer if config.distillation.enabled else Trainer
+        
+        if config.distillation.enabled:
+            training_state.add_log(f"Knowledge Distillation enabled (Teacher: {config.distillation.teacher_architecture})")
+
+        training_state.trainer = TrainerClass(
             model=training_state.model,
             train_loader=training_state.train_loader,
             val_loader=training_state.val_loader,

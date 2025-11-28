@@ -386,18 +386,38 @@ class Trainer:
         """Signal the trainer to stop at the next available opportunity"""
         self.stop_event.set()
 
-    def compute_loss(self, outputs: torch.Tensor, targets: torch.Tensor, inputs: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def compute_loss(
+        self, 
+        outputs: torch.Tensor, 
+        targets: torch.Tensor, 
+        inputs: Optional[torch.Tensor] = None,
+        processed_inputs: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Compute loss. Can be overridden for distillation or custom logic.
         
         Args:
             outputs: Model predictions
             targets: Ground truth labels
-            inputs: Original inputs (optional, for distillation/teacher)
+            inputs: Original raw inputs (optional, for distillation/teacher)
+            processed_inputs: Processed inputs/features (optional, for embedding extraction)
             
         Returns:
             Loss tensor
         """
+        # Check if using TripletLoss
+        from src.models.losses import TripletLoss
+        if isinstance(self.criterion, TripletLoss):
+            # For TripletLoss, we need embeddings, not logits.
+            # Re-compute embeddings using processed_inputs if available.
+            if processed_inputs is not None and hasattr(self.model, "embed"):
+                embeddings = self.model.embed(processed_inputs)
+                return self.criterion(embeddings, targets)
+            else:
+                # Fallback: assume outputs are embeddings or model doesn't support embed()
+                # This might happen if using a model without embed() method
+                return self.criterion(outputs, targets)
+
         return self.criterion(outputs, targets)
 
 

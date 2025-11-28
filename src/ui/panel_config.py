@@ -15,7 +15,7 @@ import gradio as gr
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.defaults import WakewordConfig
+from src.config.defaults import WakewordConfig, QATConfig, DistillationConfig
 from src.config.logger import get_data_logger
 from src.config.presets import get_preset, list_presets
 from src.config.validator import ConfigValidator
@@ -291,7 +291,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 gr.Markdown("### Loss & Sampling")
                 with gr.Row():
                     loss_function = gr.Dropdown(
-                        choices=["cross_entropy", "focal_loss"],
+                        choices=["cross_entropy", "focal_loss", "triplet_loss"],
                         value="cross_entropy",
                         label="Loss Function",
                         info="Note: Focal loss has separate parameters (focal_alpha, focal_gamma)",
@@ -330,6 +330,65 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                         label="Checkpoint Frequency",
                     )
 
+            # NEW: Experimental Features Tab
+            with gr.TabItem("Experimental Features"):
+                gr.Markdown("### 🧪 Edge & Advanced Optimization")
+                
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("#### Quantization Aware Training (QAT)")
+                        qat_enabled = gr.Checkbox(
+                            label="Enable QAT", value=False, 
+                            info="Simulate INT8 quantization during training (for edge devices)"
+                        )
+                        qat_backend = gr.Dropdown(
+                            choices=["fbgemm", "qnnpack"], value="fbgemm",
+                            label="QAT Backend",
+                            info="fbgemm (x86), qnnpack (ARM/Mobile)"
+                        )
+                    
+                    with gr.Column():
+                        gr.Markdown("#### Knowledge Distillation")
+                        distillation_enabled = gr.Checkbox(
+                            label="Enable Distillation", value=False,
+                            info="Train student model to mimic a teacher model"
+                        )
+                        teacher_arch = gr.Dropdown(
+                            choices=["wav2vec2"], value="wav2vec2",
+                            label="Teacher Architecture"
+                        )
+                        dist_temp = gr.Slider(
+                            minimum=1.0, maximum=10.0, value=2.0, step=0.5,
+                            label="Temperature",
+                            info="Softmax temperature for distillation"
+                        )
+                        dist_alpha = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.5, step=0.1,
+                            label="Alpha",
+                            info="Weight for distillation loss (vs student loss)"
+                        )
+
+                gr.Markdown("### 🌊 Streaming Simulation")
+                with gr.Row():
+                    time_shift_prob = gr.Slider(
+                        minimum=0.0, maximum=1.0, value=0.5, step=0.1,
+                        label="Time Shift Probability",
+                        info="Probability of applying random circular time shift"
+                    )
+                    with gr.Column():
+                        gr.Markdown("Time Shift Range (ms)")
+                        with gr.Row():
+                            time_shift_min_ms = gr.Number(label="Min Shift (ms)", value=-100)
+                            time_shift_max_ms = gr.Number(label="Max Shift (ms)", value=100)
+
+                gr.Markdown("### 📐 Metric Learning")
+                with gr.Row():
+                    triplet_margin = gr.Slider(
+                        minimum=0.1, maximum=5.0, value=1.0, step=0.1,
+                        label="Triplet Loss Margin",
+                        info="Margin for Triplet Loss (ensure 'triplet_loss' is selected in Basic Params)"
+                    )
+
         gr.Markdown("---")
 
         with gr.Row():
@@ -351,29 +410,33 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
 
         # Collect all inputs for easier handling
         all_inputs = [
-            # Data
+            # Data (0-5)
             sample_rate,
             audio_duration,
             n_mfcc,
             n_fft,
             hop_length,
             n_mels,
-            # NPY Features
+            # NPY Features (6-10)
             use_precomputed_features_for_training,
             npy_cache_features,
             fallback_to_audio,
             npy_feature_dir,
             npy_feature_type,
-            # Training
+            # Training (11-14, 34, 39) - Wait, indices are getting messy if I insert.
+            # I will append new ones to the end to preserve existing logic if possible, 
+            # BUT I modified the layout. The layout doesn't affect the list order.
+            # The layout doesn't affect the list order.
+            # Let's check the original list order.
             batch_size,
             epochs,
             learning_rate,
             early_stopping,
-            # Model
+            # Model (15-17)
             architecture,
             num_classes,
             dropout,
-            # Augmentation
+            # Augmentation (18-28)
             time_stretch_min,
             time_stretch_max,
             pitch_shift_min,
@@ -386,20 +449,31 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
             rir_dry_wet_min,
             rir_dry_wet_max,
             rir_dry_wet_strategy,
-            # Optimizer
+            # Optimizer (29-33)
             optimizer,
             scheduler,
             weight_decay,
             gradient_clip,
             mixed_precision,
-            num_workers,
-            # Loss
+            num_workers, # 34
+            # Loss (35-38)
             loss_function,
             label_smoothing,
             class_weights,
             hard_negative_weight,
-            # Checkpointing
+            # Checkpointing (39)
             checkpoint_frequency,
+            # NEW PARAMS (40-49)
+            time_shift_prob,
+            time_shift_min_ms,
+            time_shift_max_ms,
+            triplet_margin,
+            qat_enabled,
+            qat_backend,
+            distillation_enabled,
+            teacher_arch,
+            dist_temp,
+            dist_alpha,
         ]
 
         # Event handlers with full implementation
@@ -412,6 +486,8 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 ModelConfig,
                 OptimizerConfig,
                 TrainingConfig,
+                QATConfig,           # NEW
+                DistillationConfig,  # NEW
             )
 
             return WakewordConfig(
@@ -455,6 +531,10 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     rir_dry_wet_min=float(params[26]),
                     rir_dry_wet_max=float(params[27]),
                     rir_dry_wet_strategy=str(params[28]),
+                    # New Augmentation params
+                    time_shift_prob=float(params[40]),
+                    time_shift_min_ms=int(params[41]),
+                    time_shift_max_ms=int(params[42]),
                 ),
                 optimizer=OptimizerConfig(
                     optimizer=params[29],
@@ -468,7 +548,18 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     label_smoothing=float(params[36]),
                     class_weights=params[37],
                     hard_negative_weight=float(params[38]),
+                    triplet_margin=float(params[43]),
                 ),
+                qat=QATConfig(
+                    enabled=bool(params[44]), 
+                    backend=params[45]
+                ),
+                distillation=DistillationConfig(
+                    enabled=bool(params[46]), 
+                    teacher_architecture=params[47], 
+                    temperature=float(params[48]), 
+                    alpha=float(params[49])
+                )
             )
 
         def _config_to_params(config: WakewordConfig) -> List:
@@ -523,6 +614,21 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 config.loss.hard_negative_weight,
                 # Checkpointing
                 config.training.checkpoint_frequency,
+                # NEW PARAMS
+                # Augmentation (Time Shift) - Need to update defaults.py first
+                getattr(config.augmentation, "time_shift_prob", 0.0),
+                getattr(config.augmentation, "time_shift_min_ms", -100),
+                getattr(config.augmentation, "time_shift_max_ms", 100),
+                # Loss (Triplet)
+                getattr(config.loss, "triplet_margin", 1.0),
+                # QAT
+                config.qat.enabled,
+                config.qat.backend,
+                # Distillation
+                config.distillation.enabled,
+                config.distillation.teacher_architecture,
+                config.distillation.temperature,
+                config.distillation.alpha,
             ]
 
         def load_preset_handler(preset_name: str) -> Tuple:

@@ -43,16 +43,20 @@ def suppress_windows_asyncio_errors():
         def handle_exception(loop, context):
             # Check if this is the specific harmless error
             exception = context.get("exception")
+            
+            # Check for ConnectionResetError (WinError 10054)
             if isinstance(exception, ConnectionResetError):
-                # Check if it's from _ProactorBasePipeTransport
-                message = context.get("message", "")
-                if (
-                    "_ProactorBasePipeTransport" in message
-                    or "_call_connection_lost"
-                    in str(context.get("source_traceback", ""))
-                ):
-                    # Silently ignore this error
+                if getattr(exception, 'winerror', 0) == 10054:
                     return
+                
+            # Check message for ProactorBasePipeTransport
+            message = context.get("message", "")
+            if "_ProactorBasePipeTransport" in message:
+                return
+                
+            if "source_traceback" in context:
+                 if "_call_connection_lost" in str(context["source_traceback"]):
+                     return
 
             # For other exceptions, use default handling
             loop.default_exception_handler(context)

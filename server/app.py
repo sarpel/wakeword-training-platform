@@ -1,4 +1,6 @@
 import os
+import sys
+import asyncio
 import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +44,20 @@ engine = None
 @app.on_event("startup")
 async def startup_event():
     global engine
+    
+    # Suppress harmless Windows asyncio errors
+    if sys.platform == "win32":
+        loop = asyncio.get_running_loop()
+        def handle_exception(loop, context):
+            exception = context.get("exception")
+            if isinstance(exception, ConnectionResetError):
+                if getattr(exception, 'winerror', 0) == 10054:
+                    return
+            if "_ProactorBasePipeTransport" in context.get("message", ""):
+                return
+            loop.default_exception_handler(context)
+        loop.set_exception_handler(handle_exception)
+
     logger.info(f"Starting server. Loading model from {MODEL_PATH} on {DEVICE}...")
     try:
         engine = InferenceEngine(model_path=MODEL_PATH, device=DEVICE)

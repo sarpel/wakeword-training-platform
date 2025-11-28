@@ -66,13 +66,19 @@ class DistillationTrainer(Trainer):
             
         logger.info("Teacher model initialized and frozen")
 
-    def compute_loss(self, outputs: torch.Tensor, targets: torch.Tensor, inputs: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def compute_loss(
+        self, 
+        outputs: torch.Tensor, 
+        targets: torch.Tensor, 
+        inputs: Optional[torch.Tensor] = None,
+        processed_inputs: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Compute loss with distillation component
         
         Loss = (1 - alpha) * StudentLoss + alpha * KL(Student || Teacher)
         """
-        student_loss = super().compute_loss(outputs, targets)
+        student_loss = super().compute_loss(outputs, targets, inputs, processed_inputs)
         
         if not self.distillation_enabled or self.teacher is None:
             return student_loss

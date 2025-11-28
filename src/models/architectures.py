@@ -62,6 +62,27 @@ class ResNet18Wakeword(nn.Module):
         """
         return self.resnet(x)
 
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Get feature embeddings (before classification head)
+        """
+        # We need to manually run the resnet layers to bypass the final fc
+        # This relies on internal structure of torchvision resnet
+        x = self.resnet.conv1(x)
+        x = self.resnet.bn1(x)
+        x = self.resnet.relu(x)
+        x = self.resnet.maxpool(x)
+
+        x = self.resnet.layer1(x)
+        x = self.resnet.layer2(x)
+        x = self.resnet.layer3(x)
+        x = self.resnet.layer4(x)
+
+        x = self.resnet.avgpool(x)
+        x = torch.flatten(x, 1)
+        
+        return x
+
 
 class MobileNetV3Wakeword(nn.Module):
     """MobileNetV3-Small adapted for wakeword detection"""
@@ -118,6 +139,16 @@ class MobileNetV3Wakeword(nn.Module):
             Output logits (batch, num_classes)
         """
         return self.mobilenet(x)
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Get feature embeddings
+        """
+        # MobileNetV3 features
+        x = self.mobilenet.features(x)
+        x = self.mobilenet.avgpool(x)
+        x = torch.flatten(x, 1)
+        return x
 
 
 class LSTMWakeword(nn.Module):
@@ -190,6 +221,15 @@ class LSTMWakeword(nn.Module):
 
         return output
 
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Get embeddings (final hidden state)"""
+        lstm_out, (h_n, c_n) = self.lstm(x)
+        if self.bidirectional:
+            h_n = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        else:
+            h_n = h_n[-1]
+        return h_n
+
 
 class GRUWakeword(nn.Module):
     """GRU-based wakeword detector"""
@@ -260,6 +300,15 @@ class GRUWakeword(nn.Module):
         output = self.fc(h_n)
 
         return output
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Get embeddings (final hidden state)"""
+        gru_out, h_n = self.gru(x)
+        if self.bidirectional:
+            h_n = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        else:
+            h_n = h_n[-1]
+        return h_n
 
 
 class TemporalConvNet(nn.Module):
