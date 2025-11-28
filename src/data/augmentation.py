@@ -115,7 +115,12 @@ class AudioAugmentation(nn.Module):
                 logger.warning(f"Failed to load noise {noise_file}: {e}")
 
         if loaded_noises:
-            self.register_buffer("background_noises", self._pad_and_stack(loaded_noises))
+            # BUG FIX: Use register_buffer properly by unregistering old buffer first
+            # or using .data assignment if buffer already exists
+            stacked_noises = self._pad_and_stack(loaded_noises)
+            # Delete existing buffer if it exists
+            delattr(self, "background_noises")
+            self.register_buffer("background_noises", stacked_noises)
 
     def _load_rirs(self, rir_files: List[Path]):
         """Load RIR files into buffer"""
@@ -145,7 +150,11 @@ class AudioAugmentation(nn.Module):
                 logger.warning(f"Failed to load RIR {rir_file}: {e}")
 
         if loaded_rirs:
-            self.register_buffer("rirs", self._pad_and_stack(loaded_rirs))
+            # BUG FIX: Use register_buffer properly by unregistering old buffer first
+            stacked_rirs = self._pad_and_stack(loaded_rirs)
+            # Delete existing buffer if it exists
+            delattr(self, "rirs")
+            self.register_buffer("rirs", stacked_rirs)
 
     def time_stretch(self, waveform: torch.Tensor) -> torch.Tensor:
         """Batch time stretch using interpolation"""

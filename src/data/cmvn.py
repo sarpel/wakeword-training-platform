@@ -99,10 +99,11 @@ class CMVN(nn.Module):
         mean = sum_features / total_frames
         variance = (sum_squared / total_frames) - (mean**2)
         std = torch.sqrt(variance.clamp(min=self.eps))
-        
-        # Update buffers
-        self.mean = mean
-        self.std = std
+
+        # BUG FIX: Use .data.copy_() instead of direct assignment to preserve buffer registration
+        # Direct assignment (self.mean = ...) breaks PyTorch's buffer tracking
+        self.mean.data = mean.data
+        self.std.data = std.data
         self.count.fill_(total_frames)
         self._initialized = True
 
@@ -207,10 +208,16 @@ class CMVN(nn.Module):
         # Load into buffers and move to device if module already on device (handled by register_buffer persistence logic usually, but here we set manually)
         # We must respect current device if possible, or let .to(device) handle it later.
         device = self.mean.device
-        
-        self.mean = torch.tensor(stats_dict["mean"], dtype=torch.float32, device=device)
-        self.std = torch.tensor(stats_dict["std"], dtype=torch.float32, device=device)
-        self.count = torch.tensor(stats_dict["count"], dtype=torch.long, device=device)
+
+        # BUG FIX: Use .data assignment instead of direct reassignment to preserve buffer registration
+        # This ensures buffers are properly tracked by PyTorch's state_dict and device management
+        loaded_mean = torch.tensor(stats_dict["mean"], dtype=torch.float32, device=device)
+        loaded_std = torch.tensor(stats_dict["std"], dtype=torch.float32, device=device)
+        loaded_count = torch.tensor(stats_dict["count"], dtype=torch.long, device=device)
+
+        self.mean.data = loaded_mean.data
+        self.std.data = loaded_std.data
+        self.count.data = loaded_count.data
         self.eps = stats_dict.get("eps", 1e-8)
         self._initialized = True
 

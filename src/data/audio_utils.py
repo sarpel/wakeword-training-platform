@@ -287,9 +287,16 @@ class AudioProcessor:
         Returns:
             Normalized audio
         """
+        # BUG FIX: Added check for empty/zero audio to prevent division by zero
+        # Also added epsilon to RMS calculation for numerical stability
+        if len(audio) == 0:
+            # Empty audio - return as is
+            return audio
+
         rms = np.sqrt(np.mean(audio**2))
 
-        if rms > 0:
+        # BUG FIX: Added epsilon (1e-8) to prevent division by zero for silent audio
+        if rms > 1e-8:
             audio = audio * (target_level / rms)
 
         # Clip to prevent overflow

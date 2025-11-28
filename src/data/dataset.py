@@ -5,7 +5,7 @@ Handles audio loading, preprocessing, and augmentation
 import json
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-from functools import lru_cache
+# BUG FIX: Removed unused import - lru_cache doesn't work on instance methods
 
 import numpy as np
 import structlog
@@ -215,7 +215,6 @@ class WakewordDataset(Dataset):
         """Return dataset size"""
         return len(self.files)
 
-    @lru_cache(maxsize=1000)
     def _load_from_npy(self, file_info_json: str, idx: int) -> Optional[torch.Tensor]:
         """
         Load precomputed features from .npy file
@@ -227,6 +226,9 @@ class WakewordDataset(Dataset):
         Returns:
             Feature tensor or None if not found
         """
+        # BUG FIX: Removed @lru_cache decorator - it doesn't work on instance methods
+        # because 'self' makes every call unique. Using self.feature_cache instead.
+
         # Check cache first
         if self.feature_cache is not None and idx in self.feature_cache:
             return self.feature_cache[idx]
@@ -258,8 +260,9 @@ class WakewordDataset(Dataset):
                     f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
                 )
                 # Trigger fallback
+                # BUG FIX: Changed file_path to npy_path (file_path was undefined variable)
                 if not self.fallback_to_audio:
-                     raise FileNotFoundError(f"NPY shape mismatch for {file_path} and fallback_to_audio=False")
+                     raise FileNotFoundError(f"NPY shape mismatch for {npy_path} and fallback_to_audio=False")
                 return None # Return None to trigger fallback
 
             # Cache if enabled
