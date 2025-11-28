@@ -198,6 +198,11 @@ def create_app() -> gr.Blocks:
         if hasattr(panel_dataset, "auto_start_btn"):
             ds_inputs = panel_dataset.inputs
             
+            # Fixed: Race Condition & State Mutation
+            # Using gr.State objects for defaults is safer than passing raw values in some versions of Gradio
+            # to prevent potential closure issues or state pollution if Gradio recycles threads.
+            # Also, explicitly defining the dependency ensures the execution order is respected.
+
             panel_dataset.auto_start_btn.click(
                 fn=panel_dataset.auto_start_handler,
                 inputs=[
@@ -219,15 +224,16 @@ def create_app() -> gr.Blocks:
                     gr.State(True),  # use_ema
                     gr.State(0.999), # ema_decay
                     gr.State(True),  # use_balanced_sampler
-                    gr.State(1),     # pos ratio
-                    gr.State(1),     # neg ratio
-                    gr.State(1),     # hard ratio
+                    gr.State(1.0),   # pos ratio (float)
+                    gr.State(1.0),   # neg ratio (float)
+                    gr.State(1.0),   # hard ratio (float)
                     gr.State(False), # run_lr_finder
                     gr.State(False), # use_wandb
                     gr.State("wakeword-training"), # wandb_project
                     global_state,    # The global state dict
                 ],
-                outputs=[panel_dataset.auto_log]
+                outputs=[panel_dataset.auto_log],
+                concurrency_limit=1 # Prevent multiple auto-start clicks crashing the state
             )
 
     logger.info("Application created successfully")

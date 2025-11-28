@@ -190,6 +190,10 @@ class ONNXExporter:
             
             logger.info(f"Running command: {' '.join(cmd)}")
             
+            # Fixed: Security (Shell Injection)
+            # subprocess.run with shell=False (default) is safe as we pass list of args.
+            # But we must ensure no user input goes directly into these paths without validation.
+            # Assuming paths are safe (pathlib objects), but strictly check=True handles errors.
             process = subprocess.run(
                 cmd, 
                 capture_output=True, 

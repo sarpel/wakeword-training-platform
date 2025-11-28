@@ -443,7 +443,14 @@ class WakewordDataset(Dataset):
 
         # Calculate weights (inverse frequency)
         total_samples = len(labels)
-        class_weights = total_samples / (len(label_counts) * label_counts)
+        # Fixed: Numerical Instability
+        # If any class count is very small, we might get extremely large weights.
+        # Although we guard against 0, let's clamp weights to avoid explosion.
+        # Also ensure floating point division.
+        class_weights = total_samples / (len(label_counts) * label_counts.astype(np.float32))
+
+        # Clamp weights to [0.1, 100.0] to prevent instability in loss
+        class_weights = np.clip(class_weights, 0.1, 100.0)
 
         return torch.from_numpy(class_weights).float()
 

@@ -49,9 +49,23 @@ class InferenceEngine:
         Convert raw bytes to float tensor.
         Assumes 16kHz mono PCM16.
         """
+        # Fixed: Input Validation (Invalid Byte Length)
+        # np.frombuffer throws error if buffer size is not multiple of element size (2 for int16)
+        if len(audio_data) % 2 != 0:
+            logger.warning("Received odd number of bytes, trimming last byte.")
+            audio_data = audio_data[:-1]
+
         # Convert bytes to numpy int16
         audio_np = np.frombuffer(audio_data, dtype=np.int16)
         
+        # Fixed: Input Validation (WAV Header Check)
+        # Check if it's a WAV file by looking for "RIFF" header
+        if len(audio_data) > 44 and audio_data[:4] == b'RIFF':
+             # Simple heuristic: Skip 44 bytes (standard WAV header)
+             # Better approach would be using `soundfile` or `wave` module,
+             # but keeping dependencies minimal for "The Judge".
+             audio_np = audio_np[22:] # 44 bytes / 2 bytes_per_sample = 22 samples
+
         # Convert to float32 [-1, 1]
         audio_float = audio_np.astype(np.float32) / 32768.0
         

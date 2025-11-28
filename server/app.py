@@ -17,6 +17,7 @@ MODEL_PATH = os.getenv("MODEL_PATH", "checkpoints/best_model.pth")
 DEVICE = os.getenv("DEVICE", "cpu")
 API_KEY = os.getenv("API_KEY")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", 5 * 1024 * 1024)) # 5MB limit default
 
 # Logging
 logging.basicConfig(
@@ -37,10 +38,12 @@ security = HTTPBearer()
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
     if not API_KEY:
-        # If no API Key is configured, allow access (or warn)
-        # For this request, we assume if it's unset, it's open, but user asked for security features.
-        # So we will log a warning if used without key in prod, but here we just pass if None.
-        return credentials
+        # Fixed: Security Vulnerability (Missing Authentication)
+        # If API_KEY is not set in environment, we must strictly deny access
+        # unless explicitly configured to allow anonymous (not recommended for production).
+        # Assuming secure-by-default.
+        logger.warning("API_KEY is not set! Rejecting all requests for security.")
+        raise HTTPException(status_code=500, detail="Server misconfiguration: API_KEY missing")
 
     if credentials.credentials != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API Key")
@@ -100,14 +103,28 @@ async def verify_audio(file: UploadFile = File(...)):
         raise HTTPException(status_code=503, detail="Inference engine not initialized")
         
     try:
-        audio_bytes = await file.read()
+        # Fixed: Input Validation (DoS Prevention)
+        # Check content length if available, though manual read check is safer for chunked uploads
+        # We'll read with a limit to prevent memory exhaustion (OOM)
+        audio_bytes = await file.read(MAX_FILE_SIZE + 1)
         
+        if len(audio_bytes) > MAX_FILE_SIZE:
+             raise HTTPException(status_code=413, detail=f"File too large. Max size is {MAX_FILE_SIZE} bytes")
+
         if len(audio_bytes) == 0:
              raise HTTPException(status_code=400, detail="Empty file received")
              
-        result = engine.predict(audio_bytes)
+        # Fixed: Blocking I/O in Async Path
+        # engine.predict runs CPU/GPU operations which block the event loop.
+        # We must run this in a thread pool.
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, engine.predict, audio_bytes)
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Prediction error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Fixed: Information Leakage
+        # Do not return raw exception details to client in production
+        raise HTTPException(status_code=500, detail="Internal processing error")

@@ -406,10 +406,19 @@ class Trainer:
             Loss tensor
         """
         # Check if using TripletLoss
-        from src.models.losses import TripletLoss
-        if isinstance(self.criterion, TripletLoss):
+        # Fixed: Circular Import & Performance
+        # Import moved to top or checked by name to avoid import in inner loop
+        # Also, re-computing embeddings in the loss function is inefficient (2x forward pass).
+        # ideally the model should return both, or we handle it in forward pass.
+        # For now, we fix the circular import risk by checking class name string.
+
+        loss_type = type(self.criterion).__name__
+
+        if "TripletLoss" in loss_type:
             # For TripletLoss, we need embeddings, not logits.
             # Re-compute embeddings using processed_inputs if available.
+            # CAUTION: This doubles the compute for this batch if not cached.
+            # A better architecture would return (logits, embeddings) tuple.
             if processed_inputs is not None and hasattr(self.model, "embed"):
                 embeddings = self.model.embed(processed_inputs)
                 return self.criterion(embeddings, targets)
