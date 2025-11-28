@@ -2,9 +2,15 @@ import os
 import sys
 import asyncio
 import logging
+from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
+
+# Ensure src is in path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from src.config.logger import setup_logger
 
 # Import InferenceEngine
 try:
@@ -16,14 +22,12 @@ except ImportError:
 MODEL_PATH = os.getenv("MODEL_PATH", "checkpoints/best_model.pth")
 DEVICE = os.getenv("DEVICE", "cpu")
 API_KEY = os.getenv("API_KEY")
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",")
+if not ALLOWED_ORIGINS or ALLOWED_ORIGINS == [""]:
+    ALLOWED_ORIGINS = ["http://localhost"] # Default to safe local origin
 
 # Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger("wakeword_server")
+logger = setup_logger("wakeword_server")
 
 # Initialize App
 app = FastAPI(
@@ -37,10 +41,8 @@ security = HTTPBearer()
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
     if not API_KEY:
-        # If no API Key is configured, allow access (or warn)
-        # For this request, we assume if it's unset, it's open, but user asked for security features.
-        # So we will log a warning if used without key in prod, but here we just pass if None.
-        return credentials
+        logger.warning("API_KEY is not set. Denying request for security.")
+        raise HTTPException(status_code=503, detail="Server authentication not configured")
 
     if credentials.credentials != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API Key")
@@ -110,4 +112,4 @@ async def verify_audio(file: UploadFile = File(...)):
         
     except Exception as e:
         logger.error(f"Prediction error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal Server Error")

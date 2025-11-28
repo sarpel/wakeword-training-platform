@@ -1,11 +1,15 @@
 import torch
 import numpy as np
-import logging
 import os
 import sys
+import io
+import soundfile as sf
+from pathlib import Path
 
 # Ensure src is in path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(str(Path(__file__).parent.parent))
+
+from src.config.logger import setup_logger
 
 try:
     from src.models.huggingface import Wav2VecWakeword
@@ -14,7 +18,7 @@ except ImportError:
     # In a real scenario, we'd ensure src is installed or copied
     pass
 
-logger = logging.getLogger("wakeword_server")
+logger = setup_logger("wakeword_server")
 
 class InferenceEngine:
     def __init__(self, model_path: str = None, device: str = "cpu"):
@@ -34,29 +38,42 @@ class InferenceEngine:
 
         if model_path and os.path.exists(model_path):
             logger.info(f"Loading weights from {model_path}")
-            checkpoint = torch.load(model_path, map_location=self.device)
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
             if "model_state_dict" in checkpoint:
                 model.load_state_dict(checkpoint["model_state_dict"])
             else:
                 model.load_state_dict(checkpoint)
         else:
-            logger.warning(f"Model path {model_path} not found. Using random weights (for testing).")
+            logger.error(f"Model path {model_path} not found.")
+            raise FileNotFoundError(f"Model not found at {model_path}")
             
         return model
 
     def preprocess(self, audio_data: bytes) -> torch.Tensor:
         """
-        Convert raw bytes to float tensor.
-        Assumes 16kHz mono PCM16.
+        Convert audio bytes (WAV or PCM) to float tensor.
         """
-        # Convert bytes to numpy int16
-        audio_np = np.frombuffer(audio_data, dtype=np.int16)
-        
-        # Convert to float32 [-1, 1]
-        audio_float = audio_np.astype(np.float32) / 32768.0
-        
+        try:
+            # Try reading as WAV/FLAC/etc with soundfile
+            audio_np, sample_rate = sf.read(io.BytesIO(audio_data))
+            
+            # If stereo, convert to mono
+            if audio_np.ndim > 1:
+                audio_np = audio_np.mean(axis=1)
+                
+            # Resample if needed (assuming 16kHz required)
+            if sample_rate != 16000:
+                import librosa
+                audio_np = librosa.resample(audio_np, orig_sr=sample_rate, target_sr=16000)
+                
+        except Exception:
+            # Fallback to raw PCM16 if soundfile fails (e.g., no header)
+            # Assumes 16kHz mono PCM16
+            audio_np = np.frombuffer(audio_data, dtype=np.int16)
+            audio_np = audio_np.astype(np.float32) / 32768.0
+
         # Convert to tensor
-        tensor = torch.from_numpy(audio_float).unsqueeze(0) # (1, T)
+        tensor = torch.from_numpy(audio_np).float().unsqueeze(0) # (1, T)
         return tensor.to(self.device)
 
     def predict(self, audio_data: bytes) -> dict:
