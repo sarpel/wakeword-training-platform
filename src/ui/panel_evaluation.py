@@ -892,6 +892,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             value=0.5,
                             step=0.05,
                             label="Detection Sensitivity (Threshold)",
+                            info="Lower value = more sensitive (detects easier but more false positives). Higher = stricter.",
                         )
 
                         with gr.Row():

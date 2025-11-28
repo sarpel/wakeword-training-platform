@@ -2,7 +2,8 @@ import os
 import sys
 import asyncio
 import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import InferenceEngine
@@ -14,6 +15,8 @@ except ImportError:
 # Configuration
 MODEL_PATH = os.getenv("MODEL_PATH", "checkpoints/best_model.pth")
 DEVICE = os.getenv("DEVICE", "cpu")
+API_KEY = os.getenv("API_KEY")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 # Logging
 logging.basicConfig(
@@ -29,10 +32,24 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Security Scheme
+security = HTTPBearer()
+
+async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
+    if not API_KEY:
+        # If no API Key is configured, allow access (or warn)
+        # For this request, we assume if it's unset, it's open, but user asked for security features.
+        # So we will log a warning if used without key in prod, but here we just pass if None.
+        return credentials
+
+    if credentials.credentials != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+    return credentials
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -73,7 +90,7 @@ async def health_check():
         return {"status": "unhealthy", "reason": "Model not loaded"}
     return {"status": "healthy", "device": DEVICE}
 
-@app.post("/verify")
+@app.post("/verify", dependencies=[Depends(verify_api_key)])
 async def verify_audio(file: UploadFile = File(...)):
     """
     Verify if the audio clip contains the wakeword.

@@ -50,6 +50,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     placeholder="C:/path/to/datasets or data/raw",
                     lines=1,
                     value=str(Path(data_root) / "raw"),  # Default value
+                    info="Path to the root folder containing 'positive', 'negative', etc. subfolders."
                 )
 
                 gr.Markdown("**Expected Structure:**")
@@ -112,7 +113,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             label="Feature Type",
                             choices=["mel", "mfcc"],
                             value="mel",
-                            info="Type of features to extract",
+                            info="Type of features to extract (Mel Spectrogram recommended for most cases)",
                         )
                         extract_sample_rate = gr.Number(
                             label="Sample Rate",
@@ -123,7 +124,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                         extract_duration = gr.Number(
                             label="Audio Duration (s)",
                             value=1.5,
-                            info="Target duration (must match training config)",
+                            info="Target duration in seconds (must match training config)",
                         )
                         
                         with gr.Row():
@@ -131,19 +132,19 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                                 label="Mel Channels",
                                 value=64,
                                 precision=0,
-                                info="Number of mel filterbanks",
+                                info="Number of mel filterbanks (frequency resolution)",
                             )
                             extract_hop_length = gr.Number(
                                 label="Hop Length",
                                 value=160,
                                 precision=0,
-                                info="STFT hop length (affects time dimension)",
+                                info="STFT hop length (affects time resolution)",
                             )
                             extract_n_fft = gr.Number(
                                 label="FFT Size",
                                 value=400,
                                 precision=0,
-                                info="FFT window size",
+                                info="FFT window size (frequency analysis window)",
                             )
                         
                         extract_batch_size = gr.Slider(
@@ -152,12 +153,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             value=32,
                             step=16,
                             label="Batch Size (GPU)",
-                            info="Higher = faster but uses more memory",
+                            info="Higher = faster but uses more GPU memory",
                         )
                         extract_output_dir = gr.Textbox(
                             label="Output Directory (Source for Splitter)",
                             value="data/npy",
-                            info="Feature storage location. Dataset Splitter will link to files here.",
+                            info="Directory to store the extracted .npy files",
                         )
                         batch_extract_button = gr.Button(
                             "⚡ Extract All Features to NPY", variant="primary"
@@ -262,7 +263,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     value=0.7,
                     step=0.05,
                     label="Train Ratio",
-                    info="Training set ratio (70% recommended)",
+                    info="Percentage of data used for training (70% recommended)",
                 )
                 val_ratio = gr.Slider(
                     minimum=0.05,
@@ -270,7 +271,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     value=0.15,
                     step=0.05,
                     label="Validation Ratio",
-                    info="Validation set ratio (15% recommended)",
+                    info="Percentage of data used for validation during training (15% recommended)",
                 )
                 test_ratio = gr.Slider(
                     minimum=0.05,
@@ -278,7 +279,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     value=0.15,
                     step=0.05,
                     label="Test Ratio",
-                    info="Test set ratio (15% recommended)",
+                    info="Percentage of data held out for final testing (15% recommended)",
                 )
 
                 split_button = gr.Button("✂️ Split Datasets", variant="primary")
