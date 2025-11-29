@@ -73,6 +73,8 @@ class LabelSmoothingCrossEntropy(nn.Module):
         if self.reduction == "none":
             return loss
         elif self.reduction == "mean":
+            if self.weight is not None:
+                return loss.sum() / self.weight.sum()
             return loss.mean()
         elif self.reduction == "sum":
             return loss.sum()

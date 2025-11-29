@@ -90,32 +90,27 @@ class DistillationTrainer(Trainer):
             
         # Teacher forward pass
         with torch.no_grad():
-            # Teacher expects raw audio. 
-            # Check if inputs are raw audio (1D/2D) or spectrograms (4D)
-            if inputs.ndim == 4:
-                 # If inputs are spectrograms, we can't feed them to Wav2Vec2.
-                 # This happens if dataset returns features (NPY) or Trainer processed it but didn't keep raw.
-                 # We rely on 'raw_inputs' passed from _run_epoch which should be raw audio 
-                 # IF the dataset yielded raw audio.
-                 # But if dataset yielded NPY features, 'raw_inputs' is also 4D.
-                 # In that case, we cannot perform distillation with Wav2Vec2 (it needs raw audio).
-                 
-                 # Check if we can proceed
-                 # For now, just return student loss to avoid crash
-                 # But ideally we should warn once
-                 return student_loss
-
-            teacher_logits = self.teacher(inputs)
+            # Teacher expects raw audio. 'inputs' should contain raw audio.
+            teacher_outputs = self.teacher(inputs)
+            
+            # Get logits (handle different return types from teacher model)
+            if isinstance(teacher_outputs, dict):
+                teacher_logits = teacher_outputs.get("logits", teacher_outputs)
+            elif isinstance(teacher_outputs, tuple):
+                teacher_logits = teacher_outputs[0]
+            else:
+                teacher_logits = teacher_outputs
 
         # Distillation Loss (KL Divergence)
         T = self.config.distillation.temperature
         alpha = self.config.distillation.alpha
         
-        # Soft targets
+        # Soft targets from teacher
         soft_targets = F.log_softmax(teacher_logits / T, dim=1)
+        # Soft probabilities from student
         soft_prob = F.log_softmax(outputs / T, dim=1)
         
-        # KLDivLoss expects input in log-space. 
+        # KLDivLoss expects input in log-space.
         # If log_target=True, target should also be in log-space.
         distillation_loss = F.kl_div(soft_prob, soft_targets, reduction="batchmean", log_target=True) * (T**2)
         

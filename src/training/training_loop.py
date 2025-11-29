@@ -132,11 +132,12 @@ def validate_epoch(trainer: "Trainer", epoch: int) -> Tuple[float, MetricResults
     if trainer.ema is not None:
         original_params = trainer.ema.apply_shadow()
 
-    avg_loss, val_metrics = _run_epoch(
-        trainer, trainer.val_loader, is_training=False, epoch=epoch
-    )
-
-    if trainer.ema is not None and original_params is not None:
-        trainer.ema.restore(original_params)
+    try:
+        avg_loss, val_metrics = _run_epoch(
+            trainer, trainer.val_loader, is_training=False, epoch=epoch
+        )
+    finally:
+        if trainer.ema is not None and original_params is not None:
+            trainer.ema.restore(original_params)
 
     return avg_loss, val_metrics

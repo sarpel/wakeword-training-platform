@@ -55,8 +55,20 @@ class AudioProcessor(nn.Module):
             Processed features (B, C, F, T)
         """
         # If inputs are raw audio (B, T) or (B, 1, T)
+        # Check if input is raw audio or features
+        # Raw audio: (Batch, Samples) or (Batch, 1, Samples) -> ndim 2 or 3
+        # Features: (Batch, Channel, Freq, Time) -> ndim 4
+        
         if inputs.ndim <= 3:
-            # Extract features
+            # Raw audio processing pipeline
+            
+            # 1. Resample if needed (handled by torchaudio.transforms.Resample usually, 
+            # but here we assume inputs are already at target_sr or we rely on augmentation)
+            # Actually, AudioProcessor usually expects raw audio and does feature extraction.
+            
+            # Ensure (Batch, 1, Samples)
+            if inputs.ndim == 2:
+                inputs = inputs.unsqueeze(1)
             # FeatureExtractor expects (B, T) or (B, 1, T)
             features = self.feature_extractor(inputs)
         else:

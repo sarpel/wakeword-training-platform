@@ -215,12 +215,13 @@ class WakewordDataset(Dataset):
         """Return dataset size"""
         return len(self.files)
 
-    def _load_from_npy(self, file_info_json: str) -> Optional[torch.Tensor]:
+    def _load_from_npy(self, file_info_json: str, idx: int) -> Optional[torch.Tensor]:
         """
         Load precomputed features from .npy file
         
         Args:
             file_info_json: JSON string of file metadata
+            idx: Index of the item in the dataset
             
         Returns:
             Feature tensor or None if not found
@@ -314,9 +315,8 @@ class WakewordDataset(Dataset):
         # NEW: Try loading from NPY first if enabled (Legacy CPU Mode)
         if self.use_precomputed_features_for_training:
             try:
-                # Pass JSON string for hashability (though caching is removed from method)
-                features = self._load_from_npy(json.dumps(file_info))
-
+                # Load NPY if enabled
+                features = self._load_from_npy(json.dumps(file_info), idx)
                 if features is not None:
                     # Apply CMVN if enabled
                     if self.cmvn is not None:

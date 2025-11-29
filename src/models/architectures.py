@@ -206,6 +206,30 @@ class LSTMWakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
+        # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
+        # RNN expects (Batch, Time, Features)
+        
+        # If 4D input (B, C, F, T)
+        if x.dim() == 4:
+            if x.size(1) == 1:
+                x = x.squeeze(1)
+        
+        # Now x is likely 3D (B, F, T) or (B, T, F)
+        if x.dim() == 3:
+            # Check if we need to transpose
+            # We want (B, T, F) where F is input_size
+            if x.size(2) == self.lstm.input_size:
+                # Already (B, T, F)
+                pass
+            elif x.size(1) == self.lstm.input_size:
+                # Is (B, F, T) -> Transpose to (B, T, F)
+                x = x.transpose(1, 2)
+            else:
+                 # Ambiguous, assume (B, F, T) and transpose if F matches better?
+                 # Or just assume standard (B, F, T) coming from AudioProcessor
+                 if x.size(1) < x.size(2): # Heuristic: F < T usually
+                     x = x.transpose(1, 2)
+
         # LSTM forward
         lstm_out, (h_n, c_n) = self.lstm(x)
 
@@ -286,6 +310,29 @@ class GRUWakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
+        # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
+        # RNN expects (Batch, Time, Features)
+        
+        # If 4D input (B, C, F, T)
+        if x.dim() == 4:
+            if x.size(1) == 1:
+                x = x.squeeze(1)
+        
+        # Now x is likely 3D (B, F, T) or (B, T, F)
+        if x.dim() == 3:
+            # Check if we need to transpose
+            # We want (B, T, F) where F is input_size
+            if x.size(2) == self.gru.input_size:
+                # Already (B, T, F)
+                pass
+            elif x.size(1) == self.gru.input_size:
+                # Is (B, F, T) -> Transpose to (B, T, F)
+                x = x.transpose(1, 2)
+            else:
+                 # Ambiguous, assume (B, F, T) and transpose if F matches better?
+                 if x.size(1) < x.size(2): # Heuristic: F < T usually
+                     x = x.transpose(1, 2)
+
         # GRU forward
         gru_out, h_n = self.gru(x)
 
@@ -479,10 +526,35 @@ class TCNWakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
-        # TCN expects (batch, channels, length)
-        if x.dim() == 3 and x.size(1) < x.size(2):
-            # Assume (batch, time, features) -> transpose to (batch, features, time)
-            x = x.transpose(1, 2)
+        # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
+        # TCN expects (Batch, Channels, Length)
+        
+        # If 4D input (B, C, F, T) or (B, C, T, F)
+        if x.dim() == 4:
+            # Assuming (B, 1, F, T) standard from AudioProcessor
+            # We want to treat Freq as channels for TCN? Or just flatten?
+            # Usually TCN for audio takes (B, InputSize, Time)
+            
+            # If shape is (B, 1, F, T) -> squeeze -> (B, F, T)
+            if x.size(1) == 1:
+                x = x.squeeze(1)
+            
+        # Now x is likely 3D (B, F, T) or (B, T, F)
+        # We need (B, InputSize, Time) where InputSize matches self.tcn.input_size
+        
+        if x.dim() == 3:
+            # Check which dimension matches input_size
+            if x.size(1) == self.input_size:
+                # Already (B, InputSize, Time)
+                pass
+            elif x.size(2) == self.input_size:
+                # Is (B, Time, InputSize) -> Transpose to (B, InputSize, Time)
+                x = x.transpose(1, 2)
+            else:
+                # Ambiguous or mismatch, try to infer from common shapes
+                # If neither matches, we might have a problem, but let's assume 
+                # standard (B, F, T) is what we want if F is closer to input_size
+                pass
 
         # TCN forward
         tcn_out = self.tcn(x)

@@ -196,7 +196,8 @@ def enforce_cuda():
         print("\n" + "=" * 60)
         print("CUDA VALIDATION FAILED - EXITING")
         print("=" * 60)
-        sys.exit(1)
+        print("=" * 60)
+        raise RuntimeError(message)
 
     print(message)
 

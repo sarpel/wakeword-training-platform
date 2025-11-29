@@ -208,6 +208,18 @@ def create_app() -> gr.Blocks:
         if hasattr(panel_dataset, "auto_start_btn"):
             ds_inputs = panel_dataset.inputs
             
+            # Define default states for training parameters
+            s_use_cmvn = gr.State(True)
+            s_use_ema = gr.State(True)
+            s_ema_decay = gr.State(0.999)
+            s_use_balanced = gr.State(True)
+            s_pos_ratio = gr.State(1)
+            s_neg_ratio = gr.State(1)
+            s_hard_ratio = gr.State(1)
+            s_run_lr = gr.State(False)
+            s_use_wandb = gr.State(False)
+            s_wandb_proj = gr.State("wakeword-training")
+
             panel_dataset.auto_start_btn.click(
                 fn=panel_dataset.auto_start_handler,
                 inputs=[
@@ -225,17 +237,17 @@ def create_app() -> gr.Blocks:
                     ds_inputs["train"],
                     ds_inputs["val"],
                     ds_inputs["test"],
-                    # Training defaults (can be adjusted here if needed)
-                    gr.State(True),  # use_cmvn
-                    gr.State(True),  # use_ema
-                    gr.State(0.999), # ema_decay
-                    gr.State(True),  # use_balanced_sampler
-                    gr.State(1),     # pos ratio
-                    gr.State(1),     # neg ratio
-                    gr.State(1),     # hard ratio
-                    gr.State(False), # run_lr_finder
-                    gr.State(False), # use_wandb
-                    gr.State("wakeword-training"), # wandb_project
+                    # Training defaults
+                    s_use_cmvn,
+                    s_use_ema,
+                    s_ema_decay,
+                    s_use_balanced,
+                    s_pos_ratio,
+                    s_neg_ratio,
+                    s_hard_ratio,
+                    s_run_lr,
+                    s_use_wandb,
+                    s_wandb_proj,
                     global_state,    # The global state dict
                 ],
                 outputs=[panel_dataset.auto_log]

@@ -9,7 +9,7 @@ from pathlib import Path
 # Ensure src is in path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.config.logger import setup_logger
+from src.config.logger import get_logger as setup_logger
 
 try:
     from src.models.huggingface import Wav2VecWakeword

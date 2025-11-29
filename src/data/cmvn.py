@@ -208,12 +208,23 @@ class CMVN(nn.Module):
         # We must respect current device if possible, or let .to(device) handle it later.
         device = self.mean.device
         
-        self.mean = torch.tensor(stats_dict["mean"], dtype=torch.float32, device=device)
-        self.std = torch.tensor(stats_dict["std"], dtype=torch.float32, device=device)
-        self.count = torch.tensor(stats_dict["count"], dtype=torch.long, device=device)
-        self.mean.data = loaded_mean.data
-        self.std.data = loaded_std.data
-        self.count.data = loaded_count.data
+        # Create new tensors from loaded data
+        new_mean = torch.tensor(stats_dict["mean"], dtype=torch.float32, device=device)
+        new_std = torch.tensor(stats_dict["std"], dtype=torch.float32, device=device)
+        new_count = torch.tensor(stats_dict["count"], dtype=torch.long, device=device)
+
+        # Update buffers
+        # If shapes match, copy in-place to preserve memory/device
+        if self.mean.shape == new_mean.shape:
+            self.mean.copy_(new_mean)
+            self.std.copy_(new_std)
+            self.count.copy_(new_count)
+        else:
+            # If shapes differ (e.g. init with size 1, load size 64), re-register
+            self.register_buffer("mean", new_mean)
+            self.register_buffer("std", new_std)
+            self.register_buffer("count", new_count)
+
         self.eps = stats_dict.get("eps", 1e-8)
         self._initialized = True
 

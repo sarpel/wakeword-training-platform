@@ -73,7 +73,14 @@ class ModelEvaluator:
         self.audio_processor = GpuAudioProcessor(
             config=config, # Use passed config
             cmvn_path=cmvn_path if cmvn_path.exists() else None,
+            cmvn_path=cmvn_path if cmvn_path.exists() else None,
             device=device
+        )
+
+        # CPU Audio Processor for file loading
+        self.cpu_audio_processor = CpuAudioProcessor(
+            target_sr=sample_rate,
+            target_duration=audio_duration
         )
 
         # Normalize feature type (handle legacy 'mel_spectrogram')
