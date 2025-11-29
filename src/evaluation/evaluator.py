@@ -55,8 +55,8 @@ class ModelEvaluator:
             n_fft: FFT window size
             hop_length: Hop length for STFT
         """
-        # Enforce CUDA
-        enforce_cuda()
+        # Enforce CUDA (allow CPU)
+        enforce_cuda(allow_cpu=True)
 
         self.model = model
         self.sample_rate = sample_rate
@@ -72,8 +72,13 @@ class ModelEvaluator:
         cmvn_path = Path("data/cmvn_stats.json")
         self.audio_processor = GpuAudioProcessor(
             config=config, # Use passed config
-            cmvn_path=cmvn_path if cmvn_path.exists() else None,
             device=device
+        )
+
+        # CPU Audio Processor for file loading
+        self.cpu_audio_processor = CpuAudioProcessor(
+            target_sr=sample_rate,
+            target_duration=audio_duration
         )
 
         # Normalize feature type (handle legacy 'mel_spectrogram')

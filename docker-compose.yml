@@ -1,0 +1,69 @@
+# ==============================================================================
+# Wakeword Training Platform - Docker Compose
+# ==============================================================================
+
+services:
+  # Main Training Application
+  trainer:
+    build:
+      context: .
+      target: production
+    image: wakeword-trainer:latest
+    container_name: wakeword-trainer
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./exports:/app/exports
+      - ./configs:/app/configs
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # The Judge Server (Stage 2 - False Positive Rejection)
+  judge:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: wakeword-judge:latest
+    container_name: wakeword-judge
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models/checkpoints:/app/checkpoints:ro
+    environment:
+      - MODEL_PATH=/app/checkpoints/best_model.pth
+      - DEVICE=cpu
+      - API_KEY=${JUDGE_API_KEY:-}
+      - ALLOWED_ORIGINS=http://localhost,http://localhost:7860
+    restart: unless-stopped
+    depends_on:
+      - trainer
+
+  # TensorBoard for training visualization
+  tensorboard:
+    image: tensorflow/tensorflow:latest
+    container_name: wakeword-tensorboard
+    ports:
+      - "6006:6006"
+    volumes:
+      - ./logs:/logs:ro
+    command: tensorboard --logdir=/logs --host=0.0.0.0
+    restart: unless-stopped
+
+networks:
+  default:
+    name: wakeword-network
+
+volumes:
+  data:
+  models:
+  exports:

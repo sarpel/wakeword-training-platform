@@ -73,6 +73,8 @@ class LabelSmoothingCrossEntropy(nn.Module):
         if self.reduction == "none":
             return loss
         elif self.reduction == "mean":
+            if self.weight is not None:
+                return loss.sum() / self.weight.sum()
             return loss.mean()
         elif self.reduction == "sum":
             return loss.sum()
@@ -174,12 +176,94 @@ class FocalLoss(nn.Module):
             raise ValueError(f"Invalid reduction: {self.reduction}")
 
 
+class TripletLoss(nn.Module):
+    """
+    Triplet Loss with Batch Hard Mining
+    Trains the model to cluster audio samples in geometric space.
+    """
+
+    def __init__(self, margin: float = 1.0, distance_metric: str = "euclidean"):
+        """
+        Initialize Triplet Loss
+
+        Args:
+            margin: Margin for triplet loss
+            distance_metric: 'euclidean' or 'cosine'
+        """
+        super().__init__()
+        self.margin = margin
+        self.distance_metric = distance_metric
+
+    def _pairwise_distance(self, embeddings: torch.Tensor) -> torch.Tensor:
+        """Compute pairwise distance matrix"""
+        # embeddings: (batch_size, embed_dim)
+        # Return: (batch_size, batch_size)
+        
+        if self.distance_metric == "euclidean":
+            # ||a - b||^2 = ||a||^2 + ||b||^2 - 2<a, b>
+            dot_product = torch.matmul(embeddings, embeddings.t())
+            square_norm = torch.diag(dot_product)
+            distances = square_norm.unsqueeze(1) - 2 * dot_product + square_norm.unsqueeze(0)
+            # Ensure non-negative due to numerical errors
+            distances = F.relu(distances)
+            return torch.sqrt(distances + 1e-16)  # Add epsilon for stability
+            
+        elif self.distance_metric == "cosine":
+             # 1 - cos(a, b)
+            normalized = F.normalize(embeddings, p=2, dim=1)
+            return 1 - torch.matmul(normalized, normalized.t())
+            
+        else:
+            raise ValueError(f"Unknown distance metric: {self.distance_metric}")
+
+    def forward(self, embeddings: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass with Batch Hard Mining
+
+        Args:
+            embeddings: Feature embeddings (batch, embed_dim)
+            target: Ground truth labels (batch,)
+
+        Returns:
+            Loss value
+        """
+        # Get pairwise distances
+        dists = self._pairwise_distance(embeddings)
+        
+        # Create mask for positive and negative pairs
+        # mask[i, j] = 1 if target[i] == target[j]
+        batch_size = embeddings.size(0)
+        target = target.unsqueeze(1) # (B, 1)
+        mask_pos = target.eq(target.t()) # (B, B)
+        mask_neg = ~mask_pos
+        
+        # For each anchor, find the hardest positive (max distance)
+        # We multiply by mask to zero out negatives, but we need to handle cases where 
+        # valid positives are smaller than 0 (not possible for distance)
+        # Maximize dist(a, p)
+        # dists * mask_pos gives distances for positives, 0 for negatives
+        hardest_pos_dist = (dists * mask_pos.float()).max(dim=1)[0]
+        
+        # For each anchor, find the hardest negative (min distance)
+        # We add max_dist to positives so they don't interfere with min
+        max_dist = dists.max()
+        dists_with_penalty = dists + max_dist * mask_pos.float()
+        hardest_neg_dist = dists_with_penalty.min(dim=1)[0]
+        
+        # Calculate Triplet Loss: max(d(a, p) - d(a, n) + margin, 0)
+        triplet_loss = F.relu(hardest_pos_dist - hardest_neg_dist + self.margin)
+        
+        # Return mean loss
+        return triplet_loss.mean()
+
+
 def create_loss_function(
     loss_name: str,
     num_classes: int = 2,
     label_smoothing: float = 0.1,
     focal_alpha: float = 0.25,
     focal_gamma: float = 2.0,
+    triplet_margin: float = 1.0,
     class_weights: Optional[torch.Tensor] = None,
     device: str = "cuda",
 ) -> nn.Module:
@@ -187,11 +271,12 @@ def create_loss_function(
     Factory function to create loss functions
 
     Args:
-        loss_name: Loss function name ('cross_entropy', 'focal_loss')
+        loss_name: Loss function name ('cross_entropy', 'focal_loss', 'triplet_loss')
         num_classes: Number of classes
         label_smoothing: Label smoothing factor for cross entropy
         focal_alpha: Alpha parameter for focal loss
         focal_gamma: Gamma parameter for focal loss
+        triplet_margin: Margin for triplet loss
         class_weights: Optional class weights tensor
         device: Device to place loss on
 
@@ -204,7 +289,7 @@ def create_loss_function(
     loss_name = loss_name.lower()
 
     # Move class weights to device if provided
-    if class_weights is not None:
+    if class_weights is not None and loss_name != "triplet_loss":
         class_weights = class_weights.to(device)
 
     if loss_name == "cross_entropy":
@@ -215,15 +300,18 @@ def create_loss_function(
         else:
             return nn.CrossEntropyLoss(weight=class_weights, reduction="mean")
 
-    elif loss_name == "focal_loss":
+    elif loss_name == "focal_loss" or loss_name == "focal":
         return FocalLoss(
             alpha=focal_alpha, gamma=focal_gamma, weight=class_weights, reduction="mean"
         )
 
+    elif loss_name == "triplet_loss":
+        return TripletLoss(margin=triplet_margin)
+
     else:
         raise ValueError(
             f"Unknown loss function: {loss_name}. "
-            f"Supported: cross_entropy, focal_loss"
+            f"Supported: cross_entropy, focal_loss, triplet_loss"
         )
 
 
@@ -276,6 +364,14 @@ if __name__ == "__main__":
     loss_value = loss_fn(pred, target)
     print(f"  Loss value: {loss_value.item():.4f}")
     print(f"  ✅ Factory function works")
+
+    # Test Triplet Loss
+    print("\n5. Testing Triplet Loss...")
+    embeddings = torch.randn(batch_size, 128).to(device)
+    triplet_loss = create_loss_function("triplet_loss", triplet_margin=1.0, device=device)
+    loss_value = triplet_loss(embeddings, target)
+    print(f"  Loss value: {loss_value.item():.4f}")
+    print(f"  ✅ Triplet Loss works")
 
     print("\n✅ All loss functions tested successfully")
     print("Loss functions module loaded successfully")

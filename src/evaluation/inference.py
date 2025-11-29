@@ -11,17 +11,17 @@ import structlog
 import torch
 import torch.nn as nn
 
+logger = structlog.get_logger(__name__)
+
 try:
     import sounddevice as sd
 except ImportError:
     sd = None
-    structlog.warning("sounddevice not installed. Microphone inference not available.")
+    logger.warning("sounddevice not installed. Microphone inference not available.")
 
 from src.config.cuda_utils import enforce_cuda
-from src.data.audio_utils import AudioProcessor
-from src.data.feature_extraction import FeatureExtractor
-
-logger = structlog.get_logger(__name__)
+from src.data.processor import AudioProcessor as GpuAudioProcessor
+from pathlib import Path
 
 
 class MicrophoneInference:
@@ -79,25 +79,16 @@ class MicrophoneInference:
         self.model.to(device)
         self.model.eval()
 
-        # Audio processor
-        self.audio_processor = AudioProcessor(
-            target_sr=sample_rate, target_duration=audio_duration
+        # Audio processor (GPU with CMVN)
+        cmvn_path = Path("data/cmvn_stats.json")
+        self.audio_processor = GpuAudioProcessor(
+            config=None, # Use defaults
+            cmvn_path=cmvn_path if cmvn_path.exists() else None,
+            device=device
         )
-
-        # Normalize feature type (handle legacy 'mel_spectrogram')
-        if feature_type == "mel_spectrogram":
-            feature_type = "mel"
-
-        # Feature extractor
-        self.feature_extractor = FeatureExtractor(
-            sample_rate=sample_rate,
-            feature_type=feature_type,
-            n_mels=n_mels,
-            n_mfcc=n_mfcc,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            device=device,
-        )
+        
+        # We don't need separate FeatureExtractor as GpuAudioProcessor handles it
+        self.feature_extractor = None
 
         # Recording state
         self.is_recording = False
@@ -193,11 +184,18 @@ class MicrophoneInference:
             # Convert to tensor
             audio_tensor = torch.from_numpy(audio_chunk).float()
 
-            # Extract features
-            features = self.feature_extractor(audio_tensor)
+            # Extract features using GpuAudioProcessor (includes CMVN)
+            # Input to GpuAudioProcessor should be (Batch, Samples)
+            if audio_tensor.ndim == 1:
+                audio_tensor = audio_tensor.unsqueeze(0)
+            
+            audio_tensor = audio_tensor.to(self.device)
+            features = self.audio_processor(audio_tensor)
 
-            # Add batch dimension
-            features = features.unsqueeze(0).to(self.device)
+            # Features are already (Batch, Channel, Freq, Time) or similar
+            # No need to unsqueeze if processor returns 4D
+            if features.ndim == 3:
+                features = features.unsqueeze(1)
 
             # Inference
             with torch.no_grad():

@@ -13,6 +13,7 @@ import torch.nn as nn
 import numpy as np
 import subprocess
 import shutil
+import sys
 
 try:
     import onnx
@@ -170,22 +171,15 @@ class ONNXExporter:
             output_folder = output_path.parent / "tflite_export"
             output_folder.mkdir(parents=True, exist_ok=True)
             
-            cmd = [
-                "onnx2tf",
-                "-i", str(onnx_path),
-                "-o", str(output_folder),
-                "-ois", "input:1,1,64,151" # Force input shape if dynamic batch is issue, or assume fixed
-                # TODO: Determine input shape dynamically from self.sample_input_shape
-            ]
-            
-            # Dynamic shape handling
-            # For TFLite, fixed batch size 1 is usually preferred
             input_shape_str = ",".join(map(str, self.sample_input_shape))
+            
+            # Use python -m onnx2tf for better compatibility
             cmd = [
-                "onnx2tf",
+                sys.executable, "-m", "onnx2tf",
                 "-i", str(onnx_path),
                 "-o", str(output_folder),
-                "-ois", f"input:{input_shape_str}" 
+                "-ois", f"input:{input_shape_str}",
+                "-v" # verbose
             ]
             
             logger.info(f"Running command: {' '.join(cmd)}")
@@ -196,6 +190,8 @@ class ONNXExporter:
                 text=True, 
                 check=True
             )
+            
+            logger.info(f"onnx2tf output:\n{process.stdout}")
             
             # onnx2tf saves as saved_model and .tflite in the output folder
             # We need to find the .tflite file
@@ -222,7 +218,9 @@ class ONNXExporter:
             }
             
         except subprocess.CalledProcessError as e:
-            logger.error(f"onnx2tf failed: {e.stderr}")
+            logger.error(f"onnx2tf failed with code {e.returncode}")
+            logger.error(f"STDOUT: {e.stdout}")
+            logger.error(f"STDERR: {e.stderr}")
             return {"success": False, "error": f"onnx2tf failed: {e.stderr}"}
         except Exception as e:
             logger.error(f"TFLite export failed: {e}")

@@ -215,15 +215,14 @@ class WakewordDataset(Dataset):
         """Return dataset size"""
         return len(self.files)
 
-    @lru_cache(maxsize=1000)
     def _load_from_npy(self, file_info_json: str, idx: int) -> Optional[torch.Tensor]:
         """
         Load precomputed features from .npy file
-
+        
         Args:
-            file_info_json: JSON string of file metadata (hashable for lru_cache)
-            idx: Sample index (for caching)
-
+            file_info_json: JSON string of file metadata
+            idx: Index of the item in the dataset
+            
         Returns:
             Feature tensor or None if not found
         """
@@ -258,8 +257,9 @@ class WakewordDataset(Dataset):
                     f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
                 )
                 # Trigger fallback
+                # BUG FIX: Changed file_path to npy_path (file_path was undefined variable)
                 if not self.fallback_to_audio:
-                     raise FileNotFoundError(f"NPY shape mismatch for {file_path} and fallback_to_audio=False")
+                     raise FileNotFoundError(f"NPY shape mismatch for {npy_path} and fallback_to_audio=False")
                 return None # Return None to trigger fallback
 
             # Cache if enabled
@@ -315,9 +315,8 @@ class WakewordDataset(Dataset):
         # NEW: Try loading from NPY first if enabled (Legacy CPU Mode)
         if self.use_precomputed_features_for_training:
             try:
-                # Pass JSON string for hashability in lru_cache
+                # Load NPY if enabled
                 features = self._load_from_npy(json.dumps(file_info), idx)
-
                 if features is not None:
                     # Apply CMVN if enabled
                     if self.cmvn is not None:
@@ -413,7 +412,7 @@ class WakewordDataset(Dataset):
 
         return augmented
 
-    def get_class_weights(self) -> torch.Tensor:
+    def get_class_weights(self, min_weight: float = 0.1, max_weight: float = 100.0) -> torch.Tensor:
         """
         Calculate class weights for imbalanced datasets with guards for edge cases
 
@@ -443,7 +442,14 @@ class WakewordDataset(Dataset):
 
         # Calculate weights (inverse frequency)
         total_samples = len(labels)
-        class_weights = total_samples / (len(label_counts) * label_counts)
+        # Fixed: Numerical Instability
+        # If any class count is very small, we might get extremely large weights.
+        # Although we guard against 0, let's clamp weights to avoid explosion.
+        # Also ensure floating point division.
+        class_weights = total_samples / (len(label_counts) * label_counts.astype(np.float32))
+
+        # Clamp weights to prevent instability in loss
+        class_weights = np.clip(class_weights, min_weight, max_weight)
 
         return torch.from_numpy(class_weights).float()
 

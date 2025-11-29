@@ -176,18 +176,18 @@ class AudioValidator:
             should_exclude = True
             exclude_reason = f"Too short: {metadata['duration']:.2f}s (min {min_duration}s)"
             quality_score = 0
-        elif metadata["duration"] > 10.0:
+        elif metadata["duration"] > 2.5:
             should_exclude = True
-            exclude_reason = f"Too long: {metadata['duration']:.2f}s (max 10s)"
+            exclude_reason = f"Too long: {metadata['duration']:.2f}s (max 2.5s for ESP32)"
             quality_score = 0
-        elif metadata["duration"] < 0.6:
+        elif metadata["duration"] < 0.3 and not is_rir:
             warnings.append(
                 f"Short duration: {metadata['duration']:.2f}s (0.6s+ recommended)"
             )
             quality_score -= 10
-        elif metadata["duration"] > 4.0:
+        elif metadata["duration"] > 1.5:
             warnings.append(
-                f"Long duration: {metadata['duration']:.2f}s (may contain silence/multiple words)"
+                f"Long duration: {metadata['duration']:.2f}s (1.5s recommended for 'Hey Katya')"
             )
             quality_score -= 5
 
@@ -287,15 +287,44 @@ class AudioProcessor:
         Returns:
             Normalized audio
         """
+        # BUG FIX: Added check for empty/zero audio to prevent division by zero
+        # Also added epsilon to RMS calculation for numerical stability
+        if len(audio) == 0:
+            # Empty audio - return as is
+            return audio
+
         rms = np.sqrt(np.mean(audio**2))
 
-        if rms > 0:
+        # BUG FIX: Added epsilon (1e-8) to prevent division by zero for silent audio
+        if rms > 1e-8:
             audio = audio * (target_level / rms)
 
         # Clip to prevent overflow
         audio = np.clip(audio, -1.0, 1.0)
 
         return audio
+
+    @staticmethod
+    def trim_silence(
+        audio: np.ndarray, top_db: float = 20.0, frame_length: int = 2048, hop_length: int = 512
+    ) -> np.ndarray:
+        """
+        Trim leading and trailing silence from audio
+
+        Args:
+            audio: Input audio array
+            top_db: The threshold (in decibels) below reference to consider as silence
+            frame_length: The number of samples per analysis frame
+            hop_length: The number of samples between analysis frames
+
+        Returns:
+            Trimmed audio array
+        """
+        # librosa.effects.trim returns (trimmed_audio, index)
+        trimmed_audio, _ = librosa.effects.trim(
+            audio, top_db=top_db, frame_length=frame_length, hop_length=hop_length
+        )
+        return trimmed_audio
 
 
 def scan_audio_files(directory: Path, recursive: bool = True) -> list:

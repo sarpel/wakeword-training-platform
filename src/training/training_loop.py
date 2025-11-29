@@ -28,6 +28,12 @@ def _run_epoch(
     epoch_loss = 0.0
     num_batches = len(dataloader)
 
+    # Guard against empty dataloaders to avoid division by zero and undefined metrics
+    # Earlier versions would crash here when filters yielded no batches, obscuring the
+    # real configuration issue and leaving the training run in an inconsistent state.
+    if num_batches == 0:
+        raise ValueError("Dataloader is empty; cannot run epoch without batches")
+
     pbar_desc = f"Epoch {epoch+1}/{trainer.config.training.epochs} ["
     pbar_desc += "Train" if is_training else "Val"
     pbar_desc += "]"
@@ -45,6 +51,9 @@ def _run_epoch(
             inputs = inputs.to(trainer.device, non_blocking=True)
             targets = targets.to(trainer.device, non_blocking=True)
 
+            # Keep reference to raw inputs (for distillation)
+            raw_inputs = inputs
+
             # NEW: GPU Processing Pipeline
             # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
             if inputs.ndim <= 3:
@@ -60,9 +69,10 @@ def _run_epoch(
             if is_training:
                 trainer.optimizer.zero_grad(set_to_none=True)
 
-            with torch.cuda.amp.autocast(enabled=trainer.use_mixed_precision):
+            with torch.amp.autocast("cuda", enabled=trainer.use_mixed_precision):
                 outputs = trainer.model(inputs)
-                loss = trainer.criterion(outputs, targets)
+                # Use compute_loss method to allow overriding (e.g., for distillation)
+                loss = trainer.compute_loss(outputs, targets, raw_inputs, processed_inputs=inputs)
 
             if is_training:
                 trainer.scaler.scale(loss).backward()
@@ -122,11 +132,12 @@ def validate_epoch(trainer: "Trainer", epoch: int) -> Tuple[float, MetricResults
     if trainer.ema is not None:
         original_params = trainer.ema.apply_shadow()
 
-    avg_loss, val_metrics = _run_epoch(
-        trainer, trainer.val_loader, is_training=False, epoch=epoch
-    )
-
-    if trainer.ema is not None and original_params is not None:
-        trainer.ema.restore(original_params)
+    try:
+        avg_loss, val_metrics = _run_epoch(
+            trainer, trainer.val_loader, is_training=False, epoch=epoch
+        )
+    finally:
+        if trainer.ema is not None and original_params is not None:
+            trainer.ema.restore(original_params)
 
     return avg_loss, val_metrics

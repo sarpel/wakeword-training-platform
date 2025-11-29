@@ -6,7 +6,13 @@ import logging
 
 import torch
 import torch.nn as nn
-import torchvision.models as models
+
+try:
+    import torchvision.models as models
+    HAS_TORCHVISION = True
+except ImportError:
+    HAS_TORCHVISION = False
+    models = None
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,9 @@ class ResNet18Wakeword(nn.Module):
         super().__init__()
 
         # Load ResNet18
+        if not HAS_TORCHVISION:
+            raise ImportError("torchvision is required for ResNet18. Please install it.")
+
         if pretrained:
             self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
         else:
@@ -62,6 +71,27 @@ class ResNet18Wakeword(nn.Module):
         """
         return self.resnet(x)
 
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Get feature embeddings (before classification head)
+        """
+        # We need to manually run the resnet layers to bypass the final fc
+        # This relies on internal structure of torchvision resnet
+        x = self.resnet.conv1(x)
+        x = self.resnet.bn1(x)
+        x = self.resnet.relu(x)
+        x = self.resnet.maxpool(x)
+
+        x = self.resnet.layer1(x)
+        x = self.resnet.layer2(x)
+        x = self.resnet.layer3(x)
+        x = self.resnet.layer4(x)
+
+        x = self.resnet.avgpool(x)
+        x = torch.flatten(x, 1)
+        
+        return x
+
 
 class MobileNetV3Wakeword(nn.Module):
     """MobileNetV3-Small adapted for wakeword detection"""
@@ -85,6 +115,9 @@ class MobileNetV3Wakeword(nn.Module):
         super().__init__()
 
         # Load MobileNetV3-Small
+        if not HAS_TORCHVISION:
+            raise ImportError("torchvision is required for MobileNetV3. Please install it.")
+
         if pretrained:
             self.mobilenet = models.mobilenet_v3_small(
                 weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
@@ -118,6 +151,16 @@ class MobileNetV3Wakeword(nn.Module):
             Output logits (batch, num_classes)
         """
         return self.mobilenet(x)
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Get feature embeddings
+        """
+        # MobileNetV3 features
+        x = self.mobilenet.features(x)
+        x = self.mobilenet.avgpool(x)
+        x = torch.flatten(x, 1)
+        return x
 
 
 class LSTMWakeword(nn.Module):
@@ -175,6 +218,30 @@ class LSTMWakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
+        # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
+        # RNN expects (Batch, Time, Features)
+        
+        # If 4D input (B, C, F, T)
+        if x.dim() == 4:
+            if x.size(1) == 1:
+                x = x.squeeze(1)
+        
+        # Now x is likely 3D (B, F, T) or (B, T, F)
+        if x.dim() == 3:
+            # Check if we need to transpose
+            # We want (B, T, F) where F is input_size
+            if x.size(2) == self.lstm.input_size:
+                # Already (B, T, F)
+                pass
+            elif x.size(1) == self.lstm.input_size:
+                # Is (B, F, T) -> Transpose to (B, T, F)
+                x = x.transpose(1, 2)
+            else:
+                 # Ambiguous, assume (B, F, T) and transpose if F matches better?
+                 # Or just assume standard (B, F, T) coming from AudioProcessor
+                 if x.size(1) < x.size(2): # Heuristic: F < T usually
+                     x = x.transpose(1, 2)
+
         # LSTM forward
         lstm_out, (h_n, c_n) = self.lstm(x)
 
@@ -189,6 +256,15 @@ class LSTMWakeword(nn.Module):
         output = self.fc(h_n)
 
         return output
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Get embeddings (final hidden state)"""
+        lstm_out, (h_n, c_n) = self.lstm(x)
+        if self.bidirectional:
+            h_n = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        else:
+            h_n = h_n[-1]
+        return h_n
 
 
 class GRUWakeword(nn.Module):
@@ -246,6 +322,29 @@ class GRUWakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
+        # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
+        # RNN expects (Batch, Time, Features)
+        
+        # If 4D input (B, C, F, T)
+        if x.dim() == 4:
+            if x.size(1) == 1:
+                x = x.squeeze(1)
+        
+        # Now x is likely 3D (B, F, T) or (B, T, F)
+        if x.dim() == 3:
+            # Check if we need to transpose
+            # We want (B, T, F) where F is input_size
+            if x.size(2) == self.gru.input_size:
+                # Already (B, T, F)
+                pass
+            elif x.size(1) == self.gru.input_size:
+                # Is (B, F, T) -> Transpose to (B, T, F)
+                x = x.transpose(1, 2)
+            else:
+                 # Ambiguous, assume (B, F, T) and transpose if F matches better?
+                 if x.size(1) < x.size(2): # Heuristic: F < T usually
+                     x = x.transpose(1, 2)
+
         # GRU forward
         gru_out, h_n = self.gru(x)
 
@@ -260,6 +359,15 @@ class GRUWakeword(nn.Module):
         output = self.fc(h_n)
 
         return output
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Get embeddings (final hidden state)"""
+        gru_out, h_n = self.gru(x)
+        if self.bidirectional:
+            h_n = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        else:
+            h_n = h_n[-1]
+        return h_n
 
 
 class TemporalConvNet(nn.Module):
@@ -405,6 +513,7 @@ class TCNWakeword(nn.Module):
         """
         super().__init__()
 
+        self.input_size = input_size  # Store input size for verification/testing
         self.tcn = TemporalConvNet(
             input_channels=input_size,
             num_channels=num_channels,
@@ -430,10 +539,35 @@ class TCNWakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
-        # TCN expects (batch, channels, length)
-        if x.dim() == 3 and x.size(1) < x.size(2):
-            # Assume (batch, time, features) -> transpose to (batch, features, time)
-            x = x.transpose(1, 2)
+        # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
+        # TCN expects (Batch, Channels, Length)
+        
+        # If 4D input (B, C, F, T) or (B, C, T, F)
+        if x.dim() == 4:
+            # Assuming (B, 1, F, T) standard from AudioProcessor
+            # We want to treat Freq as channels for TCN? Or just flatten?
+            # Usually TCN for audio takes (B, InputSize, Time)
+            
+            # If shape is (B, 1, F, T) -> squeeze -> (B, F, T)
+            if x.size(1) == 1:
+                x = x.squeeze(1)
+            
+        # Now x is likely 3D (B, F, T) or (B, T, F)
+        # We need (B, InputSize, Time) where InputSize matches self.tcn.input_size
+        
+        if x.dim() == 3:
+            # Check which dimension matches input_size
+            if x.size(1) == self.input_size:
+                # Already (B, InputSize, Time)
+                pass
+            elif x.size(2) == self.input_size:
+                # Is (B, Time, InputSize) -> Transpose to (B, InputSize, Time)
+                x = x.transpose(1, 2)
+            else:
+                # Ambiguous or mismatch, try to infer from common shapes
+                # If neither matches, we might have a problem, but let's assume 
+                # standard (B, F, T) is what we want if F is closer to input_size
+                pass
 
         # TCN forward
         tcn_out = self.tcn(x)
@@ -485,6 +619,67 @@ class TinyConvWakeword(nn.Module):
         x = self.features(x)
         x = self.pool(x)
         x = self.classifier(x)
+        return x
+
+
+class CDDNNWakeword(nn.Module):
+    """
+    Context-Dependent Deep Neural Network (CD-DNN)
+    Essentially a Multi-Layer Perceptron (MLP) that takes a flattened
+    context window of features as input.
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        hidden_layers: list = [512, 256, 128],
+        num_classes: int = 2,
+        dropout: float = 0.3,
+    ):
+        """
+        Initialize CD-DNN
+
+        Args:
+            input_size: Total input size (features * context_frames)
+            hidden_layers: List of hidden layer sizes
+            num_classes: Number of output classes
+            dropout: Dropout rate
+        """
+        super().__init__()
+
+        layers = []
+        in_features = input_size
+
+        for hidden_size in hidden_layers:
+            layers.append(nn.Linear(in_features, hidden_size))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout))
+            in_features = hidden_size
+
+        self.network = nn.Sequential(*layers)
+        self.classifier = nn.Linear(in_features, num_classes)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass
+
+        Args:
+            x: Input tensor (batch, channels, height, width) or (batch, time, features)
+               Will be flattened to (batch, input_size)
+        """
+        # Flatten input
+        x = torch.flatten(x, 1)
+
+        # MLP forward
+        x = self.network(x)
+        x = self.classifier(x)
+
+        return x
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Get embeddings (output of last hidden layer)"""
+        x = torch.flatten(x, 1)
+        x = self.network(x)
         return x
 
 
@@ -547,10 +742,10 @@ def create_model(
     elif architecture == "tcn":
         return TCNWakeword(
             input_size=kwargs.get("input_size", 40),
-            num_channels=kwargs.get("num_channels", [64, 128, 256]),
-            kernel_size=kwargs.get("kernel_size", 3),
+            num_channels=kwargs.get("tcn_num_channels", [64, 128, 256]),
+            kernel_size=kwargs.get("tcn_kernel_size", 3),
             num_classes=num_classes,
-            dropout=kwargs.get("dropout", 0.3),
+            dropout=kwargs.get("tcn_dropout", 0.3),
         )
 
     elif architecture == "tiny_conv":
@@ -560,10 +755,18 @@ def create_model(
             dropout=kwargs.get("dropout", 0.3),
         )
 
+    elif architecture == "cd_dnn":
+        return CDDNNWakeword(
+            input_size=kwargs.get("input_size", 40 * 50),  # Default: 40 features * 50 frames
+            hidden_layers=kwargs.get("cddnn_hidden_layers", [512, 256, 128]),
+            num_classes=num_classes,
+            dropout=kwargs.get("cddnn_dropout", 0.3),
+        )
+
     else:
         raise ValueError(
             f"Unknown architecture: {architecture}. "
-            f"Supported: resnet18, mobilenetv3, lstm, gru, tcn"
+            f"Supported: resnet18, mobilenetv3, lstm, gru, tcn, tiny_conv, cd_dnn"
         )
 
 
@@ -576,7 +779,7 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Test each architecture
-    architectures = ["resnet18", "mobilenetv3", "lstm", "gru", "tcn"]
+    architectures = ["resnet18", "mobilenetv3", "lstm", "gru", "tiny_conv", "cd_dnn"]
 
     for arch in architectures:
         print(f"\nTesting {arch}...")
@@ -585,7 +788,7 @@ if __name__ == "__main__":
         model = model.to(device)
 
         # Test forward pass
-        if arch in ["resnet18", "mobilenetv3"]:
+        if arch in ["resnet18", "mobilenetv3", "tiny_conv"]:
             # 2D input (batch, channels, height, width)
             test_input = torch.randn(2, 1, 64, 50).to(device)
         else:

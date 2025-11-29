@@ -26,15 +26,18 @@ logger = structlog.get_logger(__name__)
 
 from src.config.cuda_utils import get_cuda_validator
 from src.config.defaults import WakewordConfig
+from src.config.paths import paths  # NEW: Centralized paths
 from src.data.balanced_sampler import create_balanced_sampler_from_dataset
 from src.data.cmvn import compute_cmvn_from_dataset
 from src.data.dataset import WakewordDataset, load_dataset_splits
 from src.exceptions import WakewordException
 from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
+from src.training.distillation_trainer import DistillationTrainer
 from src.training.hpo import run_hpo
 from src.training.lr_finder import LRFinder
 from src.training.metrics import MetricResults  # Imported MetricResults
+from src.training.qat_utils import prepare_model_for_qat
 from src.training.trainer import Trainer
 from src.training.wandb_callback import WandbCallback
 
@@ -369,6 +372,7 @@ def start_training(
     run_lr_finder: bool,
     use_wandb: bool,
     wandb_project: str,
+    wandb_api_key: str = "",
 ) -> Tuple:
     """Start training with current configuration and advanced features"""
     if training_state.is_training:
@@ -382,6 +386,16 @@ def start_training(
         )
 
     try:
+        # Handle W&B Login if key provided
+        if use_wandb and wandb_api_key.strip():
+            try:
+                import wandb
+                training_state.add_log(f"Logging into W&B...")
+                wandb.login(key=wandb_api_key.strip())
+                training_state.add_log("✅ W&B Login successful")
+            except Exception as e:
+                training_state.add_log(f"⚠️ W&B Login failed: {e}")
+                # We don't return here, we let it try to continue or fail later if critical
         # Get config from global state
         if "config" not in config_state or config_state["config"] is None:
             return (
@@ -400,8 +414,8 @@ def start_training(
         training_state.add_log("Initializing training...")
 
         # Check if dataset splits exist
-        data_root = Path(config.data.data_root)
-        splits_dir = data_root / "splits"
+        # Use centralized paths
+        splits_dir = paths.SPLITS
         if not splits_dir.exists() or not (splits_dir / "train.json").exists():
             return (
                 "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.",
@@ -442,7 +456,7 @@ def start_training(
         # Handle CMVN
         cmvn_path = None
         if use_cmvn:
-            cmvn_path = data_root / "cmvn_stats.json"
+            cmvn_path = paths.CMVN_STATS
             if not cmvn_path.exists():
                 training_state.add_log("Computing CMVN statistics (first time only)...")
                 # Load datasets temporarily without CMVN to compute stats
@@ -466,8 +480,14 @@ def start_training(
         )
         
         # NEW: Optimize config for GPU pipeline
-        config.training.num_workers = min(config.training.num_workers, 16)
+        import os
+        # Use min(16, cpu_count) for workers
+        optimal_workers = min(16, os.cpu_count() or 1)
+        config.training.num_workers = optimal_workers
         config.training.pin_memory = True
+        
+        # Prefetch factor (only if workers > 0)
+        prefetch_factor = 4 if optimal_workers > 0 else None
 
         train_ds = WakewordDataset(
             manifest_path=splits_dir / "train.json",
@@ -475,8 +495,8 @@ def start_training(
             audio_duration=config.data.audio_duration,
             augment=True,
             augmentation_config=aug_config,
-            background_noise_dir=data_root / "raw" / "background",
-            rir_dir=data_root / "raw" / "rirs",
+            background_noise_dir=paths.BACKGROUND_NOISE,
+            rir_dir=paths.RIRS,
             device="cuda",
             feature_type=feature_type,
             n_mels=config.data.n_mels,
@@ -537,6 +557,7 @@ def start_training(
                     persistent_workers=True
                     if config.training.num_workers > 0
                     else False,
+                    prefetch_factor=prefetch_factor,
                 )
                 training_state.add_log(
                     f"✅ Balanced sampler enabled (ratio {sampler_ratio_pos}:{sampler_ratio_neg}:{sampler_ratio_hard})"
@@ -553,6 +574,7 @@ def start_training(
                     persistent_workers=True
                     if config.training.num_workers > 0
                     else False,
+                    prefetch_factor=prefetch_factor,
                 )
         else:
             training_state.train_loader = DataLoader(
@@ -562,6 +584,7 @@ def start_training(
                 num_workers=config.training.num_workers,
                 pin_memory=True,
                 persistent_workers=True if config.training.num_workers > 0 else False,
+                prefetch_factor=prefetch_factor,
             )
 
         training_state.val_loader = DataLoader(
@@ -571,6 +594,7 @@ def start_training(
             num_workers=config.training.num_workers,
             pin_memory=True,
             persistent_workers=True if config.training.num_workers > 0 else False,
+            prefetch_factor=prefetch_factor,
         )
 
         training_state.total_batches = len(training_state.train_loader)
@@ -586,6 +610,14 @@ def start_training(
         )
 
         training_state.add_log(f"Model created: {config.model.architecture}")
+
+        # Prepare for QAT if enabled
+        if config.qat.enabled:
+            training_state.add_log(f"Preparing model for Quantization Aware Training (Backend: {config.qat.backend})...")
+            # We need a dummy input for some QAT preparations (though our current impl doesn't strictly require it)
+            # But let's be safe and pass it if we have dimensions
+            training_state.model = prepare_model_for_qat(training_state.model, config.qat)
+            training_state.add_log("✅ Model prepared for QAT")
 
         # Run LR Finder if enabled
         optimal_lr = None
@@ -621,14 +653,19 @@ def start_training(
                 training_state.add_log(f"⚠️ LR Finder failed: {e}")
 
         # Create checkpoint directory
-        checkpoint_dir = Path("models/checkpoints")
+        checkpoint_dir = paths.CHECKPOINTS
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_manager = CheckpointManager(checkpoint_dir)
 
         training_state.add_log("Initializing trainer...")
 
         # Create trainer with EMA if enabled
-        training_state.trainer = Trainer(
+        TrainerClass = DistillationTrainer if config.distillation.enabled else Trainer
+        
+        if config.distillation.enabled:
+            training_state.add_log(f"Knowledge Distillation enabled (Teacher: {config.distillation.teacher_architecture})")
+
+        training_state.trainer = TrainerClass(
             model=training_state.model,
             train_loader=training_state.train_loader,
             val_loader=training_state.val_loader,
@@ -649,8 +686,8 @@ def start_training(
                 )
                 training_state.trainer.add_callback(wandb_callback)
                 training_state.add_log("✅ W&B logging enabled")
-            except ImportError:
-                training_state.add_log("⚠️ W&B not installed. Skipping W&B logging.")
+            except Exception as e:
+                training_state.add_log(f"⚠️ W&B initialization failed: {e}. Skipping W&B logging.")
 
         # Reset history
         training_state.history = {
@@ -781,8 +818,8 @@ def start_hpo(
             return "❌ No configuration loaded. Please configure in Panel 2 first.", None
 
         config = config_state["config"]
-        data_root = Path(config.data.data_root)
-        splits_dir = data_root / "splits"
+        # Use centralized paths
+        splits_dir = paths.SPLITS
 
         if not splits_dir.exists() or not (splits_dir / "train.json").exists():
             return (
@@ -791,7 +828,7 @@ def start_hpo(
             )
 
         train_ds, val_ds, _ = load_dataset_splits(
-            data_root=data_root,
+            data_root=paths.DATA,
             sample_rate=config.data.sample_rate,
             audio_duration=config.data.audio_duration,
             augment_train=True,
@@ -805,7 +842,7 @@ def start_hpo(
             use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
             npy_cache_features=config.data.npy_cache_features,
             fallback_to_audio=True,  # Force True for HPO robustness
-            cmvn_path=data_root / "cmvn_stats.json",
+            cmvn_path=paths.DATA / "cmvn_stats.json",
             apply_cmvn=True,
             return_raw_audio=True,  # NEW: Use GPU pipeline for HPO
         )
@@ -942,6 +979,12 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         label="W&B Project Name",
                         value="wakeword-training",
                         info="The name of the project in Weights & Biases.",
+                    )
+                    wandb_api_key = gr.Textbox(
+                        label="W&B API Key",
+                        placeholder="Paste your API key here",
+                        type="password",
+                        info="Found in W&B Settings > API Keys. Leave empty if already logged in via CLI.",
                     )
 
         gr.Markdown("---")
@@ -1092,6 +1135,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 run_lr_finder,
                 use_wandb,
                 wandb_project,
+                wandb_api_key,
             ],
             outputs=[
                 training_status,
@@ -1139,6 +1183,9 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 model_path,
             ],
         )
+
+    # Expose component for app.py
+    panel.wandb_api_key = wandb_api_key
 
     return panel
 

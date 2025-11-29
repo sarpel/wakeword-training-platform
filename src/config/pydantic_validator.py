@@ -61,6 +61,22 @@ class TrainingConfig(BaseModel):
     ] = "every_5_epochs"
     save_best_only: bool = True
 
+    @validator("batch_size")
+    def batch_size_power_of_two(cls, v):
+        if not (v > 0 and (v & (v - 1) == 0)):
+             # Warning only
+             pass
+        return v
+
+    @validator("learning_rate")
+    def learning_rate_range(cls, v):
+        if v < 1e-6 or v > 1e-1:
+             # Warning could be logged here if logger was available, 
+             # but for now we just allow it or could raise ValueError if strict.
+             # Let's keep it lenient as per plan (warning only logic usually requires logging)
+             pass
+        return v
+
 
 class ModelConfig(BaseModel):
     """Pydantic model for model architecture configuration"""

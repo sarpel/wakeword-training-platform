@@ -1,19 +1,22 @@
 """
 CUDA Detection and Validation Utilities
-No CPU fallback for tensor operations - GPU is mandatory
+Supports CPU fallback for testing and development
 """
 import sys
-from typing import Any, Dict, Tuple
+import logging
+from typing import Any, Dict, Tuple, Optional
 
 import torch
 
+logger = logging.getLogger(__name__)
 
 class CUDAValidator:
     """Validates CUDA availability and provides GPU information"""
 
-    def __init__(self):
+    def __init__(self, allow_cpu: bool = False):
         self.cuda_available = torch.cuda.is_available()
         self.device_count = torch.cuda.device_count() if self.cuda_available else 0
+        self.allow_cpu = allow_cpu
 
     def validate(self) -> Tuple[bool, str]:
         """
@@ -23,6 +26,9 @@ class CUDAValidator:
             Tuple[bool, str]: (is_valid, message)
         """
         if not self.cuda_available:
+            if self.allow_cpu:
+                return True, "⚠️  CUDA not available. Using CPU (Performance will be slow)."
+            
             return False, (
                 "❌ CUDA is not available. GPU is MANDATORY for this platform.\n"
                 "Please ensure:\n"
@@ -33,6 +39,9 @@ class CUDAValidator:
             )
 
         if self.device_count == 0:
+            if self.allow_cpu:
+                 return True, "⚠️  No CUDA devices found. Using CPU."
+
             return False, (
                 "❌ No CUDA devices detected.\n"
                 "CUDA is available but no GPU devices found.\n"
@@ -57,6 +66,7 @@ class CUDAValidator:
                 "device_count": 0,
                 "devices": [],
                 "error": "CUDA not available",
+                "using_cpu": True
             }
 
         devices = []
@@ -92,7 +102,7 @@ class CUDAValidator:
             Dict with memory statistics in GB
         """
         if not self.cuda_available:
-            return {"error": "CUDA not available"}
+            return {"error": "CUDA not available (CPU mode)"}
 
         torch.cuda.set_device(device_id)
         total = torch.cuda.get_device_properties(device_id).total_memory / (1024**3)
@@ -124,7 +134,8 @@ class CUDAValidator:
             Recommended batch size
         """
         if not self.cuda_available:
-            return 0
+            # CPU batch size estimation is tricky, return safe default
+            return 32
 
         mem_info = self.get_memory_info(device_id)
         available_gb = mem_info["free_gb"]
@@ -152,18 +163,18 @@ class CUDAValidator:
 
     def get_device(self, device_id: int = 0) -> torch.device:
         """
-        Get torch device (GPU only, no CPU fallback)
+        Get torch device (GPU or CPU)
 
         Args:
             device_id: GPU device ID
 
         Returns:
-            torch.device for CUDA
-
-        Raises:
-            RuntimeError: If CUDA is not available
+            torch.device
         """
         if not self.cuda_available:
+            if self.allow_cpu:
+                return torch.device("cpu")
+            
             raise RuntimeError(
                 "GPU is MANDATORY for this platform. CUDA is not available.\n"
                 "Please install CUDA and PyTorch with GPU support."
@@ -178,17 +189,17 @@ class CUDAValidator:
         return torch.device(f"cuda:{device_id}")
 
 
-def get_cuda_validator() -> CUDAValidator:
-    """Get singleton CUDA validator instance"""
-    return CUDAValidator()
+def get_cuda_validator(allow_cpu: bool = False) -> CUDAValidator:
+    """Get CUDA validator instance"""
+    return CUDAValidator(allow_cpu=allow_cpu)
 
 
-def enforce_cuda():
+def enforce_cuda(allow_cpu: bool = False):
     """
     Enforce CUDA availability at startup
-    Exit if CUDA is not available
+    Exit if CUDA is not available unless allow_cpu is True
     """
-    validator = CUDAValidator()
+    validator = CUDAValidator(allow_cpu=allow_cpu)
     is_valid, message = validator.validate()
 
     if not is_valid:
@@ -196,24 +207,33 @@ def enforce_cuda():
         print("\n" + "=" * 60)
         print("CUDA VALIDATION FAILED - EXITING")
         print("=" * 60)
-        sys.exit(1)
+        print("=" * 60)
+        raise RuntimeError(message)
 
     print(message)
 
-    # Print GPU info
-    info = validator.get_device_info()
-    print(f"\nCUDA Version: {info['cuda_version']}")
-    print(f"cuDNN Version: {info['cudnn_version']}")
-    print(f"\nAvailable GPUs:")
-    for device in info["devices"]:
-        print(f"  [{device['id']}] {device['name']}")
-        print(f"      Compute Capability: {device['compute_capability']}")
-        print(f"      Memory: {device['total_memory_gb']} GB")
-        print(f"      Multiprocessors: {device['multi_processor_count']}")
-
+    if validator.cuda_available:
+        # Print GPU info
+        info = validator.get_device_info()
+        print(f"\nCUDA Version: {info['cuda_version']}")
+        print(f"cuDNN Version: {info['cudnn_version']}")
+        print(f"\nAvailable GPUs:")
+        for device in info["devices"]:
+            print(f"  [{device['id']}] {device['name']}")
+            print(f"      Compute Capability: {device['compute_capability']}")
+            print(f"      Memory: {device['total_memory_gb']} GB")
+            print(f"      Multiprocessors: {device['multi_processor_count']}")
+    
     return validator
 
 
 if __name__ == "__main__":
     # Test CUDA validation
-    enforce_cuda()
+    print("Testing strict CUDA enforcement:")
+    try:
+        enforce_cuda(allow_cpu=False)
+    except RuntimeError as e:
+        print(f"Caught expected error: {e}")
+        
+    print("\nTesting CPU fallback:")
+    enforce_cuda(allow_cpu=True)

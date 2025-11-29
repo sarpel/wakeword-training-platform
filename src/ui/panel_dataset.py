@@ -20,6 +20,7 @@ import structlog
 
 from src.data.health_checker import DatasetHealthChecker
 from src.data.npy_extractor import NpyExtractor
+from src.data.preprocessing import VADFilter  # Import VADFilter
 from src.data.splitter import DatasetScanner, DatasetSplitter
 from src.exceptions import WakewordException
 
@@ -49,6 +50,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     placeholder="C:/path/to/datasets or data/raw",
                     lines=1,
                     value=str(Path(data_root) / "raw"),  # Default value
+                    info="Path to the root folder containing 'positive', 'negative', etc. subfolders."
                 )
 
                 gr.Markdown("**Expected Structure:**")
@@ -76,6 +78,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     label="Fast Scan (Skip Validation)",
                     value=False,
                     info="Only count files without validation (much faster for large datasets)",
+                )
+
+                move_unqualified_checkbox = gr.Checkbox(
+                    label="Move Unqualified Files",
+                    value=True,
+                    info="If ticked, move files with quality issues to 'unqualified_datasets' folder. If unticked, keep them in place.",
                 )
 
                 scan_button = gr.Button("🔍 Scan Datasets", variant="primary")
@@ -111,7 +119,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             label="Feature Type",
                             choices=["mel", "mfcc"],
                             value="mel",
-                            info="Type of features to extract",
+                            info="Type of features to extract (Mel Spectrogram recommended for most cases)",
                         )
                         extract_sample_rate = gr.Number(
                             label="Sample Rate",
@@ -122,7 +130,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                         extract_duration = gr.Number(
                             label="Audio Duration (s)",
                             value=1.5,
-                            info="Target duration (must match training config)",
+                            info="Target duration in seconds (must match training config)",
                         )
                         
                         with gr.Row():
@@ -130,19 +138,19 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                                 label="Mel Channels",
                                 value=64,
                                 precision=0,
-                                info="Number of mel filterbanks",
+                                info="Number of mel filterbanks (frequency resolution)",
                             )
                             extract_hop_length = gr.Number(
                                 label="Hop Length",
                                 value=160,
                                 precision=0,
-                                info="STFT hop length (affects time dimension)",
+                                info="STFT hop length (affects time resolution)",
                             )
                             extract_n_fft = gr.Number(
                                 label="FFT Size",
                                 value=400,
                                 precision=0,
-                                info="FFT window size",
+                                info="FFT window size (frequency analysis window)",
                             )
                         
                         extract_batch_size = gr.Slider(
@@ -151,12 +159,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             value=32,
                             step=16,
                             label="Batch Size (GPU)",
-                            info="Higher = faster but uses more memory",
+                            info="Higher = faster but uses more GPU memory",
                         )
                         extract_output_dir = gr.Textbox(
                             label="Output Directory (Source for Splitter)",
                             value="data/npy",
-                            info="Feature storage location. Dataset Splitter will link to files here.",
+                            info="Directory to store the extracted .npy files",
                         )
                         batch_extract_button = gr.Button(
                             "⚡ Extract All Features to NPY", variant="primary"
@@ -219,6 +227,32 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             interactive=False,
                         )
 
+            # Tab 3: VAD Filtering
+            with gr.TabItem("🧹 VAD Filtering"):
+                gr.Markdown("### Voice Activity Detection (VAD) Filter")
+                gr.Markdown(
+                    "Remove silent or noisy files that do not contain speech. "
+                    "Run this BEFORE splitting datasets."
+                )
+                
+                with gr.Row():
+                    with gr.Column():
+                        vad_energy_threshold = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.05, step=0.01,
+                            label="Energy Threshold",
+                            info="Higher = stricter (needs louder speech)"
+                        )
+                        vad_min_duration = gr.Number(
+                            label="Min Speech Duration (s)", value=0.1
+                        )
+                        vad_filter_btn = gr.Button("🧹 Filter Dataset with VAD", variant="primary")
+                        
+                    with gr.Column():
+                        vad_log = gr.Textbox(
+                            label="VAD Filter Log",
+                            lines=10,
+                            interactive=False
+                        )
         gr.Markdown("---")
 
         with gr.Row():
@@ -235,7 +269,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     value=0.7,
                     step=0.05,
                     label="Train Ratio",
-                    info="Training set ratio (70% recommended)",
+                    info="Percentage of data used for training (70% recommended)",
                 )
                 val_ratio = gr.Slider(
                     minimum=0.05,
@@ -243,7 +277,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     value=0.15,
                     step=0.05,
                     label="Validation Ratio",
-                    info="Validation set ratio (15% recommended)",
+                    info="Percentage of data used for validation during training (15% recommended)",
                 )
                 test_ratio = gr.Slider(
                     minimum=0.05,
@@ -251,7 +285,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     value=0.15,
                     step=0.05,
                     label="Test Ratio",
-                    info="Test set ratio (15% recommended)",
+                    info="Percentage of data held out for final testing (15% recommended)",
                 )
 
                 split_button = gr.Button("✂️ Split Datasets", variant="primary")
@@ -275,7 +309,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
         # Event handlers with full implementation
         def scan_datasets_handler(
-            root_path: str, skip_val: bool, progress=gr.Progress()
+            root_path: str, skip_val: bool, move_unqualified: bool, progress=gr.Progress()
         ) -> Tuple[dict, str, str]:
             """Scan datasets and return statistics and health report"""
             global _current_scanner, _current_dataset_info
@@ -311,7 +345,9 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # Scan datasets with progress
                 progress(0, desc="Initializing scan...")
                 dataset_info = scanner.scan_datasets(
-                    progress_callback=update_progress, skip_validation=skip_val
+                    progress_callback=update_progress,
+                    skip_validation=skip_val,
+                    exclude_unqualified=move_unqualified,
                 )
 
                 # Get statistics
@@ -323,8 +359,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 _current_dataset_info = dataset_info
 
                 # Move excluded files
-                progress(0.96, desc="Moving excluded files...")
-                moved_count = scanner.move_excluded_files()
+                moved_count = 0
+                if move_unqualified:
+                    progress(0.96, desc="Moving excluded files...")
+                    moved_count = scanner.move_excluded_files()
+                else:
+                    logger.info("Skipping move of excluded files (option disabled)")
 
                 # Generate health report
                 progress(0.97, desc="Generating health report...")
@@ -797,9 +837,68 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             except Exception as e:
                 return f"❌ Error during validation: {str(e)}\n{traceback.format_exc()}"
 
+        def vad_filter_handler(
+            root_path: str,
+            threshold: float,
+            min_duration: float,
+            progress=gr.Progress()
+        ) -> str:
+            """Filter dataset using VAD"""
+            try:
+                if not root_path:
+                    return "❌ Please provide dataset root path"
+
+                # We filter the manifest files in the splits/ directory (or we could scan directories directly)
+                # But usually we rely on the manifest generated by "Scan Datasets"
+                # Let's assume we operate on the "dataset_manifest.json" generated by Scan
+                
+                manifest_path = Path(root_path).parent / "splits" / "dataset_manifest.json"
+                
+                if not manifest_path.exists():
+                    return "❌ Manifest not found. Please 'Scan Datasets' first."
+                
+                logger.info(f"Running VAD filter on {manifest_path}...")
+                
+                progress(0.1, desc="Initializing VAD...")
+                vad = VADFilter(energy_threshold=threshold)
+                
+                progress(0.2, desc="Filtering...")
+                output_path = vad.process_dataset(
+                    manifest_path, 
+                    min_speech_duration=min_duration
+                )
+                
+                # Update global scanner info if possible, or just warn user to re-scan
+                # Since we modified the manifest (created a new one actually), we should probably
+                # instruct user to use the cleaned one. 
+                # Ideally, we replace the main manifest or the scanner updates itself.
+                
+                # For now, let's overwrite the main manifest if it was successful so subsequent steps use it?
+                # Or maybe VADFilter returned a "_cleaned.json".
+                # Let's rename it to be the main manifest so Splitter picks it up? 
+                # That's destructive. Better to tell user or have Splitter look for cleaned.
+                # Simplest for UI: Overwrite and backup old.
+                
+                backup_path = manifest_path.with_suffix(".json.bak")
+                import shutil
+                shutil.copy(manifest_path, backup_path)
+                shutil.move(output_path, manifest_path)
+                
+                return (f"✅ VAD Filtering Complete!\n"
+                        f"Original manifest backed up to {backup_path.name}\n"
+                        f"Active manifest updated. You can now Split Datasets.")
+                
+            except Exception as e:
+                 error_msg = f"Error during VAD filtering: {str(e)}"
+                 logger.error(error_msg)
+                 logger.error(traceback.format_exc())
+                 return f"❌ Error: {str(e)}\n{traceback.format_exc()}"
+
         def auto_start_handler(
             root_path: str,
             skip_val: bool,
+            move_unqualified: bool,
+            # Feature extraction params
             # Feature extraction params
             feature_type: str,
             sample_rate: int,
@@ -824,6 +923,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             run_lr_finder: bool,
             use_wandb: bool,
             wandb_project: str,
+            wandb_api_key: str,  # Added API key
             state: gr.State,
             progress=gr.Progress(),
         ):
@@ -839,7 +939,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # 1. Scan Datasets
                 progress(0.0, desc="Step 1/5: Scanning Datasets...")
                 log("--- STEP 1: SCANNING DATASETS ---")
-                stats, scan_msg, _ = scan_datasets_handler(root_path, skip_val)
+                stats, scan_msg, _ = scan_datasets_handler(root_path, skip_val, move_unqualified)
                 if "error" in stats:
                     return log(f"❌ Scan Failed: {stats['error']}")
                 log(scan_msg)
@@ -910,7 +1010,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 train_msg, _, _, _, _, _ = start_training(
                     state, use_cmvn, use_ema, ema_decay, 
                     use_balanced_sampler, sampler_ratio_pos, sampler_ratio_neg, sampler_ratio_hard,
-                    run_lr_finder, use_wandb, wandb_project
+                    run_lr_finder, use_wandb, wandb_project, wandb_api_key
                 )
                 
                 log(f"Training Launch Result: {train_msg}")
@@ -931,7 +1031,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
         # Connect event handlers
         scan_button.click(
             fn=scan_datasets_handler,
-            inputs=[dataset_root, skip_validation],
+            inputs=[dataset_root, skip_validation, move_unqualified_checkbox],
             outputs=[stats_display, scan_status, health_report],
         )
 
@@ -983,75 +1083,36 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             outputs=[analysis_log],
         )
 
+        vad_filter_btn.click(
+            fn=vad_filter_handler,
+            inputs=[dataset_root, vad_energy_threshold, vad_min_duration],
+            outputs=[vad_log]
+        )
+
         gr.Markdown("---")
         with gr.Row():
             auto_start_btn = gr.Button("🚀 AUTO-START TRAINING (Full Pipeline)", variant="primary", scale=2)
             auto_log = gr.Textbox(label="Pipeline Log", lines=10, interactive=False)
 
-        # Note: We need inputs from Panel 2/3 here. Since we can't easily access them across files without passing 
-        # explicit components, we will assume default values or need the user to pass them.
-        # Ideally, this button should be in the Main App where all components are visible.
-        # However, requested in Panel 1. We will try to use the state if components are not available, 
-        # BUT Gradio events require component references.
-        # 
-        # WORKAROUND: We will define the button here but the caller (app.py) usually wires it up.
-        # BUT `create_dataset_panel` is self-contained. 
-        # 
-        # Since we can't access components from other panels here, we will create HIDDEN inputs for the required training params
-        # that match defaults, or require the user to set them in the pipeline code. 
-        # A better approach for a "Single Button" is to assume reasonable defaults for training 
-        # (which we did in the handler) OR allow passing state. 
-        #
-        # Since we are in `create_dataset_panel`, we only have access to Dataset Panel inputs.
-        # To make this work, we need to expose the `auto_start_handler` so `app.py` can wire it up with 
-        # inputs from ALL panels. 
-        
-        # For now, we will just expose the button object as an attribute of the panel or return it?
-        # No, `create_dataset_panel` returns a Block.
-        # 
-        # Let's attach the handler to the button using the inputs AVAILABLE IN THIS PANEL
-        # and for others (Training params), we will use default values defined in the function 
-        # signature if they are not wired.
-        
-        # Actually, `app.py` is where the global state lives. 
-        # We will define the button here, but we can't fully wire it without inputs from Panel 3.
-        # 
-        # REVISED PLAN: We will implement the UI elements here. 
-        # The `app.py` will need to access this button to wire it to `auto_start_handler` 
-        # with inputs from ALL panels.
-        #
-        # To facilitate this, we will return the button instance along with the panel? 
-        # Or make `auto_start_btn` a member of the returned object?
-        # Gradio Blocks doesn't easily support that.
-        #
-        # Let's do this: We will add the button here, but we will NOT click() it here.
-        # We will export `auto_start_btn` and `auto_start_handler` so `app.py` can connect them.
-        
-        panel.auto_start_btn = auto_start_btn
-        panel.auto_log = auto_log
-        panel.auto_start_handler = auto_start_handler
-        
-        # We also need to export inputs to feed into the handler from app.py
-        panel.inputs = {
-            "root_path": dataset_root,
-            "skip_val": skip_validation,
-            "feature_type": extract_feature_type,
-            "sample_rate": extract_sample_rate,
-            "audio_duration": extract_duration,
-            "n_mels": extract_n_mels,
-            "hop_length": extract_hop_length,
-            "n_fft": extract_n_fft,
-            "batch_size": extract_batch_size,
-            "output_dir": extract_output_dir,
-            "train": train_ratio,
-            "val": val_ratio,
-            "test": test_ratio,
-        }
+    # Expose components for app.py wiring
+    panel.auto_start_btn = auto_start_btn
+    panel.auto_start_handler = auto_start_handler
+    panel.auto_log = auto_log
+    panel.inputs = {
+        "root_path": dataset_root,
+        "skip_val": skip_validation,
+        "move_unqualified": move_unqualified_checkbox,
+        "feature_type": extract_feature_type,
+        "sample_rate": extract_sample_rate,
+        "audio_duration": extract_duration,
+        "n_mels": extract_n_mels,
+        "hop_length": extract_hop_length,
+        "n_fft": extract_n_fft,
+        "batch_size": extract_batch_size,
+        "output_dir": extract_output_dir,
+        "train": train_ratio,
+        "val": val_ratio,
+        "test": test_ratio,
+    }
 
     return panel
-
-
-if __name__ == "__main__":
-    # Test the panel
-    demo = create_dataset_panel()
-    demo.launch()

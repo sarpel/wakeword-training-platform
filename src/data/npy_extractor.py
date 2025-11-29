@@ -425,7 +425,10 @@ class NpyExtractor:
                     if delete_invalid:
                         try:
                             # Close mmap before deleting (Windows issue)
-                            del data
+                            if 'data' in locals():
+                                del data
+                            import gc
+                            gc.collect()
                             file_path.unlink()
                             results["deleted_count"] += 1
                         except Exception as e:

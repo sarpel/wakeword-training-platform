@@ -62,6 +62,15 @@ class TrainingConfig:
     )
     save_best_only: bool = True
 
+    # EMA Parameters
+    use_ema: bool = True
+    ema_decay: float = 0.999
+    ema_final_decay: float = 0.9995
+    ema_final_epochs: int = 10
+
+    # Metrics
+    metric_window_size: int = 100
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -81,6 +90,16 @@ class ModelConfig:
     num_layers: int = 2  # For LSTM/GRU
     bidirectional: bool = True  # For LSTM/GRU
 
+    # TCN Parameters
+    tcn_num_channels: List[int] = field(default_factory=lambda: [64, 128, 256])
+    tcn_kernel_size: int = 3
+    tcn_dropout: float = 0.3
+
+    # CD-DNN Parameters
+    cddnn_hidden_layers: List[int] = field(default_factory=lambda: [512, 256, 128])
+    cddnn_context_frames: int = 50
+    cddnn_dropout: float = 0.3
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -95,6 +114,11 @@ class AugmentationConfig:
     time_stretch_max: float = 1.10
     pitch_shift_min: int = -2  # semitones
     pitch_shift_max: int = 2  # semitones
+
+    # Time shift (New)
+    time_shift_prob: float = 0.0
+    time_shift_min_ms: int = -100
+    time_shift_max_ms: int = 100
 
     # Noise augmentation (CPU-based)
     background_noise_prob: float = 0.5
@@ -156,20 +180,57 @@ class OptimizerConfig:
 class LossConfig:
     """Loss function configuration"""
 
-    loss_function: str = "cross_entropy"  # cross_entropy, focal_loss
+    loss_function: str = "cross_entropy"  # cross_entropy, focal_loss, triplet_loss
     label_smoothing: float = 0.05
 
     # Focal loss parameters
     focal_alpha: float = 0.25
     focal_gamma: float = 2.0
 
+    # Triplet loss parameters
+    triplet_margin: float = 1.0
+
     # Class weighting
     class_weights: str = "balanced"  # balanced, none, custom
     hard_negative_weight: float = 1.5
+    class_weight_min: float = 0.1
+    class_weight_max: float = 100.0
 
     # Sampling strategy
     sampler_strategy: str = "weighted"  # weighted, balanced, none
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class QATConfig:
+    """Quantization Aware Training configuration"""
+
+    enabled: bool = False
+    backend: str = "fbgemm"  # fbgemm (x86), qnnpack (ARM)
+    
+    # When to start QAT (usually after some epochs of normal training)
+    start_epoch: int = 5
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class DistillationConfig:
+    """Knowledge Distillation configuration"""
+
+    enabled: bool = False
+    teacher_model_path: str = ""  # Path to pretrained teacher checkpoint
+    teacher_architecture: str = "wav2vec2" 
+    
+    # Distillation parameters
+    temperature: float = 2.0
+    alpha: float = 0.5  # Weight for distillation loss (1-alpha for student loss)
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -186,6 +247,10 @@ class WakewordConfig:
     augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     loss: LossConfig = field(default_factory=LossConfig)
+    
+    # New optional configurations
+    qat: QATConfig = field(default_factory=QATConfig)
+    distillation: DistillationConfig = field(default_factory=DistillationConfig)
 
     # Metadata
     config_name: str = "default"
@@ -202,6 +267,8 @@ class WakewordConfig:
             "augmentation": self.augmentation.to_dict(),
             "optimizer": self.optimizer.to_dict(),
             "loss": self.loss.to_dict(),
+            "qat": self.qat.to_dict(),
+            "distillation": self.distillation.to_dict(),
         }
 
     @classmethod
@@ -216,6 +283,8 @@ class WakewordConfig:
             augmentation=AugmentationConfig(**config_dict.get("augmentation", {})),
             optimizer=OptimizerConfig(**config_dict.get("optimizer", {})),
             loss=LossConfig(**config_dict.get("loss", {})),
+            qat=QATConfig(**config_dict.get("qat", {})),
+            distillation=DistillationConfig(**config_dict.get("distillation", {})),
         )
 
     def save(self, path: Path):
@@ -267,6 +336,8 @@ __all__ = [
     "AugmentationConfig",
     "OptimizerConfig",
     "LossConfig",
+    "QATConfig",
+    "DistillationConfig",
     "WakewordConfig",
     "get_default_config",
 ]

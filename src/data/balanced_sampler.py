@@ -163,16 +163,36 @@ def create_balanced_sampler_from_dataset(
     idx_neg = []
     idx_hard_neg = []
 
-    for i in range(len(dataset)):
-        _, _, metadata = dataset[i]
-        category = metadata.get("category", "")
-
-        if category == "positive":
-            idx_pos.append(i)
-        elif category == "negative":
-            idx_neg.append(i)
-        elif category == "hard_negative":
-            idx_hard_neg.append(i)
+    # Optimized: Access metadata directly from dataset.files if available
+    if hasattr(dataset, "files"):
+        for i, file_info in enumerate(dataset.files):
+            category = file_info.get("category", "")
+            
+            if category == "positive":
+                idx_pos.append(i)
+            elif category == "negative":
+                idx_neg.append(i)
+            elif category == "hard_negative":
+                idx_hard_neg.append(i)
+    else:
+        # Fallback to iteration
+        logger.warning("Dataset does not expose .files, falling back to slow iteration")
+        for i in range(len(dataset)):
+            # Try to get metadata without loading full item if possible
+            # But dataset[i] usually loads audio. 
+            # We have to rely on dataset[i] returning (audio, label, metadata)
+            try:
+                _, _, metadata = dataset[i]
+                category = metadata.get("category", "")
+                
+                if category == "positive":
+                    idx_pos.append(i)
+                elif category == "negative":
+                    idx_neg.append(i)
+                elif category == "hard_negative":
+                    idx_hard_neg.append(i)
+            except Exception as e:
+                logger.warning(f"Failed to get metadata for index {i}: {e}")
 
     logger.info(
         f"Collected indices: pos={len(idx_pos)}, "

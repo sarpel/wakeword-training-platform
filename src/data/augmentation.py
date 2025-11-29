@@ -29,6 +29,9 @@ class AudioAugmentation(nn.Module):
         # Time domain
         time_stretch_range: Tuple[float, float] = (0.9, 1.1),
         pitch_shift_range: Tuple[int, int] = (-2, 2),
+        # Time shift (New)
+        time_shift_prob: float = 0.5,
+        time_shift_range_ms: Tuple[int, int] = (-100, 100),
         # Noise
         background_noise_prob: float = 0.5,
         noise_snr_range: Tuple[float, float] = (5.0, 20.0),
@@ -49,6 +52,8 @@ class AudioAugmentation(nn.Module):
         # Store parameters
         self.time_stretch_range = time_stretch_range
         self.pitch_shift_range = pitch_shift_range
+        self.time_shift_prob = time_shift_prob
+        self.time_shift_range_ms = time_shift_range_ms
         self.background_noise_prob = background_noise_prob
         self.noise_snr_range = noise_snr_range
         self.rir_prob = rir_prob
@@ -145,7 +150,11 @@ class AudioAugmentation(nn.Module):
                 logger.warning(f"Failed to load RIR {rir_file}: {e}")
 
         if loaded_rirs:
-            self.register_buffer("rirs", self._pad_and_stack(loaded_rirs))
+            # BUG FIX: Use register_buffer properly by unregistering old buffer first
+            stacked_rirs = self._pad_and_stack(loaded_rirs)
+            # Delete existing buffer if it exists
+            delattr(self, "rirs")
+            self.register_buffer("rirs", stacked_rirs)
 
     def time_stretch(self, waveform: torch.Tensor) -> torch.Tensor:
         """Batch time stretch using interpolation"""
@@ -181,6 +190,18 @@ class AudioAugmentation(nn.Module):
         # Resample back to original length matches original duration
         out = F.interpolate(stretched, size=waveform.shape[-1], mode="linear", align_corners=False)
         return out
+
+    def random_time_shift(self, waveform: torch.Tensor) -> torch.Tensor:
+        """
+        Randomly shift audio in time (circular shift).
+        Simulates streaming window misalignment.
+        """
+        shift_ms = random.randint(*self.time_shift_range_ms)
+        if shift_ms == 0:
+            return waveform
+            
+        shift_samples = int(shift_ms * self.sample_rate / 1000)
+        return torch.roll(waveform, shifts=shift_samples, dims=-1)
 
     def add_background_noise(self, waveform: torch.Tensor) -> torch.Tensor:
         """Add background noise to batch"""
@@ -282,6 +303,9 @@ class AudioAugmentation(nn.Module):
             if random.random() < 0.5:
                 waveform = self.pitch_shift(waveform)
                 
+            if random.random() < self.time_shift_prob:
+                waveform = self.random_time_shift(waveform)
+
             if random.random() < self.background_noise_prob:
                 waveform = self.add_background_noise(waveform)
                 

@@ -27,7 +27,7 @@ def evaluate_file(
     start_time = time.time()
 
     # Load and process audio
-    audio = evaluator.audio_processor.process_audio(audio_path)
+    audio = evaluator.cpu_audio_processor.process_audio(audio_path)
 
     # Convert to tensor
     audio_tensor = torch.from_numpy(audio).float()
@@ -91,7 +91,7 @@ def evaluate_files(
 
         for path in batch_paths:
             try:
-                audio = evaluator.audio_processor.process_audio(path)
+                audio = evaluator.cpu_audio_processor.process_audio(path)
                 batch_audio.append(audio)
                 valid_paths.append(path)
             except Exception as e:
