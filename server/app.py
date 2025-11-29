@@ -37,7 +37,7 @@ app = FastAPI(
 )
 
 # Security Scheme
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
     if not API_KEY:

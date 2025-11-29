@@ -300,7 +300,7 @@ def create_loss_function(
         else:
             return nn.CrossEntropyLoss(weight=class_weights, reduction="mean")
 
-    elif loss_name == "focal_loss":
+    elif loss_name == "focal_loss" or loss_name == "focal":
         return FocalLoss(
             alpha=focal_alpha, gamma=focal_gamma, weight=class_weights, reduction="mean"
         )

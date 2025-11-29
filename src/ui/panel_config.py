@@ -164,10 +164,20 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                         info="Epochs to wait before stopping",
                     )
 
+                with gr.Accordion("EMA (Exponential Moving Average)", open=False):
+                    use_ema = gr.Checkbox(label="Use EMA", value=True)
+                    with gr.Row():
+                        ema_decay = gr.Number(label="Initial Decay", value=0.999)
+                        ema_final_decay = gr.Number(label="Final Decay", value=0.9995)
+                        ema_final_epochs = gr.Number(label="Final Decay Epochs", value=10)
+
+                with gr.Accordion("Metrics", open=False):
+                    metric_window_size = gr.Number(label="Metric Window Size", value=100)
+
                 gr.Markdown("### Model Parameters")
                 with gr.Row():
                     architecture = gr.Dropdown(
-                        choices=["resnet18", "mobilenetv3", "lstm", "gru", "tcn", "tiny_conv"],
+                        choices=["resnet18", "mobilenetv3", "lstm", "gru", "tcn", "tiny_conv", "cd_dnn"],
                         value="resnet18",
                         label="Model Architecture",
                         info="ResNet18 recommended for accuracy",
@@ -190,6 +200,18 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                             hidden_size = gr.Number(label="Hidden Size", value=128)
                             num_layers = gr.Slider(minimum=1, maximum=5, value=2, step=1, label="Num Layers")
                             bidirectional = gr.Checkbox(label="Bidirectional", value=True)
+
+                    with gr.Accordion("TCN Parameters", open=False):
+                        with gr.Row():
+                            tcn_num_channels = gr.Textbox(label="Channels (comma-separated)", value="64, 128, 256")
+                            tcn_kernel_size = gr.Number(label="Kernel Size", value=3)
+                            tcn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, label="Dropout")
+
+                    with gr.Accordion("CD-DNN Parameters", open=False):
+                        with gr.Row():
+                            cddnn_hidden_layers = gr.Textbox(label="Hidden Layers (comma-separated)", value="512, 256, 128")
+                            cddnn_context_frames = gr.Number(label="Context Frames", value=50)
+                            cddnn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, label="Dropout")
 
             # Advanced Configuration Tab
             with gr.TabItem("Advanced Parameters"):
@@ -343,6 +365,10 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     )
                     
                 with gr.Row():
+                     class_weight_min = gr.Number(label="Class Weight Min", value=0.1)
+                     class_weight_max = gr.Number(label="Class Weight Max", value=100.0)
+                    
+                with gr.Row():
                      focal_alpha = gr.Number(label="Focal Alpha", value=0.25)
                      focal_gamma = gr.Number(label="Focal Gamma", value=2.0)
                      sampler_strategy = gr.Dropdown(choices=["weighted", "balanced", "none"], value="weighted", label="Sampler Strategy")
@@ -470,7 +496,12 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
             # QAT (62-64)
             qat_enabled, qat_backend, qat_start_epoch,
             # Distillation (65-68)
-            distillation_enabled, teacher_arch, dist_temp, dist_alpha
+            distillation_enabled, teacher_arch, dist_temp, dist_alpha,
+            # New Params (69-82)
+            use_ema, ema_decay, ema_final_decay, ema_final_epochs, metric_window_size,
+            tcn_num_channels, tcn_kernel_size, tcn_dropout,
+            cddnn_hidden_layers, cddnn_context_frames, cddnn_dropout,
+            class_weight_min, class_weight_max
         ]
 
         # Event handlers with full implementation
@@ -510,6 +541,11 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     early_stopping_patience=int(params[14]),
                     num_workers=int(params[49]),
                     checkpoint_frequency=params[57],
+                    use_ema=bool(params[69]),
+                    ema_decay=float(params[70]),
+                    ema_final_decay=float(params[71]),
+                    ema_final_epochs=int(params[72]),
+                    metric_window_size=int(params[73]),
                 ),
                 model=ModelConfig(
                     architecture=params[15],
@@ -518,6 +554,12 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     hidden_size=int(params[18]),
                     num_layers=int(params[19]),
                     bidirectional=bool(params[20]),
+                    tcn_num_channels=[int(x.strip()) for x in params[74].split(",") if x.strip()],
+                    tcn_kernel_size=int(params[75]),
+                    tcn_dropout=float(params[76]),
+                    cddnn_hidden_layers=[int(x.strip()) for x in params[77].split(",") if x.strip()],
+                    cddnn_context_frames=int(params[78]),
+                    cddnn_dropout=float(params[79]),
                 ),
                 augmentation=AugmentationConfig(
                     time_stretch_min=float(params[21]),
@@ -565,6 +607,8 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     focal_gamma=float(params[55]),
                     sampler_strategy=params[56],
                     triplet_margin=float(params[61]),
+                    class_weight_min=float(params[80]),
+                    class_weight_max=float(params[81]),
                 ),
                 qat=QATConfig(
                     enabled=bool(params[62]), 
@@ -665,6 +709,20 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 config.distillation.teacher_architecture,
                 config.distillation.temperature,
                 config.distillation.alpha,
+                # New Params (69-82)
+                getattr(config.training, "use_ema", True),
+                getattr(config.training, "ema_decay", 0.999),
+                getattr(config.training, "ema_final_decay", 0.9995),
+                getattr(config.training, "ema_final_epochs", 10),
+                getattr(config.training, "metric_window_size", 100),
+                ", ".join(map(str, getattr(config.model, "tcn_num_channels", [64, 128, 256]))),
+                getattr(config.model, "tcn_kernel_size", 3),
+                getattr(config.model, "tcn_dropout", 0.3),
+                ", ".join(map(str, getattr(config.model, "cddnn_hidden_layers", [512, 256, 128]))),
+                getattr(config.model, "cddnn_context_frames", 50),
+                getattr(config.model, "cddnn_dropout", 0.3),
+                getattr(config.loss, "class_weight_min", 0.1),
+                getattr(config.loss, "class_weight_max", 100.0),
             ]
 
         def load_preset_handler(preset_name: str) -> Tuple:

@@ -11,17 +11,17 @@ import structlog
 import torch
 import torch.nn as nn
 
+logger = structlog.get_logger(__name__)
+
 try:
     import sounddevice as sd
 except ImportError:
     sd = None
-    structlog.warning("sounddevice not installed. Microphone inference not available.")
+    logger.warning("sounddevice not installed. Microphone inference not available.")
 
 from src.config.cuda_utils import enforce_cuda
 from src.data.processor import AudioProcessor as GpuAudioProcessor
 from pathlib import Path
-
-logger = structlog.get_logger(__name__)
 
 
 class MicrophoneInference:

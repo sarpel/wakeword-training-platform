@@ -412,7 +412,7 @@ class WakewordDataset(Dataset):
 
         return augmented
 
-    def get_class_weights(self) -> torch.Tensor:
+    def get_class_weights(self, min_weight: float = 0.1, max_weight: float = 100.0) -> torch.Tensor:
         """
         Calculate class weights for imbalanced datasets with guards for edge cases
 
@@ -448,8 +448,8 @@ class WakewordDataset(Dataset):
         # Also ensure floating point division.
         class_weights = total_samples / (len(label_counts) * label_counts.astype(np.float32))
 
-        # Clamp weights to [0.1, 100.0] to prevent instability in loss
-        class_weights = np.clip(class_weights, 0.1, 100.0)
+        # Clamp weights to prevent instability in loss
+        class_weights = np.clip(class_weights, min_weight, max_weight)
 
         return torch.from_numpy(class_weights).float()
 

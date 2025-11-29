@@ -15,7 +15,8 @@ from torch.utils.data import DataLoader
 
 logger = structlog.get_logger(__name__)
 
-torch.backends.cudnn.benchmark = True
+if torch.cuda.is_available():
+    torch.backends.cudnn.benchmark = True
 
 from src.config.cuda_utils import enforce_cuda
 from src.config.seed_utils import set_seed
@@ -63,8 +64,7 @@ class Trainer:
         config: "WakewordConfig",
         checkpoint_manager: CheckpointManager,
         device: str = "cuda",
-        use_ema: bool = True,
-        ema_decay: float = 0.999,
+
     ) -> None:
         """
         Initialize trainer
@@ -79,20 +79,26 @@ class Trainer:
             use_ema: Whether to use Exponential Moving Average
             ema_decay: EMA decay rate
         """
-        # Enforce GPU requirement
-        enforce_cuda()
+        # Enforce GPU requirement (but allow CPU if needed/configured)
+        enforce_cuda(allow_cpu=True)
 
         self.device = device
         self.config = config
-        self.use_ema = use_ema
+        self.config = config
+        self.use_ema = getattr(config.training, "use_ema", True)
+        ema_decay = getattr(config.training, "ema_decay", 0.999)
+        ema_final_decay = getattr(config.training, "ema_final_decay", 0.9995)
+        ema_final_epochs = getattr(config.training, "ema_final_epochs", 10)
+        metric_window_size = getattr(config.training, "metric_window_size", 100)
 
         # External stop control
         self.stop_event = threading.Event()
 
         # Move model to GPU
         self.model = model.to(device)
-        # channels_last bellek düzeni (Ampere+ için throughput ↑)
-        self.model = self.model.to(memory_format=torch.channels_last)  # CHANGE
+        # channels_last bellek düzeni (Ampere+ için throughput ↑) - Only on CUDA
+        if device == "cuda":
+            self.model = self.model.to(memory_format=torch.channels_last)  # CHANGE
 
         # Data loaders
         self.train_loader = train_loader
@@ -122,8 +128,8 @@ class Trainer:
             self.model, config
         )  # CHANGE
 
-        # Mixed precision training
-        self.use_mixed_precision = config.optimizer.mixed_precision
+        # Mixed precision training (Only on CUDA)
+        self.use_mixed_precision = config.optimizer.mixed_precision and device == "cuda"
         self.scaler = create_grad_scaler(enabled=self.use_mixed_precision)
 
         # Gradient clipping
@@ -132,7 +138,7 @@ class Trainer:
         # Metrics tracking
         self.train_metrics_tracker = MetricsTracker(device=device)
         self.val_metrics_tracker = MetricsTracker(device=device)
-        self.metric_monitor = MetricMonitor(window_size=100)
+        self.metric_monitor = MetricMonitor(window_size=metric_window_size)
 
         # Training state
         self.state = TrainingState()
@@ -168,9 +174,9 @@ class Trainer:
             self.ema_scheduler = EMAScheduler(
                 self.ema,
                 initial_decay=ema_decay,
-                final_decay=0.9995,
+                final_decay=ema_final_decay,
                 warmup_epochs=0,
-                final_epochs=10,
+                final_epochs=ema_final_epochs,
             )
             logger.info(f"EMA initialized with decay={ema_decay}")
 
@@ -458,14 +464,18 @@ if __name__ == "__main__":
         f"✅ Created data loaders: {len(train_loader)} train batches, {len(val_loader)} val batches"
     )
 
-    # Create trainer (will fail if CUDA not available due to enforce_cuda)
+    # Create dummy checkpoint manager
+    from src.training.checkpoint_manager import CheckpointManager
+    checkpoint_manager = CheckpointManager(checkpoint_dir=Path("test_checkpoints"))
+
+    # Create trainer
     try:
         trainer = Trainer(
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
             config=config,
-            checkpoint_dir=Path("test_checkpoints"),
+            checkpoint_manager=checkpoint_manager,
             device=device,
         )
         print(f"✅ Trainer initialized successfully")

@@ -6,7 +6,13 @@ import logging
 
 import torch
 import torch.nn as nn
-import torchvision.models as models
+
+try:
+    import torchvision.models as models
+    HAS_TORCHVISION = True
+except ImportError:
+    HAS_TORCHVISION = False
+    models = None
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,9 @@ class ResNet18Wakeword(nn.Module):
         super().__init__()
 
         # Load ResNet18
+        if not HAS_TORCHVISION:
+            raise ImportError("torchvision is required for ResNet18. Please install it.")
+
         if pretrained:
             self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
         else:
@@ -106,6 +115,9 @@ class MobileNetV3Wakeword(nn.Module):
         super().__init__()
 
         # Load MobileNetV3-Small
+        if not HAS_TORCHVISION:
+            raise ImportError("torchvision is required for MobileNetV3. Please install it.")
+
         if pretrained:
             self.mobilenet = models.mobilenet_v3_small(
                 weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
@@ -501,6 +513,7 @@ class TCNWakeword(nn.Module):
         """
         super().__init__()
 
+        self.input_size = input_size  # Store input size for verification/testing
         self.tcn = TemporalConvNet(
             input_channels=input_size,
             num_channels=num_channels,
@@ -729,10 +742,10 @@ def create_model(
     elif architecture == "tcn":
         return TCNWakeword(
             input_size=kwargs.get("input_size", 40),
-            num_channels=kwargs.get("num_channels", [64, 128, 256]),
-            kernel_size=kwargs.get("kernel_size", 3),
+            num_channels=kwargs.get("tcn_num_channels", [64, 128, 256]),
+            kernel_size=kwargs.get("tcn_kernel_size", 3),
             num_classes=num_classes,
-            dropout=kwargs.get("dropout", 0.3),
+            dropout=kwargs.get("tcn_dropout", 0.3),
         )
 
     elif architecture == "tiny_conv":
@@ -745,9 +758,9 @@ def create_model(
     elif architecture == "cd_dnn":
         return CDDNNWakeword(
             input_size=kwargs.get("input_size", 40 * 50),  # Default: 40 features * 50 frames
-            hidden_layers=kwargs.get("hidden_layers", [512, 256, 128]),
+            hidden_layers=kwargs.get("cddnn_hidden_layers", [512, 256, 128]),
             num_classes=num_classes,
-            dropout=kwargs.get("dropout", 0.3),
+            dropout=kwargs.get("cddnn_dropout", 0.3),
         )
 
     else:

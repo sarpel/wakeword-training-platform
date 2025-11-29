@@ -62,6 +62,15 @@ class TrainingConfig:
     )
     save_best_only: bool = True
 
+    # EMA Parameters
+    use_ema: bool = True
+    ema_decay: float = 0.999
+    ema_final_decay: float = 0.9995
+    ema_final_epochs: int = 10
+
+    # Metrics
+    metric_window_size: int = 100
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -80,6 +89,16 @@ class ModelConfig:
     hidden_size: int = 128  # For LSTM/GRU
     num_layers: int = 2  # For LSTM/GRU
     bidirectional: bool = True  # For LSTM/GRU
+
+    # TCN Parameters
+    tcn_num_channels: List[int] = field(default_factory=lambda: [64, 128, 256])
+    tcn_kernel_size: int = 3
+    tcn_dropout: float = 0.3
+
+    # CD-DNN Parameters
+    cddnn_hidden_layers: List[int] = field(default_factory=lambda: [512, 256, 128])
+    cddnn_context_frames: int = 50
+    cddnn_dropout: float = 0.3
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -174,6 +193,8 @@ class LossConfig:
     # Class weighting
     class_weights: str = "balanced"  # balanced, none, custom
     hard_negative_weight: float = 1.5
+    class_weight_min: float = 0.1
+    class_weight_max: float = 100.0
 
     # Sampling strategy
     sampler_strategy: str = "weighted"  # weighted, balanced, none
