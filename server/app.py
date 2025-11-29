@@ -36,8 +36,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Security Scheme
-security = HTTPBearer()
+# Security Scheme (allow custom handling when header is missing)
+security = HTTPBearer(auto_error=False)
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
     if not API_KEY:
@@ -45,7 +45,10 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(se
         raise HTTPException(status_code=503, detail="Server authentication not configured")
 
     # If a key is configured we require the Authorization header to be present and match
-    if credentials is None or credentials.credentials != API_KEY:
+    if credentials is None:
+        raise HTTPException(status_code=403, detail="Authorization header missing")
+
+    if credentials.credentials != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API Key")
     return credentials
 

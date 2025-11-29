@@ -5,6 +5,7 @@ Shared fixtures for all tests
 import sys
 from pathlib import Path
 
+import importlib.util
 import pytest
 import torch
 import numpy as np
@@ -92,6 +93,8 @@ def sample_labels() -> torch.Tensor:
 @pytest.fixture
 def resnet_model():
     """Create ResNet18 model for testing"""
+    if importlib.util.find_spec("torchvision") is None:
+        pytest.skip("torchvision is not installed")
     from src.models.architectures import create_model
     return create_model("resnet18", num_classes=2, pretrained=False)
 
@@ -99,6 +102,8 @@ def resnet_model():
 @pytest.fixture
 def mobilenet_model():
     """Create MobileNetV3 model for testing"""
+    if importlib.util.find_spec("torchvision") is None:
+        pytest.skip("torchvision is not installed")
     from src.models.architectures import create_model
     return create_model("mobilenetv3", num_classes=2, pretrained=False)
 

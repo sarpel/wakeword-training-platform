@@ -6,7 +6,11 @@ import logging
 
 import torch
 import torch.nn as nn
-import torchvision.models as models
+
+try:
+    import torchvision.models as tv_models
+except ImportError:  # pragma: no cover - handled in create_model
+    tv_models = None
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +38,9 @@ class ResNet18Wakeword(nn.Module):
 
         # Load ResNet18
         if pretrained:
-            self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            self.resnet = tv_models.resnet18(weights=tv_models.ResNet18_Weights.IMAGENET1K_V1)
         else:
-            self.resnet = models.resnet18(weights=None)
+            self.resnet = tv_models.resnet18(weights=None)
 
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
@@ -107,11 +111,11 @@ class MobileNetV3Wakeword(nn.Module):
 
         # Load MobileNetV3-Small
         if pretrained:
-            self.mobilenet = models.mobilenet_v3_small(
-                weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
+            self.mobilenet = tv_models.mobilenet_v3_small(
+                weights=tv_models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
             )
         else:
-            self.mobilenet = models.mobilenet_v3_small(weights=None)
+            self.mobilenet = tv_models.mobilenet_v3_small(weights=None)
 
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
@@ -175,6 +179,8 @@ class LSTMWakeword(nn.Module):
             dropout: Dropout rate
         """
         super().__init__()
+
+        self.input_size = input_size
 
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -501,6 +507,8 @@ class TCNWakeword(nn.Module):
         """
         super().__init__()
 
+        self.input_size = input_size
+
         self.tcn = TemporalConvNet(
             input_channels=input_size,
             num_channels=num_channels,
@@ -689,6 +697,12 @@ def create_model(
         ValueError: If architecture is not recognized
     """
     architecture = architecture.lower()
+
+    if architecture in {"resnet18", "mobilenetv3"} and tv_models is None:
+        raise ImportError(
+            "torchvision is required for ResNet18 and MobileNetV3 architectures. "
+            "Install torchvision or choose a CPU-friendly architecture such as GRU or TCN."
+        )
 
     if architecture == "resnet18":
         return ResNet18Wakeword(

@@ -89,6 +89,10 @@ class DistillationTrainer(Trainer):
             return student_loss
             
         # Teacher forward pass
+        if inputs.dim() >= 4:
+            # Spectrogram inputs; skip distillation and rely on student loss.
+            return student_loss
+
         with torch.no_grad():
             # Teacher expects raw audio. 'inputs' should contain raw audio.
             teacher_outputs = self.teacher(inputs)

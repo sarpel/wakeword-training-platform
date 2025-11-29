@@ -292,7 +292,7 @@ def create_loss_function(
     if class_weights is not None and loss_name != "triplet_loss":
         class_weights = class_weights.to(device)
 
-    if loss_name == "cross_entropy":
+    if loss_name in {"cross_entropy", "ce"}:
         if label_smoothing > 0:
             return LabelSmoothingCrossEntropy(
                 smoothing=label_smoothing, weight=class_weights, reduction="mean"
@@ -300,7 +300,7 @@ def create_loss_function(
         else:
             return nn.CrossEntropyLoss(weight=class_weights, reduction="mean")
 
-    elif loss_name == "focal_loss":
+    elif loss_name in {"focal_loss", "focal"}:
         return FocalLoss(
             alpha=focal_alpha, gamma=focal_gamma, weight=class_weights, reduction="mean"
         )

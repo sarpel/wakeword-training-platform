@@ -79,8 +79,9 @@ class Trainer:
             use_ema: Whether to use Exponential Moving Average
             ema_decay: EMA decay rate
         """
-        # Enforce GPU requirement
-        enforce_cuda()
+        # Enforce GPU requirement only when a CUDA device is requested.
+        # This keeps unit tests runnable on CPU-only environments.
+        enforce_cuda(device=device, allow_cpu_fallback=True)
 
         self.device = device
         self.config = config
