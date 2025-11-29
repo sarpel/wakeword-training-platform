@@ -372,6 +372,7 @@ def start_training(
     run_lr_finder: bool,
     use_wandb: bool,
     wandb_project: str,
+    wandb_api_key: str = "",
 ) -> Tuple:
     """Start training with current configuration and advanced features"""
     if training_state.is_training:
@@ -385,6 +386,16 @@ def start_training(
         )
 
     try:
+        # Handle W&B Login if key provided
+        if use_wandb and wandb_api_key.strip():
+            try:
+                import wandb
+                training_state.add_log(f"Logging into W&B...")
+                wandb.login(key=wandb_api_key.strip())
+                training_state.add_log("✅ W&B Login successful")
+            except Exception as e:
+                training_state.add_log(f"⚠️ W&B Login failed: {e}")
+                # We don't return here, we let it try to continue or fail later if critical
         # Get config from global state
         if "config" not in config_state or config_state["config"] is None:
             return (
@@ -675,8 +686,8 @@ def start_training(
                 )
                 training_state.trainer.add_callback(wandb_callback)
                 training_state.add_log("✅ W&B logging enabled")
-            except ImportError:
-                training_state.add_log("⚠️ W&B not installed. Skipping W&B logging.")
+            except Exception as e:
+                training_state.add_log(f"⚠️ W&B initialization failed: {e}. Skipping W&B logging.")
 
         # Reset history
         training_state.history = {
@@ -969,6 +980,12 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         value="wakeword-training",
                         info="The name of the project in Weights & Biases.",
                     )
+                    wandb_api_key = gr.Textbox(
+                        label="W&B API Key",
+                        placeholder="Paste your API key here",
+                        type="password",
+                        info="Found in W&B Settings > API Keys. Leave empty if already logged in via CLI.",
+                    )
 
         gr.Markdown("---")
 
@@ -1118,6 +1135,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 run_lr_finder,
                 use_wandb,
                 wandb_project,
+                wandb_api_key,
             ],
             outputs=[
                 training_status,
@@ -1165,6 +1183,9 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 model_path,
             ],
         )
+
+    # Expose component for app.py
+    panel.wandb_api_key = wandb_api_key
 
     return panel
 

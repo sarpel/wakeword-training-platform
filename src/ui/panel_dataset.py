@@ -923,6 +923,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             run_lr_finder: bool,
             use_wandb: bool,
             wandb_project: str,
+            wandb_api_key: str,  # Added API key
             state: gr.State,
             progress=gr.Progress(),
         ):
@@ -1009,7 +1010,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 train_msg, _, _, _, _, _ = start_training(
                     state, use_cmvn, use_ema, ema_decay, 
                     use_balanced_sampler, sampler_ratio_pos, sampler_ratio_neg, sampler_ratio_hard,
-                    run_lr_finder, use_wandb, wandb_project
+                    run_lr_finder, use_wandb, wandb_project, wandb_api_key
                 )
                 
                 log(f"Training Launch Result: {train_msg}")

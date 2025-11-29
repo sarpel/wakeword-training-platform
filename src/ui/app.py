@@ -248,6 +248,7 @@ def create_app() -> gr.Blocks:
                     s_run_lr,
                     s_use_wandb,
                     s_wandb_proj,
+                    panel_training.wandb_api_key,  # Use the component from Panel 3
                     global_state,    # The global state dict
                 ],
                 outputs=[panel_dataset.auto_log]
