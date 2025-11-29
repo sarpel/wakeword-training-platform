@@ -537,6 +537,67 @@ class TinyConvWakeword(nn.Module):
         return x
 
 
+class CDDNNWakeword(nn.Module):
+    """
+    Context-Dependent Deep Neural Network (CD-DNN)
+    Essentially a Multi-Layer Perceptron (MLP) that takes a flattened
+    context window of features as input.
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        hidden_layers: list = [512, 256, 128],
+        num_classes: int = 2,
+        dropout: float = 0.3,
+    ):
+        """
+        Initialize CD-DNN
+
+        Args:
+            input_size: Total input size (features * context_frames)
+            hidden_layers: List of hidden layer sizes
+            num_classes: Number of output classes
+            dropout: Dropout rate
+        """
+        super().__init__()
+
+        layers = []
+        in_features = input_size
+
+        for hidden_size in hidden_layers:
+            layers.append(nn.Linear(in_features, hidden_size))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout))
+            in_features = hidden_size
+
+        self.network = nn.Sequential(*layers)
+        self.classifier = nn.Linear(in_features, num_classes)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass
+
+        Args:
+            x: Input tensor (batch, channels, height, width) or (batch, time, features)
+               Will be flattened to (batch, input_size)
+        """
+        # Flatten input
+        x = torch.flatten(x, 1)
+
+        # MLP forward
+        x = self.network(x)
+        x = self.classifier(x)
+
+        return x
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Get embeddings (output of last hidden layer)"""
+        x = torch.flatten(x, 1)
+        x = self.network(x)
+        return x
+
+
 def create_model(
     architecture: str, num_classes: int = 2, pretrained: bool = False, **kwargs
 ) -> nn.Module:
@@ -609,10 +670,18 @@ def create_model(
             dropout=kwargs.get("dropout", 0.3),
         )
 
+    elif architecture == "cd_dnn":
+        return CDDNNWakeword(
+            input_size=kwargs.get("input_size", 40 * 50),  # Default: 40 features * 50 frames
+            hidden_layers=kwargs.get("hidden_layers", [512, 256, 128]),
+            num_classes=num_classes,
+            dropout=kwargs.get("dropout", 0.3),
+        )
+
     else:
         raise ValueError(
             f"Unknown architecture: {architecture}. "
-            f"Supported: resnet18, mobilenetv3, lstm, gru, tcn"
+            f"Supported: resnet18, mobilenetv3, lstm, gru, tcn, tiny_conv, cd_dnn"
         )
 
 
@@ -625,7 +694,7 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Test each architecture
-    architectures = ["resnet18", "mobilenetv3", "lstm", "gru", "tcn"]
+    architectures = ["resnet18", "mobilenetv3", "lstm", "gru", "tiny_conv", "cd_dnn"]
 
     for arch in architectures:
         print(f"\nTesting {arch}...")
@@ -634,7 +703,7 @@ if __name__ == "__main__":
         model = model.to(device)
 
         # Test forward pass
-        if arch in ["resnet18", "mobilenetv3"]:
+        if arch in ["resnet18", "mobilenetv3", "tiny_conv"]:
             # 2D input (batch, channels, height, width)
             test_input = torch.randn(2, 1, 64, 50).to(device)
         else:
