@@ -137,7 +137,9 @@ class CheckpointManager:
         for checkpoint_path in self.checkpoint_dir.glob("*.pt"):
             try:
                 # Load checkpoint metadata
-                checkpoint = torch.load(checkpoint_path, map_location="cpu")
+                # Note: weights_only=False is required to load checkpoint dict with config data
+                # Only load from trusted sources
+                checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
                 # Extract metadata
                 epoch = checkpoint.get("epoch", 0)
@@ -220,7 +222,9 @@ class CheckpointManager:
         """
         logger.info(f"Loading checkpoint: {checkpoint_path}")
 
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        # Note: weights_only=False is required to load checkpoint dict with config data
+        # Only load from trusted sources
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
         # Load model weights
         if model is not None:
@@ -376,7 +380,9 @@ class CheckpointManager:
 
         logger.info(f"Loading model snapshot: {snapshot_path}")
 
-        snapshot = torch.load(snapshot_path, map_location=device)
+        # Note: weights_only=False is required to load snapshot with metadata
+        # Only load from trusted sources
+        snapshot = torch.load(snapshot_path, map_location=device, weights_only=False)
         model.load_state_dict(snapshot["model_state_dict"])
 
         return snapshot.get("metadata", {})
@@ -396,7 +402,9 @@ def extract_model_for_inference(
     logger.info(f"Extracting model from: {checkpoint_path}")
 
     # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Note: weights_only=False is required to load checkpoint dict with config data
+    # Only load from trusted sources
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     # Create inference-only checkpoint
     inference_checkpoint = {
@@ -436,7 +444,9 @@ def compare_checkpoints(
 
     for path in checkpoint_paths:
         try:
-            checkpoint = torch.load(path, map_location="cpu")
+            # Note: weights_only=False is required to load checkpoint dict with config data
+            # Only load from trusted sources
+            checkpoint = torch.load(path, map_location="cpu", weights_only=False)
             val_metrics = checkpoint.get("val_metrics", {})
 
             # Map metric name

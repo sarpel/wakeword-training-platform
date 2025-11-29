@@ -51,7 +51,9 @@ class DistillationTrainer(Trainer):
         if dist_config.teacher_model_path:
             logger.info(f"Loading teacher weights from {dist_config.teacher_model_path}")
             # Checkpoint loading logic here...
-            checkpoint = torch.load(dist_config.teacher_model_path, map_location="cpu")
+            # Note: weights_only=False is required to load checkpoint dict with config data
+            # Only load from trusted sources
+            checkpoint = torch.load(dist_config.teacher_model_path, map_location="cpu", weights_only=False)
             if "model_state_dict" in checkpoint:
                 self.teacher.load_state_dict(checkpoint["model_state_dict"])
             else:

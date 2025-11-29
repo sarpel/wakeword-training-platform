@@ -71,8 +71,7 @@ class ModelEvaluator:
         # Create CMVN path
         cmvn_path = Path("data/cmvn_stats.json")
         self.audio_processor = GpuAudioProcessor(
-            config=config, # Use passed config
-            cmvn_path=cmvn_path if cmvn_path.exists() else None,
+            config=config,  # Use passed config
             cmvn_path=cmvn_path if cmvn_path.exists() else None,
             device=device
         )
@@ -151,7 +150,9 @@ def load_model_for_evaluation(
     logger.info(f"Loading model from: {checkpoint_path}")
 
     # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Note: weights_only=False is required to load checkpoint dict with config data
+    # Only load from trusted sources
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     # Get config
     if "config" not in checkpoint:

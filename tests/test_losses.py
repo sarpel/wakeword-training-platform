@@ -32,7 +32,7 @@ class TestLossFunctions:
         from src.models.losses import create_loss_function
         
         loss_fn = create_loss_function(
-            "focal",
+            "focal_loss",
             num_classes=2,
             focal_alpha=0.25,
             focal_gamma=2.0,
@@ -72,7 +72,7 @@ class TestLossFunctions:
         from src.models.losses import create_loss_function
         
         focal_loss = create_loss_function(
-            "focal",
+            "focal_loss",
             num_classes=2,
             focal_gamma=2.0,
             device=device

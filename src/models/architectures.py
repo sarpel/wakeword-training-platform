@@ -501,6 +501,8 @@ class TCNWakeword(nn.Module):
         """
         super().__init__()
 
+        self.input_size = input_size  # Store for forward() shape inference
+
         self.tcn = TemporalConvNet(
             input_channels=input_size,
             num_channels=num_channels,

@@ -214,7 +214,9 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         logger.info(f"Validating ONNX model: {export_state.last_export_path}")
 
         # Load PyTorch model for comparison
-        checkpoint = torch.load(export_state.last_checkpoint, map_location="cuda")
+        # Note: weights_only=False is required to load checkpoint dict with config data
+        # Only load from trusted sources
+        checkpoint = torch.load(export_state.last_checkpoint, map_location="cuda", weights_only=False)
         config_data = checkpoint["config"]
 
         # Convert config dict to WakewordConfig object if needed
