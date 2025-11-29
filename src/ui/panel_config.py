@@ -39,7 +39,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# ⚙️ Training Configuration")
-        gr.Markdown("Configure all training parameters - basic and advanced.")
+        gr.Markdown("Configure all training parameters.")
 
         with gr.Row():
             preset_dropdown = gr.Dropdown(
@@ -57,393 +57,302 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
             validate_btn = gr.Button("✅ Validate Configuration", variant="secondary")
 
         with gr.Tabs():
-            # Basic Configuration Tab
-            with gr.TabItem("Basic Parameters"):
-                gr.Markdown("### Data Parameters")
-                with gr.Row():
-                    sample_rate = gr.Number(
-                        label="Sample Rate (Hz)",
-                        value=16000,
-                        info="Audio sample rate (16kHz recommended)",
-                    )
-                    audio_duration = gr.Number(
-                        label="Audio Duration (seconds)",
-                        value=1.5,
-                        info="Length of audio clips (1.5s default)",
-                    )
-
-                with gr.Row():
-                    n_mfcc = gr.Slider(
-                        minimum=0,
-                        maximum=80,
-                        value=0,
-                        step=1,
-                        label="MFCC Coefficients",
-                        info="Number of MFCC features (0 to use mel only)",
-                    )
-                    n_fft = gr.Number(
-                        label="FFT Size", value=400, info="FFT window size"
-                    )
-                    hop_length = gr.Number(
-                        label="Hop Length", value=160, info="Hop length for STFT"
-                    )
-                    n_mels = gr.Slider(
-                        minimum=32,
-                        maximum=256,
-                        value=64,
-                        step=1,
-                        label="Mel Bands",
-                        info="Number of mel frequency bands",
-                    )
-
-                gr.Markdown("### NPY Precomputed Features")
-                gr.Markdown(
-                    "**Performance**: 40-60% faster training for large datasets"
-                )
-                with gr.Row():
-                    use_precomputed_features_for_training = gr.Checkbox(
-                        label="Use Precomputed NPY Features for Training",
-                        value=True,
-                        info="Load features from .npy files instead of computing on-the-fly. This is ignored during augmentation.",
-                    )
-                    npy_cache_features = gr.Checkbox(
-                        label="Cache NPY Features in RAM",
-                        value=True,
-                        info="Faster but uses more memory",
-                    )
-                    fallback_to_audio = gr.Checkbox(
-                        label="Fallback to Audio if NPY Missing",
-                        value=False,
-                        info="Load raw audio if .npy file not found",
-                    )
-
-                with gr.Row():
-                    npy_feature_dir = gr.Textbox(
-                        label="NPY Feature Directory",
-                        value="data/npy",
-                        info="Directory containing split .npy files (train/val/test subdirs)",
-                    )
-                    npy_feature_type = gr.Dropdown(
-                        choices=["mel", "mfcc"],
-                        value="mel",
-                        label="NPY Feature Type",
-                        info="Must match extracted features",
-                    )
-
-                gr.Markdown("### Training Parameters")
-                with gr.Row():
-                    batch_size = gr.Slider(
-                        minimum=8,
-                        maximum=1024,
-                        value=64,
-                        step=16,
-                        label="Batch Size",
-                        info="Training batch size (GPU memory dependent)",
-                    )
-                    epochs = gr.Slider(
-                        minimum=10,
-                        maximum=200,
-                        value=80,
-                        step=10,
-                        label="Epochs",
-                        info="Number of training epochs",
-                    )
-
-                with gr.Row():
-                    learning_rate = gr.Number(
-                        label="Learning Rate",
-                        value=0.0003,
-                        info="Initial learning rate (3e-4 recommended)",
-                    )
-                    early_stopping = gr.Slider(
-                        minimum=5,
-                        maximum=30,
-                        value=15,
-                        step=1,
-                        label="Early Stopping Patience",
-                        info="Epochs to wait before stopping",
-                    )
-
-                with gr.Accordion("EMA (Exponential Moving Average)", open=False):
-                    use_ema = gr.Checkbox(label="Use EMA", value=True)
+            # =================================================================
+            # TAB 1: DATA PIPELINE
+            # =================================================================
+            with gr.TabItem("Data Pipeline"):
+                with gr.Group():
+                    gr.Markdown("### 🎵 Audio Settings")
                     with gr.Row():
-                        ema_decay = gr.Number(label="Initial Decay", value=0.999)
-                        ema_final_decay = gr.Number(label="Final Decay", value=0.9995)
-                        ema_final_epochs = gr.Number(label="Final Decay Epochs", value=10)
-
-                with gr.Accordion("Metrics", open=False):
-                    metric_window_size = gr.Number(label="Metric Window Size", value=100)
-
-                gr.Markdown("### Model Parameters")
-                with gr.Row():
-                    architecture = gr.Dropdown(
-                        choices=["resnet18", "mobilenetv3", "lstm", "gru", "tcn", "tiny_conv", "cd_dnn"],
-                        value="resnet18",
-                        label="Model Architecture",
-                        info="ResNet18 recommended for accuracy",
-                    )
-                    num_classes = gr.Number(
-                        label="Number of Classes",
-                        value=2,
-                        info="Binary classification (2)",
-                    )
-                    dropout = gr.Slider(
-                        minimum=0.0,
-                        maximum=0.9,
-                        value=0.3,
-                        step=0.05,
-                        info="Dropout rate to prevent overfitting",
-                    )
-                    
-                    with gr.Accordion("RNN/LSTM Parameters", open=False):
-                        with gr.Row():
-                            hidden_size = gr.Number(label="Hidden Size", value=128)
-                            num_layers = gr.Slider(minimum=1, maximum=5, value=2, step=1, label="Num Layers")
-                            bidirectional = gr.Checkbox(label="Bidirectional", value=True)
-
-                    with gr.Accordion("TCN Parameters", open=False):
-                        with gr.Row():
-                            tcn_num_channels = gr.Textbox(label="Channels (comma-separated)", value="64, 128, 256")
-                            tcn_kernel_size = gr.Number(label="Kernel Size", value=3)
-                            tcn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, label="Dropout")
-
-                    with gr.Accordion("CD-DNN Parameters", open=False):
-                        with gr.Row():
-                            cddnn_hidden_layers = gr.Textbox(label="Hidden Layers (comma-separated)", value="512, 256, 128")
-                            cddnn_context_frames = gr.Number(label="Context Frames", value=50)
-                            cddnn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, label="Dropout")
-
-            # Advanced Configuration Tab
-            with gr.TabItem("Advanced Parameters"):
-                gr.Markdown("### Augmentation")
-                with gr.Row():
-                    time_stretch_min = gr.Number(
-                        label="Time Stretch Min",
-                        value=0.9,
-                        info="Minimum time stretch rate",
-                    )
-                    time_stretch_max = gr.Number(
-                        label="Time Stretch Max",
-                        value=1.1,
-                        info="Maximum time stretch rate",
-                    )
-
-                with gr.Row():
-                    pitch_shift_min = gr.Number(
-                        label="Pitch Shift Min (semitones)", value=-2
-                    )
-                    pitch_shift_max = gr.Number(
-                        label="Pitch Shift Max (semitones)", value=2
-                    )
-
-                with gr.Row():
-                    background_noise_prob = gr.Slider(
-                        minimum=0,
-                        maximum=1,
-                        value=0.5,
-                        step=0.1,
-                        label="Background Noise Probability",
-                    )
-                    rir_prob = gr.Slider(
-                        minimum=0,
-                        maximum=1,
-                        value=0.25,
-                        step=0.05,
-                        label="RIR Probability",
-                    )
-
-                with gr.Row():
-                    noise_snr_min = gr.Number(label="Noise SNR Min (dB)", value=5)
-                    noise_snr_max = gr.Number(label="Noise SNR Max (dB)", value=20)
-
-                with gr.Accordion("SpecAugment Parameters", open=False):
-                    use_spec_augment = gr.Checkbox(label="Use SpecAugment", value=True)
-                    with gr.Row():
-                        freq_mask_param = gr.Number(label="Freq Mask Param", value=15)
-                        time_mask_param = gr.Number(label="Time Mask Param", value=30)
-                    with gr.Row():
-                        n_freq_masks = gr.Number(label="Num Freq Masks", value=2)
-                        n_time_masks = gr.Number(label="Num Time Masks", value=2)
-
-                gr.Markdown("#### RIR Dry/Wet Mixing")
-                gr.Markdown(
-                    "Control reverberation intensity: Light (0.7), Medium (0.5), Heavy (0.3)"
-                )
-                with gr.Row():
-                    rir_dry_wet_min = gr.Slider(
-                        minimum=0,
-                        maximum=1,
-                        value=0.3,
-                        step=0.1,
-                        label="RIR Dry/Wet Min",
-                        info="Minimum dry ratio (30% = heavy reverb)",
-                    )
-                    rir_dry_wet_max = gr.Slider(
-                        minimum=0,
-                        maximum=1,
-                        value=0.7,
-                        step=0.1,
-                        label="RIR Dry/Wet Max",
-                        info="Maximum dry ratio (70% = light reverb)",
-                    )
-                    rir_dry_wet_strategy = gr.Dropdown(
-                        choices=["random", "fixed", "adaptive"],
-                        value="random",
-                        label="Dry/Wet Strategy",
-                        info="How to select dry/wet ratio",
-                    )
-
-                gr.Markdown("### Optimizer & Scheduler")
-                with gr.Row():
-                    optimizer = gr.Dropdown(
-                        choices=["adam", "sgd", "adamw"],
-                        value="adamw",
-                        label="Optimizer",
-                    )
-                    scheduler = gr.Dropdown(
-                        choices=["cosine", "step", "plateau", "none"],
-                        value="cosine",
-                        label="Learning Rate Scheduler",
-                    )
-
-                with gr.Row():
-                    weight_decay = gr.Number(label="Weight Decay", value=1e-4)
-                    gradient_clip = gr.Number(label="Gradient Clipping", value=1.0)
-
-                with gr.Accordion("Optimizer & Scheduler Details", open=False):
-                    with gr.Row():
-                        momentum = gr.Number(label="Momentum (SGD)", value=0.9)
-                        warmup_epochs = gr.Number(label="Warmup Epochs", value=3)
-                        min_lr = gr.Number(label="Min LR", value=1e-6)
-                    gr.Markdown("Scheduler Specifics")
-                    with gr.Row():
-                        step_size = gr.Number(label="Step Size", value=10)
-                        scheduler_gamma = gr.Number(label="Gamma", value=0.5)
-                    with gr.Row():
-                        scheduler_patience = gr.Number(label="Patience", value=5)
-                        scheduler_factor = gr.Number(label="Factor", value=0.5)
-
-                with gr.Row():
-                    mixed_precision = gr.Checkbox(
-                        label="Mixed Precision Training (FP16)",
-                        value=True,
-                        info="Faster training, less memory",
-                    )
-                    num_workers = gr.Slider(
-                        minimum=0,
-                        maximum=32,
-                        value=16,
-                        step=1,
-                        label="Data Loader Workers",
-                    )
-
-                gr.Markdown("### Loss & Sampling")
-                with gr.Row():
-                    loss_function = gr.Dropdown(
-                        choices=["cross_entropy", "focal_loss", "triplet_loss"],
-                        value="cross_entropy",
-                        label="Loss Function",
-                        info="Note: Focal loss has separate parameters (focal_alpha, focal_gamma)",
-                    )
-                    label_smoothing = gr.Slider(
-                        minimum=0,
-                        maximum=0.3,
-                        value=0.05,
-                        step=0.05,
-                        label="Label Smoothing",
-                        info="Only used with cross_entropy",
-                    )
-
-                with gr.Row():
-                    class_weights = gr.Dropdown(
-                        choices=["balanced", "none", "custom"],
-                        value="balanced",
-                        label="Class Weights",
-                    )
-                    hard_negative_weight = gr.Number(
-                        info="Weight multiplier for hard negative samples",
-                    )
-                    
-                with gr.Row():
-                     class_weight_min = gr.Number(label="Class Weight Min", value=0.1)
-                     class_weight_max = gr.Number(label="Class Weight Max", value=100.0)
-                    
-                with gr.Row():
-                     focal_alpha = gr.Number(label="Focal Alpha", value=0.25)
-                     focal_gamma = gr.Number(label="Focal Gamma", value=2.0)
-                     sampler_strategy = gr.Dropdown(choices=["weighted", "balanced", "none"], value="weighted", label="Sampler Strategy")
-
-                gr.Markdown("### Checkpointing")
-                with gr.Row():
-                    checkpoint_frequency = gr.Dropdown(
-                        choices=[
-                            "every_epoch",
-                            "every_5_epochs",
-                            "every_10_epochs",
-                            "best_only",
-                        ],
-                        value="best_only",
-                        label="Checkpoint Frequency",
-                    )
-
-            # NEW: Experimental Features Tab
-            with gr.TabItem("Experimental Features"):
-                gr.Markdown("### 🧪 Edge & Advanced Optimization")
-                
-                with gr.Row():
-                    with gr.Column():
-                        gr.Markdown("#### Quantization Aware Training (QAT)")
-                        qat_enabled = gr.Checkbox(
-                            label="Enable QAT", value=False, 
-                            info="Simulate INT8 quantization during training (for edge devices)"
+                        sample_rate = gr.Number(
+                            label="Sample Rate (Hz)",
+                            value=16000,
+                            info="Audio sample rate (16kHz recommended)",
                         )
+                        audio_duration = gr.Number(
+                            label="Audio Duration (s)",
+                            value=1.5,
+                            step=0.1,
+                            info="Length of audio clips",
+                        )
+                        n_mfcc = gr.Slider(
+                            minimum=0, maximum=80, value=0, step=1,
+                            label="MFCC Coefficients",
+                            info="0 to use mel only",
+                        )
+                    with gr.Row():
+                        n_fft = gr.Number(label="FFT Size", value=400)
+                        hop_length = gr.Number(label="Hop Length", value=160)
+                        n_mels = gr.Slider(
+                            minimum=32, maximum=256, value=64, step=1,
+                            label="Mel Bands",
+                        )
+
+                with gr.Group():
+                    gr.Markdown("### 💾 Feature Loading (NPY)")
+                    gr.Markdown("Performance: 40-60% faster training for large datasets")
+                    with gr.Row():
+                        use_precomputed_features_for_training = gr.Checkbox(
+                            label="Use Precomputed NPY", value=True,
+                            info="Load features from .npy files"
+                        )
+                        npy_cache_features = gr.Checkbox(
+                            label="Cache in RAM", value=True,
+                            info="Faster but uses more memory"
+                        )
+                        fallback_to_audio = gr.Checkbox(
+                            label="Fallback to Audio", value=False,
+                            info="Load raw audio if .npy missing"
+                        )
+                    with gr.Row():
+                        npy_feature_dir = gr.Textbox(
+                            label="NPY Directory", value="data/npy"
+                        )
+                        npy_feature_type = gr.Dropdown(
+                            choices=["mel", "mfcc"], value="mel",
+                            label="Feature Type"
+                        )
+
+                with gr.Group():
+                    gr.Markdown("### 🛠️ Augmentation")
+                    
+                    gr.Markdown("**Time Domain**")
+                    with gr.Row():
+                        time_stretch_min = gr.Number(
+                            label="Time Stretch Min", value=0.9, step=0.01
+                        )
+                        time_stretch_max = gr.Number(
+                            label="Time Stretch Max", value=1.1, step=0.01
+                        )
+                        pitch_shift_min = gr.Number(
+                            label="Pitch Shift Min", value=-2, step=1
+                        )
+                        pitch_shift_max = gr.Number(
+                            label="Pitch Shift Max", value=2, step=1
+                        )
+                    
+                    with gr.Row():
+                        time_shift_prob = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.5, step=0.1,
+                            label="Time Shift Prob"
+                        )
+                        time_shift_min_ms = gr.Number(
+                            label="Shift Min (ms)", value=-100, step=10
+                        )
+                        time_shift_max_ms = gr.Number(
+                            label="Shift Max (ms)", value=100, step=10
+                        )
+
+                    gr.Markdown("**Noise & RIR**")
+                    with gr.Row():
+                        background_noise_prob = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.5, step=0.05,
+                            label="Bg Noise Prob"
+                        )
+                        noise_snr_min = gr.Number(label="SNR Min (dB)", value=5, step=1)
+                        noise_snr_max = gr.Number(label="SNR Max (dB)", value=20, step=1)
+                    
+                    with gr.Row():
+                        rir_prob = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.25, step=0.05,
+                            label="RIR Prob"
+                        )
+                        rir_dry_wet_min = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.3, step=0.05,
+                            label="Dry/Wet Min"
+                        )
+                        rir_dry_wet_max = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.7, step=0.05,
+                            label="Dry/Wet Max"
+                        )
+                        rir_dry_wet_strategy = gr.Dropdown(
+                            choices=["random", "fixed", "adaptive"], value="random",
+                            label="Mix Strategy"
+                        )
+
+                    gr.Markdown("**SpecAugment**")
+                    with gr.Row():
+                        use_spec_augment = gr.Checkbox(label="Enable SpecAugment", value=True)
+                        freq_mask_param = gr.Number(label="Freq Mask", value=15)
+                        time_mask_param = gr.Number(label="Time Mask", value=30)
+                        n_freq_masks = gr.Number(label="N Freq Masks", value=2)
+                        n_time_masks = gr.Number(label="N Time Masks", value=2)
+
+            # =================================================================
+            # TAB 2: MODEL & TRAINING
+            # =================================================================
+            with gr.TabItem("Model & Training"):
+                with gr.Group():
+                    gr.Markdown("### 🧠 Model Architecture")
+                    with gr.Row():
+                        architecture = gr.Dropdown(
+                            choices=["resnet18", "mobilenetv3", "lstm", "gru", "tcn", "tiny_conv", "cd_dnn"],
+                            value="resnet18",
+                            label="Architecture",
+                        )
+                        num_classes = gr.Number(label="Classes", value=2)
+                        dropout = gr.Slider(
+                            minimum=0.0, maximum=0.9, value=0.3, step=0.05,
+                            label="Dropout"
+                        )
+
+                    gr.Markdown("**Architecture Specifics**")
+                    with gr.Row():
+                        # RNN
+                        hidden_size = gr.Number(label="RNN Hidden Size", value=128)
+                        num_layers = gr.Slider(minimum=1, maximum=5, value=2, step=1, label="RNN Layers")
+                        bidirectional = gr.Checkbox(label="RNN Bidirectional", value=True)
+                    
+                    with gr.Row():
+                        # TCN
+                        tcn_num_channels = gr.Textbox(label="TCN Channels", value="64, 128, 256")
+                        tcn_kernel_size = gr.Number(label="TCN Kernel", value=3)
+                        tcn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="TCN Dropout")
+
+                    with gr.Row():
+                        # CD-DNN
+                        cddnn_hidden_layers = gr.Textbox(label="CD-DNN Layers", value="512, 256, 128")
+                        cddnn_context_frames = gr.Number(label="Context Frames", value=50)
+                        cddnn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="CD-DNN Dropout")
+
+                with gr.Group():
+                    gr.Markdown("### 🏋️ Training Loop")
+                    with gr.Row():
+                        batch_size = gr.Slider(
+                            minimum=8, maximum=1024, value=64, step=8,
+                            label="Batch Size"
+                        )
+                        epochs = gr.Slider(
+                            minimum=10, maximum=200, value=80, step=5,
+                            label="Epochs"
+                        )
+                        num_workers = gr.Slider(
+                            minimum=0, maximum=32, value=16, step=1,
+                            label="Workers"
+                        )
+                        mixed_precision = gr.Checkbox(
+                            label="Mixed Precision (FP16)", value=True
+                        )
+
+                with gr.Group():
+                    gr.Markdown("### 🚀 Advanced Training")
+                    with gr.Row():
+                        # EMA
+                        use_ema = gr.Checkbox(label="Use EMA", value=True)
+                        ema_decay = gr.Number(label="EMA Decay", value=0.999, step=0.0001)
+                        ema_final_decay = gr.Number(label="EMA Final Decay", value=0.9995, step=0.0001)
+                        ema_final_epochs = gr.Number(label="EMA Final Epochs", value=10)
+                    
+                    with gr.Row():
+                        checkpoint_frequency = gr.Dropdown(
+                            choices=["every_epoch", "every_5_epochs", "every_10_epochs", "best_only"],
+                            value="best_only",
+                            label="Checkpoint Freq"
+                        )
+                        early_stopping = gr.Slider(
+                            minimum=5, maximum=50, value=15, step=1,
+                            label="Early Stopping"
+                        )
+                        metric_window_size = gr.Number(label="Metric Window", value=100)
+
+            # =================================================================
+            # TAB 3: OPTIMIZATION & LOSS
+            # =================================================================
+            with gr.TabItem("Optimization & Loss"):
+                with gr.Group():
+                    gr.Markdown("### 📉 Optimizer & Scheduler")
+                    with gr.Row():
+                        optimizer = gr.Dropdown(
+                            choices=["adam", "sgd", "adamw"], value="adamw",
+                            label="Optimizer"
+                        )
+                        learning_rate = gr.Number(
+                            label="Learning Rate", value=0.0003, step=0.00001,
+                            precision=5
+                        )
+                        weight_decay = gr.Number(
+                            label="Weight Decay", value=1e-4, step=1e-5,
+                            precision=5
+                        )
+                        gradient_clip = gr.Number(label="Grad Clip", value=1.0, step=0.1)
+
+                    with gr.Row():
+                        momentum = gr.Number(label="Momentum", value=0.9, step=0.01)
+                        warmup_epochs = gr.Number(label="Warmup Epochs", value=3)
+                        min_lr = gr.Number(label="Min LR", value=1e-6, step=1e-7, precision=7)
+
+                    with gr.Row():
+                        scheduler = gr.Dropdown(
+                            choices=["cosine", "step", "plateau", "none"], value="cosine",
+                            label="Scheduler"
+                        )
+                        step_size = gr.Number(label="Step Size", value=10)
+                        scheduler_gamma = gr.Number(label="Gamma", value=0.5, step=0.1)
+                        scheduler_patience = gr.Number(label="Patience", value=5)
+                        scheduler_factor = gr.Number(label="Factor", value=0.5, step=0.1)
+
+                with gr.Group():
+                    gr.Markdown("### 🎯 Loss Function")
+                    with gr.Row():
+                        loss_function = gr.Dropdown(
+                            choices=["cross_entropy", "focal_loss", "triplet_loss"],
+                            value="cross_entropy",
+                            label="Loss Function"
+                        )
+                        label_smoothing = gr.Slider(
+                            minimum=0.0, maximum=0.3, value=0.05, step=0.01,
+                            label="Label Smoothing"
+                        )
+                        class_weights = gr.Dropdown(
+                            choices=["balanced", "none", "custom"], value="balanced",
+                            label="Class Weights"
+                        )
+                        hard_negative_weight = gr.Number(
+                            label="Hard Neg Weight", value=1.5, step=0.1
+                        )
+
+                    with gr.Row():
+                        focal_alpha = gr.Number(label="Focal Alpha", value=0.25, step=0.01)
+                        focal_gamma = gr.Number(label="Focal Gamma", value=2.0, step=0.1)
+                        triplet_margin = gr.Slider(
+                            minimum=0.1, maximum=5.0, value=1.0, step=0.1,
+                            label="Triplet Margin"
+                        )
+                        sampler_strategy = gr.Dropdown(
+                            choices=["weighted", "balanced", "none"], value="weighted",
+                            label="Sampler"
+                        )
+                    
+                    with gr.Row():
+                        class_weight_min = gr.Number(label="Class Weight Min", value=0.1, step=0.1)
+                        class_weight_max = gr.Number(label="Class Weight Max", value=100.0, step=10.0)
+
+                with gr.Group():
+                    gr.Markdown("### 🧪 Advanced Optimization")
+                    with gr.Row():
+                        # QAT
+                        qat_enabled = gr.Checkbox(label="Enable QAT", value=False)
                         qat_backend = gr.Dropdown(
                             choices=["fbgemm", "qnnpack"], value="fbgemm",
-                            info="fbgemm (x86), qnnpack (ARM/Mobile)"
+                            label="QAT Backend"
                         )
                         qat_start_epoch = gr.Number(label="QAT Start Epoch", value=5)
-                    
-                    with gr.Column():
-                        gr.Markdown("#### Knowledge Distillation")
-                        distillation_enabled = gr.Checkbox(
-                            label="Enable Distillation", value=False,
-                            info="Train student model to mimic a teacher model"
-                        )
+
+                    with gr.Row():
+                        # Distillation
+                        distillation_enabled = gr.Checkbox(label="Enable Distillation", value=False)
                         teacher_arch = gr.Dropdown(
                             choices=["wav2vec2"], value="wav2vec2",
-                            label="Teacher Architecture"
+                            label="Teacher Arch"
                         )
                         dist_temp = gr.Slider(
                             minimum=1.0, maximum=10.0, value=2.0, step=0.5,
-                            label="Temperature",
-                            info="Softmax temperature for distillation"
+                            label="Distillation Temp"
                         )
                         dist_alpha = gr.Slider(
                             minimum=0.0, maximum=1.0, value=0.5, step=0.1,
-                            label="Alpha",
-                            info="Weight for distillation loss (vs student loss)"
+                            label="Distillation Alpha"
                         )
-
-                gr.Markdown("### 🌊 Streaming Simulation")
-                with gr.Row():
-                    time_shift_prob = gr.Slider(
-                        minimum=0.0, maximum=1.0, value=0.5, step=0.1,
-                        label="Time Shift Probability",
-                        info="Probability of applying random circular time shift"
-                    )
-                    with gr.Column():
-                        gr.Markdown("Time Shift Range (ms)")
-                        with gr.Row():
-                            time_shift_min_ms = gr.Number(label="Min Shift (ms)", value=-100)
-                            time_shift_max_ms = gr.Number(label="Max Shift (ms)", value=100)
-
-                gr.Markdown("### 📐 Metric Learning")
-                with gr.Row():
-                    triplet_margin = gr.Slider(
-                        minimum=0.1, maximum=5.0, value=1.0, step=0.1,
-                        label="Triplet Loss Margin",
-                        info="Margin for Triplet Loss (ensure 'triplet_loss' is selected in Basic Params)"
-                    )
 
         gr.Markdown("---")
 

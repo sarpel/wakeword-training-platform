@@ -378,6 +378,13 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
             noise_snr_min=5.0,
             noise_snr_max=20.0,
             rir_prob=0.4,
+            # New: Time shift for robustness against alignment issues
+            time_shift_prob=0.4,
+            time_shift_min_ms=-50,
+            time_shift_max_ms=50,
+            # New: RIR mixing
+            rir_dry_wet_min=0.4,
+            rir_dry_wet_max=0.6,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
@@ -391,6 +398,9 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
             label_smoothing=0.0,
             class_weights="balanced",
             hard_negative_weight=3.0,
+            # New: Focal loss tuning for hard examples
+            focal_alpha=0.25,
+            focal_gamma=2.5,
         ),
         qat=QATConfig(
             enabled=True,  # Enable QAT by default for this target

@@ -817,7 +817,7 @@ def start_hpo(
             )
 
         train_ds, val_ds, _ = load_dataset_splits(
-            data_root=data_root,
+            data_root=paths.DATA,
             sample_rate=config.data.sample_rate,
             audio_duration=config.data.audio_duration,
             augment_train=True,
@@ -831,7 +831,7 @@ def start_hpo(
             use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
             npy_cache_features=config.data.npy_cache_features,
             fallback_to_audio=True,  # Force True for HPO robustness
-            cmvn_path=data_root / "cmvn_stats.json",
+            cmvn_path=paths.DATA / "cmvn_stats.json",
             apply_cmvn=True,
             return_raw_audio=True,  # NEW: Use GPU pipeline for HPO
         )
