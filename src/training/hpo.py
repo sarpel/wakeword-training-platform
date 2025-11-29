@@ -1,6 +1,7 @@
 import tempfile
 import shutil
 from pathlib import Path
+from typing import Optional, Callable
 
 import optuna
 import structlog
@@ -17,9 +18,15 @@ logger = structlog.get_logger(__name__)
 class OptunaPruningCallback:
     """Callback to prune unpromising trials."""
 
-    def __init__(self, trial: optuna.trial.Trial, monitor: str = "f1_score"):
+    def __init__(
+        self,
+        trial: optuna.trial.Trial,
+        monitor: str = "f1_score",
+        log_callback: Optional[Callable[[str], None]] = None,
+    ):
         self.trial = trial
         self.monitor = monitor
+        self.log_callback = log_callback
 
     def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics):
         # Report current score to Optuna
@@ -35,6 +42,8 @@ class OptunaPruningCallback:
                 f"Trial pruned at epoch {epoch} with {self.monitor}={current_score:.4f}"
             )
             logger.info(message)
+            if self.log_callback:
+                self.log_callback(f"✂️ {message}")
             raise optuna.TrialPruned(message)
 
 
@@ -42,12 +51,23 @@ class Objective:
     """Optuna objective for hyperparameter optimization."""
 
     def __init__(
-        self, config: WakewordConfig, train_loader: DataLoader, val_loader: DataLoader
+        self,
+        config: WakewordConfig,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+        log_callback: Optional[Callable[[str], None]] = None,
     ):
         self.config = config
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.best_f1 = -1.0
+        self.log_callback = log_callback
+
+    def _log(self, message: str):
+        """Log to both structlog and callback if available"""
+        logger.info(message)
+        if self.log_callback:
+            self.log_callback(message)
 
     def __call__(self, trial: optuna.trial.Trial) -> float:
         """Run a single training trial with a set of hyperparameters."""
@@ -98,6 +118,8 @@ class Objective:
 
         # Early stopping relative to HPO epochs
         trial_config.training.early_stopping_patience = 5
+
+        self._log(f"Trial {trial.number} started. Params: {trial.params}")
 
         # Re-create DataLoaders with new batch size
         train_loader_trial = DataLoader(
@@ -150,7 +172,9 @@ class Objective:
 
             # --- 3. Early Pruning ---
             # Add pruning callback
-            pruning_callback = OptunaPruningCallback(trial, monitor="f1_score")
+            pruning_callback = OptunaPruningCallback(
+                trial, monitor="f1_score", log_callback=self.log_callback
+            )
             trainer.add_callback(pruning_callback)
 
             try:
@@ -162,7 +186,7 @@ class Objective:
                 # --- 4. FPR Constraint ---
                 # Penalize models with high False Positive Rate (> 5%)
                 if best_fpr > 0.05:
-                    logger.info(f"Trial penalized due to high FPR: {best_fpr:.4f}")
+                    self._log(f"Trial {trial.number} penalized due to high FPR: {best_fpr:.4f}")
                     return 0.0
 
                 metric = best_f1
@@ -177,12 +201,14 @@ class Objective:
                     source_path = checkpoint_dir / "best_model.pt"
                     if source_path.exists():
                         shutil.copy(source_path, save_path)
-                        logger.info(f"New best HPO model saved to {save_path} (F1: {metric:.4f})")
+                        self._log(f"🏆 New best HPO model saved to {save_path} (F1: {metric:.4f})")
+
+                self._log(f"Trial {trial.number} finished. F1: {metric:.4f}")
 
             except optuna.TrialPruned:
                 raise
             except Exception as e:
-                logger.error(f"Trial failed: {e}")
+                self._log(f"❌ Trial {trial.number} failed: {e}")
                 metric = 0.0
 
             return metric
@@ -194,9 +220,10 @@ def run_hpo(
     val_loader: DataLoader,
     n_trials: int = 50,
     study_name: str = "wakeword-hpo",
+    log_callback: Optional[Callable[[str], None]] = None,
 ) -> optuna.study.Study:
     """Run hyperparameter optimization using Optuna."""
-    objective = Objective(config, train_loader, val_loader)
+    objective = Objective(config, train_loader, val_loader, log_callback=log_callback)
 
     # Use MedianPruner to stop unpromising trials early
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5)
@@ -205,8 +232,15 @@ def run_hpo(
         direction="maximize", study_name=study_name, pruner=pruner, load_if_exists=True
     )
 
+    if log_callback:
+        log_callback(f"Starting HPO study '{study_name}' with {n_trials} trials.")
     logger.info(f"Starting HPO study '{study_name}' with {n_trials} trials.")
+    
     study.optimize(objective, n_trials=n_trials)
+
+    if log_callback:
+        log_callback(f"✅ HPO Complete. Best trial: {study.best_trial.value}")
+        log_callback(f"Best params: {study.best_trial.params}")
 
     logger.info(f"Best trial: {study.best_trial.value}")
     logger.info(f"Best params: {study.best_trial.params}")

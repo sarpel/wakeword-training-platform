@@ -91,6 +91,7 @@ class TrainingState:
 
         # Training thread
         self.training_thread = None
+        self.hpo_thread = None
         self.log_queue = queue.Queue()
 
     def reset(self):
@@ -106,6 +107,7 @@ class TrainingState:
     def add_log(self, message: str):
         """Add message to log queue"""
         self.log_queue.put(f"[{time.strftime('%H:%M:%S')}] {message}\n")
+        print(message)
 
 
 # Global training state
@@ -806,26 +808,17 @@ def get_training_status() -> Tuple:
     )
 
 
-def start_hpo(
-    config_state: Dict, n_trials: int, study_name: str
-) -> Tuple[str, pd.DataFrame]:
-    """Start hyperparameter optimization."""
-    if training_state.is_training:
-        return "⚠️ Training already in progress", None
-
+def hpo_worker(config, n_trials, study_name):
+    """Background worker for HPO"""
     try:
-        if "config" not in config_state or config_state["config"] is None:
-            return "❌ No configuration loaded. Please configure in Panel 2 first.", None
-
-        config = config_state["config"]
+        training_state.add_log(f"Starting HPO study '{study_name}'...")
+        
         # Use centralized paths
         splits_dir = paths.SPLITS
 
         if not splits_dir.exists() or not (splits_dir / "train.json").exists():
-            return (
-                "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.",
-                None,
-            )
+            training_state.add_log("❌ Dataset splits not found.")
+            return
 
         train_ds, val_ds, _ = load_dataset_splits(
             data_root=paths.DATA,
@@ -848,7 +841,6 @@ def start_hpo(
         )
 
         # Optimize config for GPU pipeline
-        # Reduce workers to prevent CPU saturation (GPU handles processing now)
         hpo_config = config.copy()
         hpo_config.training.num_workers = min(hpo_config.training.num_workers, 16) 
         hpo_config.training.pin_memory = True
@@ -868,13 +860,49 @@ def start_hpo(
             pin_memory=True
         )
 
-        study = run_hpo(hpo_config, train_loader, val_loader, n_trials, study_name)
-
-        df = study.trials_dataframe()
-        return f"✅ HPO study '{study_name}' complete!", df
+        # Run HPO with logging callback
+        study = run_hpo(
+            hpo_config, 
+            train_loader, 
+            val_loader, 
+            n_trials, 
+            study_name,
+            log_callback=training_state.add_log
+        )
+        
+        training_state.add_log(f"✅ HPO study '{study_name}' finished successfully.")
 
     except Exception as e:
-        return f"❌ HPO failed: {e}", None
+        training_state.add_log(f"❌ HPO failed: {e}")
+        logger.exception("HPO failed")
+    finally:
+        training_state.is_training = False
+
+
+def start_hpo(
+    config_state: Dict, n_trials: int, study_name: str
+) -> Tuple[str, pd.DataFrame]:
+    """Start hyperparameter optimization."""
+    if training_state.is_training:
+        return "⚠️ Training or HPO already in progress", None
+
+    if "config" not in config_state or config_state["config"] is None:
+        return "❌ No configuration loaded. Please configure in Panel 2 first.", None
+
+    config = config_state["config"]
+    
+    # Set state to training to prevent concurrent runs
+    training_state.is_training = True
+    
+    # Start HPO in background thread
+    training_state.hpo_thread = threading.Thread(
+        target=hpo_worker,
+        args=(config, n_trials, study_name),
+        daemon=True
+    )
+    training_state.hpo_thread.start()
+
+    return f"🚀 HPO study '{study_name}' started in background. Check logs for progress.", None
 
 
 def create_training_panel(state: gr.State) -> gr.Blocks:
