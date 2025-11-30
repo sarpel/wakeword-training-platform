@@ -24,6 +24,17 @@ except ImportError:
 
 logger = structlog.get_logger(__name__)
 
+def is_safe_checkpoint_path(path: Path, root_dir: str = "models/checkpoints") -> bool:
+    """
+    Ensure the checkpoint path is under the allowed directory and not a symlink.
+    """
+    try:
+        root_path = Path(root_dir).resolve(strict=True)
+        candidate = path.resolve(strict=True)
+        return candidate.is_file() and str(candidate).startswith(str(root_path))
+    except Exception:
+        return False
+
 
 @dataclass
 class ExportConfig:
@@ -314,6 +325,11 @@ def export_model_to_onnx(
         Dictionary with export results
     """
     logger.info(f"Loading checkpoint: {checkpoint_path}")
+    # Validate checkpoint path before loading
+    if not is_safe_checkpoint_path(checkpoint_path):
+        logger.error(f"Unsafe checkpoint path: {checkpoint_path}")
+        raise ValueError(f"Unsafe checkpoint path: {checkpoint_path}")
+
 
     # Load checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device)
