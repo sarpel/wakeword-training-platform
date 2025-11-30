@@ -1,0 +1,109 @@
+config_name: custom
+description: Custom configuration from UI
+data:
+  data_root: data
+  sample_rate: 16000
+  audio_duration: 1.0
+  n_mfcc: 0
+  n_fft: 400
+  hop_length: 160
+  n_mels: 40
+  feature_type: mel
+  normalize_audio: true
+  use_precomputed_features_for_training: true
+  npy_feature_dir: data/npy
+  npy_feature_type: mel
+  npy_cache_features: true
+  fallback_to_audio: true
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 0.001
+  early_stopping_patience: 15
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+  checkpoint_frequency: every_5_epochs
+  save_best_only: true
+  use_ema: true
+  ema_decay: 0.999
+  ema_final_decay: 0.9995
+  ema_final_epochs: 10
+  metric_window_size: 100
+model:
+  architecture: tiny_conv
+  num_classes: 2
+  pretrained: false
+  dropout: 0.2
+  hidden_size: 64
+  num_layers: 2
+  bidirectional: false
+  tcn_num_channels:
+  - 64
+  - 128
+  - 256
+  tcn_kernel_size: 3
+  tcn_dropout: 0.3
+  cddnn_hidden_layers:
+  - 512
+  - 256
+  - 128
+  cddnn_context_frames: 50
+  cddnn_dropout: 0.3
+augmentation:
+  time_stretch_min: 0.8
+  time_stretch_max: 1.2
+  pitch_shift_min: -2
+  pitch_shift_max: 2
+  time_shift_prob: 0.4
+  time_shift_min_ms: -50
+  time_shift_max_ms: 50
+  background_noise_prob: 0.6
+  noise_snr_min: 5.0
+  noise_snr_max: 20.0
+  rir_prob: 0.4
+  rir_dry_wet_min: 0.4
+  rir_dry_wet_max: 0.6
+  rir_dry_wet_strategy: random
+  use_spec_augment: true
+  freq_mask_param: 15
+  time_mask_param: 30
+  n_freq_masks: 2
+  n_time_masks: 2
+optimizer:
+  optimizer: adamw
+  weight_decay: 0.0001
+  momentum: 0.9
+  betas:
+  - 0.9
+  - 0.999
+  scheduler: cosine
+  warmup_epochs: 3
+  min_lr: 1.0e-06
+  step_size: 10
+  gamma: 0.5
+  patience: 5
+  factor: 0.5
+  gradient_clip: 1.0
+  mixed_precision: true
+loss:
+  loss_function: focal_loss
+  label_smoothing: 0.0
+  focal_alpha: 0.25
+  focal_gamma: 2.5
+  triplet_margin: 1.0
+  class_weights: balanced
+  hard_negative_weight: 3.0
+  class_weight_min: 0.1
+  class_weight_max: 100.0
+  sampler_strategy: weighted
+qat:
+  enabled: false
+  backend: qnnpack
+  start_epoch: 10
+distillation:
+  enabled: false
+  teacher_model_path: ''
+  teacher_architecture: wav2vec2
+  temperature: 2.0
+  alpha: 0.5

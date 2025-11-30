@@ -289,15 +289,15 @@ class Trainer:
                     "on_epoch_end", epoch, train_loss, val_loss, val_metrics
                 )
 
-                print(f"\nEpoch {epoch+1}/{self.config.training.epochs}")
-                print(f"  Train: Loss={train_loss:.4f}, Acc={train_acc:.4f}")
-                print(
+                logger.info(f"Epoch {epoch+1}/{self.config.training.epochs}")
+                logger.info(f"  Train: Loss={train_loss:.4f}, Acc={train_acc:.4f}")
+                logger.info(
                     f"  Val:   Loss={val_loss:.4f}, Acc={val_metrics.accuracy:.4f}, "
                     f"F1={val_metrics.f1_score:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}"
                 )
-                print(f"  LR: {current_lr:.6f}")
+                logger.info(f"  LR: {current_lr:.6f}")
                 if improved:
-                    print(f"  ✅ New best model (improvement detected)\n")
+                    logger.info(f"  ✅ New best model (improvement detected)")
 
         except KeyboardInterrupt:
             logger.info("Training interrupted by user")

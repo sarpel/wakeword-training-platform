@@ -370,6 +370,9 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 progress(0.97, desc="Generating health report...")
                 health_checker = DatasetHealthChecker(stats)
                 health_report_text = health_checker.generate_report()
+                
+                # Log health report
+                logger.info("Dataset Health Report:\n" + health_report_text)
 
                 # Save manifest
                 progress(0.99, desc="Saving manifest...")
@@ -505,6 +508,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 report_text = "\n".join(report)
 
                 logger.info("Dataset split complete")
+                logger.info(report_text)
 
                 progress(1.0, desc="Complete!")
 
@@ -654,6 +658,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 logger.info(
                     f"Batch extraction complete: {results['success_count']}/{results['total_files']}"
                 )
+                logger.info(report_text)
 
                 progress(1.0, desc="Complete!")
 
@@ -715,6 +720,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 report = extractor.generate_report()
 
                 logger.info("NPY analysis complete")
+                logger.info(report)
 
                 progress(1.0, desc="Complete!")
 

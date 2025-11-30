@@ -1,0 +1,93 @@
+config_name: "esp32s3 best params"
+description: "Optimized parameters from HPO Trial 45 (F1: 0.9739). Architecture set to tiny_conv for ESP32-S3 compatibility."
+data:
+  sample_rate: 16000
+  audio_duration: 1.5
+  feature_type: "mel"
+  n_mels: 64
+  n_mfcc: 40
+  n_fft: 400
+  hop_length: 160
+  normalize_audio: true
+  use_precomputed_features_for_training: true
+  npy_feature_dir: "data/npy"
+  npy_feature_type: "mel"
+  npy_cache_features: true
+  fallback_to_audio: true
+training:
+  batch_size: 32
+  epochs: 80
+  learning_rate: 0.004485
+  early_stopping_patience: 15
+  num_workers: 16
+  pin_memory: true
+  persistent_workers: true
+  checkpoint_frequency: "every_5_epochs"
+  save_best_only: true
+  use_ema: true
+  ema_decay: 0.999
+  ema_final_decay: 0.9995
+  ema_final_epochs: 10
+  metric_window_size: 100
+model:
+  architecture: "tiny_conv"
+  num_classes: 2
+  pretrained: false
+  dropout: 0.165
+augmentation:
+  time_stretch_min: 0.922
+  time_stretch_max: 1.183
+  pitch_shift_min: -2
+  pitch_shift_max: 2
+  time_shift_prob: 0.0
+  time_shift_min_ms: -100
+  time_shift_max_ms: 100
+  background_noise_prob: 0.443
+  noise_snr_min: 5.0
+  noise_snr_max: 20.0
+  rir_prob: 0.270
+  rir_dry_wet_min: 0.3
+  rir_dry_wet_max: 0.7
+  rir_dry_wet_strategy: "random"
+  use_spec_augment: true
+  freq_mask_param: 13
+  time_mask_param: 23
+  n_freq_masks: 2
+  n_time_masks: 2
+optimizer:
+  optimizer: "adamw"
+  weight_decay: 1.39e-06
+  momentum: 0.9
+  betas:
+  - 0.9
+  - 0.999
+  scheduler: "cosine"
+  warmup_epochs: 3
+  min_lr: 1.0e-06
+  step_size: 10
+  gamma: 0.5
+  patience: 5
+  factor: 0.5
+  gradient_clip: 1.0
+  mixed_precision: true
+loss:
+  loss_function: "focal_loss"
+  label_smoothing: 0.05
+  focal_alpha: 0.25
+  focal_gamma: 2.20
+  triplet_margin: 1.0
+  class_weights: "balanced"
+  hard_negative_weight: 1.5
+  class_weight_min: 0.1
+  class_weight_max: 100.0
+  sampler_strategy: "weighted"
+qat:
+  enabled: false
+  backend: "fbgemm"
+  start_epoch: 5
+distillation:
+  enabled: false
+  teacher_model_path: ""
+  teacher_architecture: "wav2vec2"
+  temperature: 2.0
+  alpha: 0.5
