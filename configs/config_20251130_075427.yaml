@@ -18,7 +18,7 @@ data:
 training:
   batch_size: 32
   epochs: 100
-  learning_rate: 0.0044848526850078795
+  learning_rate: 0.0044
   early_stopping_patience: 15
   num_workers: 4
   pin_memory: true
@@ -34,7 +34,7 @@ model:
   architecture: tiny_conv
   num_classes: 2
   pretrained: false
-  dropout: 0.16481797631368364
+  dropout: 0.1648
   hidden_size: 64
   num_layers: 2
   bidirectional: false
@@ -51,17 +51,17 @@ model:
   cddnn_context_frames: 50
   cddnn_dropout: 0.3
 augmentation:
-  time_stretch_min: 0.921883012685752
-  time_stretch_max: 1.1825391041731432
+  time_stretch_min: 0.92
+  time_stretch_max: 1.18
   pitch_shift_min: -2
   pitch_shift_max: 2
-  time_shift_prob: 0.4
+  time_shift_prob: 0.25
   time_shift_min_ms: -50
   time_shift_max_ms: 50
-  background_noise_prob: 0.44348095505594004
+  background_noise_prob: 0.44
   noise_snr_min: 5.0
   noise_snr_max: 20.0
-  rir_prob: 0.2699239487797466
+  rir_prob: 0.27
   rir_dry_wet_min: 0.4
   rir_dry_wet_max: 0.6
   rir_dry_wet_strategy: random
@@ -72,7 +72,7 @@ augmentation:
   n_time_masks: 2
 optimizer:
   optimizer: adamw
-  weight_decay: 1.385560904182467e-06
+  weight_decay: 0.0
   momentum: 0.9
   betas:
   - 0.9
@@ -90,7 +90,7 @@ loss:
   loss_function: focal_loss
   label_smoothing: 0.0
   focal_alpha: 0.25
-  focal_gamma: 2.199467980963969
+  focal_gamma: 2.2
   triplet_margin: 1.0
   class_weights: balanced
   hard_negative_weight: 3.0

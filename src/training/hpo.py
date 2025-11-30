@@ -55,11 +55,13 @@ class Objective:
         config: WakewordConfig,
         train_loader: DataLoader,
         val_loader: DataLoader,
+        param_groups: list = None,
         log_callback: Optional[Callable[[str], None]] = None,
     ):
         self.config = config
         self.train_loader = train_loader
         self.val_loader = val_loader
+        self.param_groups = param_groups or ["Training", "Model", "Augmentation"]
         self.best_f1 = -1.0
         self.log_callback = log_callback
 
@@ -74,42 +76,60 @@ class Objective:
         # Create a copy of the config to avoid side effects
         trial_config = self.config.copy()
 
-        # --- 1. Expand Search Space ---
-        # Optimizer hyperparameters
-        trial_config.training.learning_rate = trial.suggest_float(
-            "learning_rate", 1e-5, 1e-2, log=True
-        )
-        trial_config.optimizer.weight_decay = trial.suggest_float(
-            "weight_decay", 1e-6, 1e-3, log=True
-        )
-
-        # Model hyperparameters
-        trial_config.model.dropout = trial.suggest_float("dropout", 0.1, 0.5)
-
-        # Augmentation hyperparameters
-        trial_config.augmentation.background_noise_prob = trial.suggest_float(
-            "background_noise_prob", 0.1, 0.9
-        )
-        trial_config.augmentation.rir_prob = trial.suggest_float("rir_prob", 0.1, 0.8)
+        # --- 1. Expand Search Space based on param_groups ---
         
-        # SpecAugment parameters (intensity)
-        trial_config.augmentation.freq_mask_param = trial.suggest_int("freq_mask_param", 10, 40)
-        trial_config.augmentation.time_mask_param = trial.suggest_int("time_mask_param", 20, 60)
+        # Group: Training
+        if "Training" in self.param_groups:
+            trial_config.training.learning_rate = trial.suggest_float(
+                "learning_rate", 1e-5, 1e-2, log=True
+            )
+            trial_config.optimizer.weight_decay = trial.suggest_float(
+                "weight_decay", 1e-6, 1e-3, log=True
+            )
+            trial_config.optimizer.optimizer = trial.suggest_categorical(
+                "optimizer", ["adam", "adamw"]
+            )
+            # Batch size (requires recreating DataLoaders)
+            batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
+            trial_config.training.batch_size = batch_size
 
-        trial_config.augmentation.time_stretch_min = trial.suggest_float(
-            "time_stretch_min", 0.8, 0.95
-        )
-        trial_config.augmentation.time_stretch_max = trial.suggest_float(
-            "time_stretch_max", 1.05, 1.2
-        )
-        
-        # Loss hyperparameters (Switch to Focal Loss to test Gamma)
-        trial_config.loss.loss_function = "focal_loss"
-        trial_config.loss.focal_gamma = trial.suggest_float("focal_gamma", 1.0, 4.0)
+        # Group: Model
+        if "Model" in self.param_groups:
+            trial_config.model.dropout = trial.suggest_float("dropout", 0.1, 0.5)
+            # Only suggest hidden_size if architecture supports it (RNNs)
+            if trial_config.model.architecture in ["lstm", "gru"]:
+                trial_config.model.hidden_size = trial.suggest_categorical("hidden_size", [64, 128, 256])
+            
+        # Group: Augmentation
+        if "Augmentation" in self.param_groups:
+            trial_config.augmentation.background_noise_prob = trial.suggest_float(
+                "background_noise_prob", 0.1, 0.9
+            )
+            trial_config.augmentation.rir_prob = trial.suggest_float("rir_prob", 0.1, 0.8)
+            trial_config.augmentation.time_stretch_min = trial.suggest_float(
+                "time_stretch_min", 0.8, 0.95
+            )
+            trial_config.augmentation.time_stretch_max = trial.suggest_float(
+                "time_stretch_max", 1.05, 1.2
+            )
+            # SpecAugment parameters
+            trial_config.augmentation.freq_mask_param = trial.suggest_int("freq_mask_param", 10, 40)
+            trial_config.augmentation.time_mask_param = trial.suggest_int("time_mask_param", 20, 60)
 
-        # Batch size (requires recreating DataLoaders)
-        batch_size = trial.suggest_categorical("batch_size", [32, 64])
-        trial_config.training.batch_size = batch_size
+        # Group: Data
+        if "Data" in self.param_groups:
+            # Be careful with n_mels as it changes input size
+            n_mels = trial.suggest_categorical("n_mels", [40, 64, 80])
+            trial_config.data.n_mels = n_mels
+            
+        # Group: Loss
+        if "Loss" in self.param_groups:
+            trial_config.loss.loss_function = trial.suggest_categorical("loss_function", ["cross_entropy", "focal_loss"])
+            if trial_config.loss.loss_function == "focal_loss":
+                trial_config.loss.focal_gamma = trial.suggest_float("focal_gamma", 1.0, 4.0)
+
+        # Ensure batch_size is set if not optimized
+        batch_size = trial_config.training.batch_size
 
         # --- 2. Epoch Reduction (Fidelity) ---
         # Run for fewer epochs during HPO to save time
@@ -220,10 +240,11 @@ def run_hpo(
     val_loader: DataLoader,
     n_trials: int = 50,
     study_name: str = "wakeword-hpo",
+    param_groups: list = None,
     log_callback: Optional[Callable[[str], None]] = None,
 ) -> optuna.study.Study:
     """Run hyperparameter optimization using Optuna."""
-    objective = Objective(config, train_loader, val_loader, log_callback=log_callback)
+    objective = Objective(config, train_loader, val_loader, param_groups, log_callback=log_callback)
 
     # Use MedianPruner to stop unpromising trials early
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5)

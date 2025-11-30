@@ -12,9 +12,8 @@ archive/
 **/__pycache__/
 **/*.pyc
 **/**/*.pyc
-
+.pytest_cache/
 data/
-.serena/
 .genkit/
 *.7z
 *.zip
@@ -22,8 +21,8 @@ data/
 docs/
 .github/
 logs/
-
-
-
+wandb/
+# WandB API Key
+.wandb_key
 
 !src/data/

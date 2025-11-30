@@ -64,7 +64,8 @@ class Trainer:
         config: "WakewordConfig",
         checkpoint_manager: CheckpointManager,
         device: str = "cuda",
-
+        use_ema: Optional[bool] = None,
+        ema_decay: Optional[float] = None,
     ) -> None:
         """
         Initialize trainer
@@ -74,19 +75,28 @@ class Trainer:
             train_loader: Training data loader
             val_loader: Validation data loader
             config: Training configuration
-            checkpoint_dir: Directory for saving checkpoints
+            checkpoint_manager: Checkpoint manager
             device: Device for training
-            use_ema: Whether to use Exponential Moving Average
-            ema_decay: EMA decay rate
+            use_ema: Whether to use Exponential Moving Average (overrides config)
+            ema_decay: EMA decay rate (overrides config)
         """
         # Enforce GPU requirement (but allow CPU if needed/configured)
         enforce_cuda(allow_cpu=True)
 
         self.device = device
         self.config = config
-        self.config = config
-        self.use_ema = getattr(config.training, "use_ema", True)
-        ema_decay = getattr(config.training, "ema_decay", 0.999)
+        
+        # Determine EMA settings (Argument > Config > Default)
+        if use_ema is not None:
+            self.use_ema = use_ema
+        else:
+            self.use_ema = getattr(config.training, "use_ema", True)
+            
+        if ema_decay is not None:
+            ema_decay = ema_decay
+        else:
+            ema_decay = getattr(config.training, "ema_decay", 0.999)
+
         ema_final_decay = getattr(config.training, "ema_final_decay", 0.9995)
         ema_final_epochs = getattr(config.training, "ema_final_epochs", 10)
         metric_window_size = getattr(config.training, "metric_window_size", 100)
@@ -105,7 +115,8 @@ class Trainer:
         self.val_loader = val_loader
 
         # NEW: Audio Processor for GPU-based augmentation/feature extraction
-        cmvn_path = Path(config.data.data_root) / "cmvn_stats.json"
+        from src.config.paths import paths
+        cmvn_path = paths.CMVN_STATS
         self.audio_processor = AudioProcessor(
             config=config,
             cmvn_path=cmvn_path if cmvn_path.exists() else None,

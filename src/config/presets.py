@@ -358,9 +358,9 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
         ),
         training=TrainingConfig(
             batch_size=32,
-            epochs=100,  # Tiny models need more epochs to converge
+            epochs=150,  # Increased to 150
             learning_rate=0.001,
-            early_stopping_patience=15,
+            early_stopping_patience=25,  # Increased to 25
             num_workers=4,
         ),
         model=ModelConfig(
@@ -368,44 +368,48 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
             num_classes=2,
             pretrained=False,
             dropout=0.2,
+            # Explicitly set requested params (though tiny_conv might ignore some RNN params)
+            bidirectional=False,
+            hidden_size=64,
         ),
         augmentation=AugmentationConfig(
             time_stretch_min=0.8,
             time_stretch_max=1.2,
             pitch_shift_min=-2,
             pitch_shift_max=2,
-            background_noise_prob=0.6,  # Heavy augmentation helps tiny models generalize
+            background_noise_prob=0.6,
             noise_snr_min=5.0,
             noise_snr_max=20.0,
             rir_prob=0.4,
-            # New: Time shift for robustness against alignment issues
-            time_shift_prob=0.4,
+            # Disabled time shift as requested
+            time_shift_prob=0.0,
             time_shift_min_ms=-50,
             time_shift_max_ms=50,
-            # New: RIR mixing
             rir_dry_wet_min=0.4,
             rir_dry_wet_max=0.6,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=1e-3,
+            weight_decay=0.0001,  # Set to 0.0001
             scheduler="cosine",
             gradient_clip=1.0,
             mixed_precision=True,
         ),
         loss=LossConfig(
-            loss_function="focal_loss",  # Helps with hard examples
+            loss_function="focal_loss",
             label_smoothing=0.0,
             class_weights="balanced",
             hard_negative_weight=3.0,
-            # New: Focal loss tuning for hard examples
             focal_alpha=0.25,
             focal_gamma=2.5,
         ),
         qat=QATConfig(
-            enabled=True,  # Enable QAT by default for this target
-            backend="qnnpack",  # ARM backend
+            enabled=False,  # Disabled as requested
+            backend="qnnpack",
             start_epoch=10,
+        ),
+        distillation=DistillationConfig(
+            enabled=False,  # Disabled as requested
         ),
     )
 

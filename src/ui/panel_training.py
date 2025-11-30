@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 import gradio as gr
 import matplotlib
@@ -86,6 +86,7 @@ class TrainingState:
         # Best metrics
         self.best_epoch = 0
         self.best_val_loss = float("inf")
+        self.best_val_f1 = 0.0
         self.best_val_acc = 0.0
         self.best_model_path = "No model saved yet"
 
@@ -308,6 +309,9 @@ def training_worker():
                 # Update best metrics
                 if val_loss < training_state.best_val_loss:
                     training_state.best_val_loss = val_loss
+
+                if val_metrics.f1_score > training_state.best_val_f1:
+                    training_state.best_val_f1 = val_metrics.f1_score
                     training_state.best_epoch = epoch + 1
                     training_state.best_model_path = str(
                         training_state.trainer.checkpoint_dir / "best_model.pt"
@@ -343,6 +347,7 @@ def training_worker():
         training_state.add_log(f"Training complete!")
         training_state.add_log(f"Total time: {elapsed/3600:.2f} hours")
         training_state.add_log(f"Best epoch: {training_state.best_epoch}")
+        training_state.add_log(f"Best val F1: {training_state.best_val_f1:.4f}")
         training_state.add_log(f"Best val loss: {training_state.best_val_loss:.4f}")
         training_state.add_log(f"Best val acc: {training_state.best_val_acc:.2%}")
         training_state.add_log(f"Model saved to: {training_state.best_model_path}")
@@ -374,7 +379,9 @@ def start_training(
     run_lr_finder: bool,
     use_wandb: bool,
     wandb_project: str,
+
     wandb_api_key: str = "",
+    resume_checkpoint: str = None,
 ) -> Tuple:
     """Start training with current configuration and advanced features"""
     if training_state.is_training:
@@ -388,12 +395,27 @@ def start_training(
         )
 
     try:
+        # Handle Resume
+        resume_path = None
+        if resume_checkpoint and resume_checkpoint != "None":
+            resume_path = paths.CHECKPOINTS / resume_checkpoint
+            if not resume_path.exists():
+                return (
+                    f"❌ Checkpoint not found: {resume_checkpoint}",
+                    "0/0",
+                    "0/0",
+                    None,
+                    None,
+                    None,
+                )
+            training_state.add_log(f"Resuming from checkpoint: {resume_checkpoint}")
         # Handle W&B Login if key provided
         if use_wandb and wandb_api_key.strip():
             try:
                 import wandb
                 training_state.add_log(f"Logging into W&B...")
                 wandb.login(key=wandb_api_key.strip())
+                save_wandb_key(wandb_api_key.strip())  # Save key on successful use
                 training_state.add_log("✅ W&B Login successful")
             except Exception as e:
                 training_state.add_log(f"⚠️ W&B Login failed: {e}")
@@ -463,7 +485,7 @@ def start_training(
                 training_state.add_log("Computing CMVN statistics (first time only)...")
                 # Load datasets temporarily without CMVN to compute stats
                 temp_train_ds, _, _ = load_dataset_splits(
-                    data_root=data_root,
+                    data_root=paths.DATA,
                     device="cuda",
                     feature_type=feature_type,
                     n_mels=config.data.n_mels,
@@ -678,6 +700,21 @@ def start_training(
             ema_decay=ema_decay if use_ema else 0.999,
         )
 
+        # Resume if requested
+        start_epoch = 0
+        if resume_path:
+            training_state.trainer.checkpoint_manager.load_checkpoint(
+                resume_path, 
+                training_state.trainer.model, 
+                training_state.trainer.optimizer, 
+                training_state.trainer.device
+            )
+            # Load state
+            checkpoint = torch.load(resume_path, map_location="cpu")
+            start_epoch = checkpoint.get("epoch", 0) + 1
+            training_state.current_epoch = start_epoch
+            training_state.add_log(f"✅ Resumed training from epoch {start_epoch}")
+
         if use_ema:
             training_state.add_log(f"✅ EMA enabled (decay: {ema_decay:.4f} → 0.9995)")
 
@@ -880,29 +917,192 @@ def hpo_worker(config, n_trials, study_name):
 
 
 def start_hpo(
-    config_state: Dict, n_trials: int, study_name: str
+    state: gr.State, n_trials: int, study_name: str, param_groups: List[str]
 ) -> Tuple[str, pd.DataFrame]:
-    """Start hyperparameter optimization."""
+    """Start HPO study in background"""
     if training_state.is_training:
-        return "⚠️ Training or HPO already in progress", None
+        return "⚠️ Training already in progress", None
 
-    if "config" not in config_state or config_state["config"] is None:
-        return "❌ No configuration loaded. Please configure in Panel 2 first.", None
+    if not param_groups:
+        return "⚠️ Please select at least one parameter group to optimize", None
 
-    config = config_state["config"]
-    
-    # Set state to training to prevent concurrent runs
+    training_state.reset()
     training_state.is_training = True
-    
-    # Start HPO in background thread
-    training_state.hpo_thread = threading.Thread(
-        target=hpo_worker,
-        args=(config, n_trials, study_name),
-        daemon=True
-    )
-    training_state.hpo_thread.start()
+    training_state.should_stop = False
 
-    return f"🚀 HPO study '{study_name}' started in background. Check logs for progress.", None
+    def hpo_thread_func():
+        try:
+            study = run_hpo(
+                config=state["config"],
+                train_loader=training_state.train_loader,
+                val_loader=training_state.val_loader,
+                n_trials=int(n_trials),
+                study_name=study_name,
+                param_groups=param_groups,
+                log_callback=training_state.add_log,
+            )
+            training_state.add_log("✅ HPO Study Complete!")
+            # Store best params in state for "Apply" feature
+            state["best_hpo_params"] = study.best_params
+            
+        except Exception as e:
+            logger.exception("HPO failed")
+            training_state.add_log(f"❌ HPO failed: {str(e)}")
+        finally:
+            training_state.is_training = False
+
+    training_state.training_thread = threading.Thread(target=hpo_thread_func)
+    training_state.training_thread.start()
+
+    return f"🚀 HPO study '{study_name}' started. Optimizing: {', '.join(param_groups)}", None
+
+
+def apply_best_params(state: gr.State) -> str:
+    """Apply best HPO params to current config"""
+    if "best_hpo_params" not in state or not state["best_hpo_params"]:
+        return "⚠️ No HPO results found to apply. Run HPO first."
+    
+    best_params = state["best_hpo_params"]
+    config = state["config"]
+    
+    # Map flat params to config structure
+    # Training
+    if "learning_rate" in best_params:
+        config.training.learning_rate = best_params["learning_rate"]
+    if "batch_size" in best_params:
+        config.training.batch_size = best_params["batch_size"]
+    if "weight_decay" in best_params:
+        config.optimizer.weight_decay = best_params["weight_decay"]
+    if "optimizer" in best_params:
+        config.optimizer.optimizer = best_params["optimizer"]
+        
+    # Model
+    if "dropout" in best_params:
+        config.model.dropout = best_params["dropout"]
+    if "hidden_size" in best_params:
+        config.model.hidden_size = best_params["hidden_size"]
+        
+    # Augmentation
+    if "background_noise_prob" in best_params:
+        config.augmentation.background_noise_prob = best_params["background_noise_prob"]
+    if "rir_prob" in best_params:
+        config.augmentation.rir_prob = best_params["rir_params"]
+    if "time_stretch_min" in best_params:
+        config.augmentation.time_stretch_min = best_params["time_stretch_min"]
+    if "time_stretch_max" in best_params:
+        config.augmentation.time_stretch_max = best_params["time_stretch_max"]
+    if "freq_mask_param" in best_params:
+        config.augmentation.freq_mask_param = best_params["freq_mask_param"]
+    if "time_mask_param" in best_params:
+        config.augmentation.time_mask_param = best_params["time_mask_param"]
+        
+    # Data
+    if "n_mels" in best_params:
+        config.data.n_mels = best_params["n_mels"]
+        
+    # Loss
+    if "loss_function" in best_params:
+        config.loss.loss_function = best_params["loss_function"]
+    if "focal_gamma" in best_params:
+        config.loss.focal_gamma = best_params["focal_gamma"]
+
+    return f"✅ Applied best parameters: {best_params}"
+
+
+def save_best_profile(state: gr.State) -> str:
+    """Save best HPO params as a new user profile"""
+    if "best_hpo_params" not in state or not state["best_hpo_params"]:
+        return "⚠️ No HPO results found to save."
+        
+    # Apply params first to ensure config is up to date
+    apply_best_params(state)
+    
+    # Create filename
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    profile_name = f"user_profile_{timestamp}"
+    filename = f"{profile_name}.yaml"
+    save_path = paths.CONFIGS / filename
+    
+    # Update config metadata
+    state["config"].config_name = profile_name
+    state["config"].description = f"User generated profile from HPO results on {timestamp} (User)"
+    
+    # Save
+    try:
+        state["config"].save(save_path)
+        return f"💾 Saved profile to {filename}"
+    except Exception as e:
+        return f"❌ Failed to save profile: {e}"
+
+
+def list_checkpoints() -> List[str]:
+    """List available checkpoints"""
+    checkpoints_dir = paths.CHECKPOINTS
+    if not checkpoints_dir.exists():
+        return []
+    return [f.name for f in checkpoints_dir.glob("*.pt")]
+
+
+def load_wandb_key() -> str:
+    """Load WandB API key from file"""
+    key_file = Path(".wandb_key")
+    if key_file.exists():
+        try:
+            return key_file.read_text().strip()
+        except Exception:
+            return ""
+    return ""
+
+
+def save_wandb_key(key: str):
+    """Save WandB API key to file"""
+    if not key:
+        return
+    try:
+        Path(".wandb_key").write_text(key.strip())
+    except Exception as e:
+        print(f"Failed to save WandB key: {e}")
+
+
+def calculate_dataset_ratios() -> Tuple[str, float, float, float]:
+    """Calculate optimal ratios from train.json"""
+    try:
+        train_manifest = paths.SPLITS / "train.json"
+        if not train_manifest.exists():
+            return "❌ train.json not found", 1, 1, 1
+            
+        import json
+        with open(train_manifest, "r") as f:
+            data = json.load(f)
+            
+        # Count classes
+        counts = {"positive": 0, "negative": 0, "hard_negative": 0}
+        for item in data:
+            cat = item.get("category", "negative")
+            if cat in counts:
+                counts[cat] += 1
+                
+        if sum(counts.values()) == 0:
+             return "❌ Dataset empty", 1, 1, 1
+             
+        # Find min non-zero count to normalize
+        min_count = min([c for c in counts.values() if c > 0], default=1)
+        
+        # Calculate ratios (rounded to nearest integer for cleaner UI)
+        r_pos = max(1, round(counts["positive"] / min_count))
+        r_neg = max(1, round(counts["negative"] / min_count))
+        r_hard = max(1, round(counts["hard_negative"] / min_count))
+        
+        msg = (
+            f"✅ Calculated from {sum(counts.values())} samples:\n"
+            f"Pos: {counts['positive']} ({r_pos}x)\n"
+            f"Neg: {counts['negative']} ({r_neg}x)\n"
+            f"Hard: {counts['hard_negative']} ({r_hard}x)"
+        )
+        return msg, r_pos, r_neg, r_hard
+        
+    except Exception as e:
+        return f"❌ Error: {str(e)}", 1, 1, 1
 
 
 def create_training_panel(state: gr.State) -> gr.Blocks:
@@ -983,6 +1183,28 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                             minimum=0,
                             info="Ratio of hard negatives",
                         )
+                    
+                    calc_ratios_btn = gr.Button("🧮 Auto-Calculate Ratios", size="sm")
+                    ratio_status = gr.Textbox(label="Ratio Status", value="", interactive=False, lines=2)
+
+                with gr.Column():
+                    gr.Markdown("#### 🔄 Resume Training")
+                    
+                    with gr.Row():
+                        checkpoint_dropdown = gr.Dropdown(
+                            label="Select Checkpoint",
+                            choices=list_checkpoints(),
+                            value=None,
+                            interactive=True,
+                            info="Select a .pt file to resume from"
+                        )
+                        refresh_ckpt_btn = gr.Button("🔄", size="sm", scale=0)
+                        
+                    resume_training = gr.Checkbox(
+                        label="Resume from selected",
+                        value=False,
+                        info="Load weights and optimizer state from checkpoint"
+                    )
 
                 with gr.Column():
                     gr.Markdown("#### 🔍 Learning Rate Finder")
@@ -1010,6 +1232,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     )
                     wandb_api_key = gr.Textbox(
                         label="W&B API Key",
+                        value=load_wandb_key(),  # Load saved key
                         placeholder="Paste your API key here",
                         type="password",
                         info="Found in W&B Settings > API Keys. Leave empty if already logged in via CLI.",
@@ -1044,6 +1267,20 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     study_name = gr.Textbox(label="Study Name", value="wakeword-hpo")
                 with gr.Row():
                     start_hpo_btn = gr.Button("🚀 Start HPO Study", variant="primary")
+                
+                with gr.Row():
+                    hpo_param_groups = gr.CheckboxGroup(
+                        label="Parameter Groups to Optimize",
+                        choices=["Training", "Model", "Augmentation", "Data", "Loss"],
+                        value=["Training", "Model"],
+                        info="Select which parameters to include in the search space"
+                    )
+                    
+                with gr.Row():
+                    apply_params_btn = gr.Button("✅ Apply Best Params", size="sm")
+                    save_profile_btn = gr.Button("💾 Save as Profile", size="sm")
+                    hpo_action_status = gr.Textbox(label="Action Status", interactive=False)
+
                 with gr.Row():
                     hpo_results = gr.DataFrame(headers=["Trial", "Value", "Params"])
 
@@ -1149,8 +1386,20 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 )
 
         # Event handlers
+        # Wrapper for start training to handle resume logic
+        def start_training_wrapper(*args):
+            # Last 2 args are resume_training (bool) and checkpoint_dropdown (str)
+            resume_checked = args[-2]
+            ckpt_path = args[-1]
+            
+            # Pass everything else + formatted resume path
+            actual_args = list(args[:-2])
+            actual_args.append(ckpt_path if resume_checked else None)
+            
+            return start_training(*actual_args)
+
         start_training_btn.click(
-            fn=start_training,
+            fn=start_training_wrapper,
             inputs=[
                 state,
                 use_cmvn,
@@ -1164,6 +1413,8 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 use_wandb,
                 wandb_project,
                 wandb_api_key,
+                resume_training,
+                checkpoint_dropdown
             ],
             outputs=[
                 training_status,
@@ -1175,12 +1426,41 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
             ],
         )
 
+        # Auto-Calculate Ratios Handler
+        calc_ratios_btn.click(
+            fn=calculate_dataset_ratios,
+            inputs=[],
+            outputs=[ratio_status, sampler_ratio_pos, sampler_ratio_neg, sampler_ratio_hard]
+        )
+        
+        # Refresh Checkpoints Handler
+        def refresh_checkpoints():
+            return gr.Dropdown(choices=list_checkpoints())
+            
+        refresh_ckpt_btn.click(
+            fn=refresh_checkpoints,
+            inputs=[],
+            outputs=[checkpoint_dropdown]
+        )
+
         stop_training_btn.click(fn=stop_training, outputs=[training_status])
 
         start_hpo_btn.click(
             fn=start_hpo,
-            inputs=[state, n_trials, study_name],
+            inputs=[state, n_trials, study_name, hpo_param_groups],
             outputs=[hpo_status, hpo_results],
+        )
+
+        apply_params_btn.click(
+            fn=apply_best_params,
+            inputs=[state],
+            outputs=[hpo_action_status]
+        )
+
+        save_profile_btn.click(
+            fn=save_best_profile,
+            inputs=[state],
+            outputs=[hpo_action_status]
         )
 
         # Auto-refresh for live updates

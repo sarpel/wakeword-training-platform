@@ -49,52 +49,93 @@ class VADFilter:
         with open(manifest_path, "r") as f:
             data = json.load(f)
             
-        files = data["files"]
-        kept_files = []
         rejected_count = 0
+        total_files = 0
         
-        logger.info(f"VAD Filtering: Processing {len(files)} files from {manifest_path}")
-        
-        for item in tqdm(files, desc="VAD Filtering"):
-            file_path = Path(item["path"])
-            category = item["category"]
+        # Handle both flat list (legacy) and nested categories (new scanner)
+        if "files" in data:
+            # Legacy flat structure
+            files = data["files"]
+            kept_files = []
+            total_files = len(files)
             
-            # Skip VAD for background noise or explicit negatives if desired?
-            # Usually we want VAD on positives to ensure they have speech.
-            # Negatives might be silence/noise, so maybe we keep them?
-            # For now, we apply to ALL, assuming "negative" usually means "speech that isn't wakeword".
-            # BUT if negative category includes background noise, VAD might filter it out.
-            # Let's safeguard: If category is "background", keep it.
-            if category == "background":
-                kept_files.append(item)
-                continue
-
-            try:
-                # Load audio
-                waveform, sr = torchaudio.load(file_path)
-                if sr != self.sample_rate:
-                    waveform = torchaudio.transforms.Resample(sr, self.sample_rate)(waveform)
-                
-                # Check VAD
-                if self.vad.is_speech(waveform):
+            logger.info(f"VAD Filtering: Processing {len(files)} files from {manifest_path}")
+            
+            for item in tqdm(files, desc="VAD Filtering"):
+                if self._process_item(item):
                     kept_files.append(item)
                 else:
                     rejected_count += 1
-            except Exception as e:
-                logger.warning(f"Failed to process {file_path}: {e}")
-                rejected_count += 1
-                
-        # Save new manifest
-        new_data = data.copy()
-        new_data["files"] = kept_files
-        
-        with open(output_path, "w") as f:
-            json.dump(new_data, f, indent=2)
             
-        logger.info(f"VAD Filter Complete. Kept {len(kept_files)}/{len(files)}. Rejected {rejected_count}.")
+            data["files"] = kept_files
+            
+        elif "categories" in data:
+            # New nested structure
+            logger.info(f"VAD Filtering: Processing categories in {manifest_path}")
+            
+            for category_name, category_data in data["categories"].items():
+                files = category_data.get("files", [])
+                kept_files = []
+                total_files += len(files)
+                
+                # Skip background noise from VAD?
+                # Usually background noise is just noise, VAD might reject it all.
+                # But we want to keep it as "background" class.
+                if category_name == "background":
+                    logger.info(f"Skipping VAD for category '{category_name}' (keeping all {len(files)} files)")
+                    kept_files = files
+                else:
+                    for item in tqdm(files, desc=f"Filtering {category_name}"):
+                        if self._process_item(item):
+                            kept_files.append(item)
+                        else:
+                            rejected_count += 1
+                
+                # Update category files
+                data["categories"][category_name]["files"] = kept_files
+                # Update category stats if present
+                if "total_files" in data["categories"][category_name]:
+                     data["categories"][category_name]["total_files"] = len(kept_files)
+                     
+        else:
+            logger.error(f"Unknown manifest format in {manifest_path}")
+            return output_path
+
+        # Update global stats if present
+        if "total_files" in data:
+            data["total_files"] = total_files - rejected_count
+
+        with open(output_path, "w") as f:
+            json.dump(data, f, indent=2)
+            
+        logger.info(f"VAD Filter Complete. Rejected {rejected_count} files.")
         logger.info(f"Cleaned manifest saved to {output_path}")
         
         return output_path
+
+    def _process_item(self, item: Dict) -> bool:
+        """Process a single file item. Returns True to keep, False to reject."""
+        file_path = Path(item["path"])
+        category = item.get("category", "")
+        
+        # Double check category skip if flat list used
+        if category == "background":
+            return True
+
+        try:
+            # Load audio
+            if not file_path.exists():
+                return False
+                
+            waveform, sr = torchaudio.load(file_path)
+            if sr != self.sample_rate:
+                waveform = torchaudio.transforms.Resample(sr, self.sample_rate)(waveform)
+            
+            # Check VAD
+            return self.vad.is_speech(waveform)
+        except Exception as e:
+            logger.warning(f"Failed to process {file_path}: {e}")
+            return False
 
 def clean_dataset_split(data_root: str, split: str = "train"):
     """
