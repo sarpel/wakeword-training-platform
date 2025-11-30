@@ -268,18 +268,18 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                         )
                         learning_rate = gr.Number(
                             label="Learning Rate", value=0.0003, step=0.00001,
-                            precision=5
+                            precision=None
                         )
                         weight_decay = gr.Number(
                             label="Weight Decay", value=1e-4, step=1e-5,
-                            precision=5
+                            precision=None
                         )
                         gradient_clip = gr.Number(label="Grad Clip", value=1.0, step=0.1)
 
                     with gr.Row():
                         momentum = gr.Number(label="Momentum", value=0.9, step=0.01)
                         warmup_epochs = gr.Number(label="Warmup Epochs", value=3)
-                        min_lr = gr.Number(label="Min LR", value=1e-6, step=1e-7, precision=7)
+                        min_lr = gr.Number(label="Min LR", value=1e-6, step=1e-7, precision=None)
 
                     with gr.Row():
                         scheduler = gr.Dropdown(

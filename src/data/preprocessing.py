@@ -78,10 +78,10 @@ class VADFilter:
                 kept_files = []
                 total_files += len(files)
                 
-                # Skip background noise from VAD?
+                # Skip background noise and RIRs from VAD
                 # Usually background noise is just noise, VAD might reject it all.
                 # But we want to keep it as "background" class.
-                if category_name == "background":
+                if category_name in ["background", "rir", "rirs"]:
                     logger.info(f"Skipping VAD for category '{category_name}' (keeping all {len(files)} files)")
                     kept_files = files
                 else:
@@ -119,7 +119,7 @@ class VADFilter:
         category = item.get("category", "")
         
         # Double check category skip if flat list used
-        if category == "background":
+        if category in ["background", "rir", "rirs"]:
             return True
 
         try:
