@@ -1077,7 +1077,13 @@ def calculate_dataset_ratios() -> Tuple[str, float, float, float]:
             
         # Count classes
         counts = {"positive": 0, "negative": 0, "hard_negative": 0}
-        for item in data:
+        
+        # Handle both list (legacy) and dict (new) formats
+        items = data
+        if isinstance(data, dict):
+            items = data.get("files", [])
+            
+        for item in items:
             cat = item.get("category", "negative")
             if cat in counts:
                 counts[cat] += 1

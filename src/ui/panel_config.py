@@ -71,7 +71,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                         )
                         audio_duration = gr.Number(
                             label="Audio Duration (s)",
-                            value=1.5,
+                            value=1.0,
                             step=0.1,
                             info="Length of audio clips",
                         )
@@ -84,7 +84,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                         n_fft = gr.Number(label="FFT Size", value=400)
                         hop_length = gr.Number(label="Hop Length", value=160)
                         n_mels = gr.Slider(
-                            minimum=32, maximum=256, value=64, step=1,
+                            minimum=32, maximum=256, value=40, step=1,
                             label="Mel Bands",
                         )
 
@@ -119,10 +119,10 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     gr.Markdown("**Time Domain**")
                     with gr.Row():
                         time_stretch_min = gr.Number(
-                            label="Time Stretch Min", value=0.9, step=0.01
+                            label="Time Stretch Min", value=0.85, step=0.01
                         )
                         time_stretch_max = gr.Number(
-                            label="Time Stretch Max", value=1.1, step=0.01
+                            label="Time Stretch Max", value=1.15, step=0.01
                         )
                         pitch_shift_min = gr.Number(
                             label="Pitch Shift Min", value=-2, step=1
@@ -133,7 +133,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     
                     with gr.Row():
                         time_shift_prob = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.5, step=0.1,
+                            minimum=0.0, maximum=1.0, value=0.4, step=0.1,
                             label="Time Shift Prob"
                         )
                         time_shift_min_ms = gr.Number(
@@ -146,7 +146,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     gr.Markdown("**Noise & RIR**")
                     with gr.Row():
                         background_noise_prob = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.5, step=0.05,
+                            minimum=0.0, maximum=1.0, value=0.4, step=0.05,
                             label="Bg Noise Prob"
                         )
                         noise_snr_min = gr.Number(label="SNR Min (dB)", value=5, step=1)
@@ -187,12 +187,12 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     with gr.Row():
                         architecture = gr.Dropdown(
                             choices=["resnet18", "mobilenetv3", "lstm", "gru", "tcn", "tiny_conv", "cd_dnn"],
-                            value="resnet18",
+                            value="tiny_conv",
                             label="Architecture",
                         )
                         num_classes = gr.Number(label="Classes", value=2)
                         dropout = gr.Slider(
-                            minimum=0.0, maximum=0.9, value=0.3, step=0.05,
+                            minimum=0.0, maximum=0.9, value=0.2, step=0.05,
                             label="Dropout"
                         )
 
@@ -219,11 +219,11 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     gr.Markdown("### 🏋️ Training Loop")
                     with gr.Row():
                         batch_size = gr.Slider(
-                            minimum=8, maximum=1024, value=64, step=8,
+                            minimum=8, maximum=1024, value=32, step=8,
                             label="Batch Size"
                         )
                         epochs = gr.Slider(
-                            minimum=10, maximum=200, value=80, step=5,
+                            minimum=10, maximum=200, value=100, step=5,
                             label="Epochs"
                         )
                         num_workers = gr.Slider(
@@ -267,7 +267,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                             label="Optimizer"
                         )
                         learning_rate = gr.Number(
-                            label="Learning Rate", value=0.0003, step=0.00001,
+                            label="Learning Rate", value=0.001, step=0.0001,
                             precision=None
                         )
                         weight_decay = gr.Number(
@@ -296,7 +296,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     with gr.Row():
                         loss_function = gr.Dropdown(
                             choices=["cross_entropy", "focal_loss", "triplet_loss"],
-                            value="cross_entropy",
+                            value="focal_loss",
                             label="Loss Function"
                         )
                         label_smoothing = gr.Slider(
@@ -308,7 +308,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                             label="Class Weights"
                         )
                         hard_negative_weight = gr.Number(
-                            label="Hard Neg Weight", value=1.5, step=0.1
+                            label="Hard Neg Weight", value=3.0, step=0.1
                         )
 
                     with gr.Row():
@@ -331,12 +331,12 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     gr.Markdown("### 🧪 Advanced Optimization")
                     with gr.Row():
                         # QAT
-                        qat_enabled = gr.Checkbox(label="Enable QAT", value=False)
+                        qat_enabled = gr.Checkbox(label="Enable QAT", value=True)
                         qat_backend = gr.Dropdown(
-                            choices=["fbgemm", "qnnpack"], value="fbgemm",
+                            choices=["fbgemm", "qnnpack"], value="qnnpack",
                             label="QAT Backend"
                         )
-                        qat_start_epoch = gr.Number(label="QAT Start Epoch", value=5)
+                        qat_start_epoch = gr.Number(label="QAT Start Epoch", value=10)
 
                     with gr.Row():
                         # Distillation

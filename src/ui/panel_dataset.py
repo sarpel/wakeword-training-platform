@@ -76,13 +76,13 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
                 skip_validation = gr.Checkbox(
                     label="Fast Scan (Skip Validation)",
-                    value=False,
+                    value=True,
                     info="Only count files without validation (much faster for large datasets)",
                 )
 
                 move_unqualified_checkbox = gr.Checkbox(
                     label="Move Unqualified Files",
-                    value=True,
+                    value=False,
                     info="If ticked, move files with quality issues to 'unqualified_datasets' folder. If unticked, keep them in place.",
                 )
 
@@ -129,14 +129,15 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                         )
                         extract_duration = gr.Number(
                             label="Audio Duration (s)",
-                            value=1.5,
+                            value=1.0,
+                            precision=1,
                             info="Target duration in seconds (must match training config)",
                         )
                         
                         with gr.Row():
                             extract_n_mels = gr.Number(
                                 label="Mel Channels",
-                                value=64,
+                                value=40,
                                 precision=0,
                                 info="Number of mel filterbanks (frequency resolution)",
                             )
@@ -201,8 +202,8 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             val_sample_rate = gr.Number(
                                 label="Target Sample Rate", value=16000
                             )
-                            val_duration = gr.Number(label="Target Duration (s)", value=1.5)
-                            val_n_mels = gr.Number(label="Mel Channels", value=64, precision=0)
+                            val_duration = gr.Number(label="Target Duration (s)", value=1.0, precision=1)
+                            val_n_mels = gr.Number(label="Mel Channels", value=40, precision=0)
                             val_hop_length = gr.Number(label="Hop Length", value=160)
 
                         validate_shape_checkbox = gr.Checkbox(
@@ -361,13 +362,13 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # Move excluded files
                 moved_count = 0
                 if move_unqualified:
-                    progress(0.96, desc="Moving excluded files...")
+                    progress(0.90, desc="Moving excluded files...")
                     moved_count = scanner.move_excluded_files()
                 else:
                     logger.info("Skipping move of excluded files (option disabled)")
 
                 # Generate health report
-                progress(0.97, desc="Generating health report...")
+                progress(0.95, desc="Generating health report...")
                 health_checker = DatasetHealthChecker(stats)
                 health_report_text = health_checker.generate_report()
                 
