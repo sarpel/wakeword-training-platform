@@ -214,7 +214,12 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         logger.info(f"Validating ONNX model: {export_state.last_export_path}")
 
         # Load PyTorch model for comparison
-        checkpoint = torch.load(export_state.last_checkpoint, map_location="cuda")
+        # Ensure checkpoint path is within the trusted directory
+        checkpoint_dir = Path("models/checkpoints").resolve()
+        checkpoint_path = export_state.last_checkpoint.resolve()
+        if not str(checkpoint_path).startswith(str(checkpoint_dir)):
+            raise RuntimeError("Checkpoint path is outside the trusted directory!")
+        checkpoint = torch.load(checkpoint_path, map_location="cuda")
         config_data = checkpoint["config"]
 
         # Convert config dict to WakewordConfig object if needed
