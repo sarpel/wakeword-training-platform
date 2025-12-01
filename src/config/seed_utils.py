@@ -2,6 +2,7 @@
 Seed Setting and Determinism Utilities
 Ensures reproducibility across runs
 """
+
 import random
 from typing import Any, Dict
 
@@ -43,9 +44,7 @@ def set_seed(seed: int = 42, deterministic: bool = True) -> None:
         # Benchmark mode: faster but non-deterministic
         cudnn.benchmark = True
         cudnn.deterministic = False
-        logger.info(
-            f"Seed set to {seed} with benchmark mode enabled (non-deterministic)"
-        )
+        logger.info(f"Seed set to {seed} with benchmark mode enabled (non-deterministic)")
 
     logger.info(f"Random seed: {seed}")
 
@@ -61,9 +60,7 @@ def get_rng_state() -> Dict[str, Any]:
         "python": random.getstate(),
         "numpy": np.random.get_state(),
         "torch": torch.get_rng_state(),
-        "torch_cuda": torch.cuda.get_rng_state_all()
-        if torch.cuda.is_available()
-        else None,
+        "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
     }
 
 

@@ -6,11 +6,12 @@ Panel 3: Model Training
 - GPU monitoring
 - Training state management
 """
+
 import queue
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple, List, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import gradio as gr
 import matplotlib
@@ -237,9 +238,7 @@ def create_metrics_plot() -> plt.Figure:
 
         ax.set_xlabel("Epoch", fontsize=12)
         ax.set_ylabel("Rate (%)", fontsize=12)
-        ax.set_title(
-            "Validation Metrics (FPR, FNR, F1)", fontsize=14, fontweight="bold"
-        )
+        ax.set_title("Validation Metrics (FPR, FNR, F1)", fontsize=14, fontweight="bold")
         ax.legend(fontsize=10)
         ax.grid(True, alpha=0.3)
     else:
@@ -281,9 +280,7 @@ def training_worker() -> None:
         training_state.add_log(f"Configuration: {training_state.config.config_name}")
         training_state.add_log(f"Model: {training_state.config.model.architecture}")
         training_state.add_log(f"Epochs: {training_state.config.training.epochs}")
-        training_state.add_log(
-            f"Batch size: {training_state.config.training.batch_size}"
-        )
+        training_state.add_log(f"Batch size: {training_state.config.training.batch_size}")
         training_state.add_log("-" * 60)
 
         # Capture trainer locally for type safety
@@ -291,9 +288,7 @@ def training_worker() -> None:
 
         # Create custom callback for live updates
         class LiveUpdateCallback:
-            def on_epoch_end(
-                self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults
-            ) -> None:
+            def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
                 # Update state
                 training_state.current_epoch = epoch + 1
                 training_state.current_train_loss = train_loss
@@ -305,9 +300,7 @@ def training_worker() -> None:
                 # Update history
                 training_state.history["epochs"].append(epoch + 1)
                 training_state.history["train_loss"].append(train_loss)
-                training_state.history["train_acc"].append(
-                    training_state.current_train_acc
-                )
+                training_state.history["train_acc"].append(training_state.current_train_acc)
                 training_state.history["val_loss"].append(val_loss)
                 training_state.history["val_acc"].append(val_metrics.accuracy)
                 training_state.history["val_f1"].append(val_metrics.f1_score)
@@ -321,9 +314,7 @@ def training_worker() -> None:
                 if val_metrics.f1_score > training_state.best_val_f1:
                     training_state.best_val_f1 = val_metrics.f1_score
                     training_state.best_epoch = epoch + 1
-                    training_state.best_model_path = str(
-                        trainer.checkpoint_dir / "best_model.pt"
-                    )
+                    training_state.best_model_path = str(trainer.checkpoint_dir / "best_model.pt")
 
                 if val_metrics.accuracy > training_state.best_val_acc:
                     training_state.best_val_acc = val_metrics.accuracy
@@ -387,7 +378,6 @@ def start_training(
     run_lr_finder: bool,
     use_wandb: bool,
     wandb_project: str,
-
     wandb_api_key: str = "",
     resume_checkpoint: Optional[str] = None,
 ) -> Tuple:
@@ -421,6 +411,7 @@ def start_training(
         if use_wandb and wandb_api_key.strip():
             try:
                 import wandb
+
                 training_state.add_log(f"Logging into W&B...")
                 wandb.login(key=wandb_api_key.strip())
                 save_wandb_key(wandb_api_key.strip())  # Save key on successful use
@@ -479,11 +470,7 @@ def start_training(
         }
 
         # Normalize feature type name
-        feature_type = (
-            "mel"
-            if config.data.feature_type == "mel_spectrogram"
-            else config.data.feature_type
-        )
+        feature_type = "mel" if config.data.feature_type == "mel_spectrogram" else config.data.feature_type
 
         # Handle CMVN
         cmvn_path = None
@@ -501,23 +488,22 @@ def start_training(
                     n_fft=config.data.n_fft,
                     hop_length=config.data.hop_length,
                     use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
-                    fallback_to_audio=True, # Force fallback to avoid shape mismatch crashes during CMVN
+                    fallback_to_audio=True,  # Force fallback to avoid shape mismatch crashes during CMVN
                     apply_cmvn=False,
                 )
                 compute_cmvn_from_dataset(temp_train_ds, cmvn_path, max_samples=1000)
                 training_state.add_log(f"✅ CMVN stats saved to {cmvn_path}")
 
-        training_state.add_log(
-            "IMPORTANT: Forcing augmentation for training by disabling precomputed features."
-        )
-        
+        training_state.add_log("IMPORTANT: Forcing augmentation for training by disabling precomputed features.")
+
         # NEW: Optimize config for GPU pipeline
         import os
+
         # Use min(16, cpu_count) for workers
         optimal_workers = min(16, os.cpu_count() or 1)
         config.training.num_workers = optimal_workers
         config.training.pin_memory = True
-        
+
         # Prefetch factor (only if workers > 0)
         prefetch_factor = 4 if optimal_workers > 0 else None
 
@@ -540,7 +526,7 @@ def start_training(
             fallback_to_audio=True,  # IMPORTANT
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
-            return_raw_audio=True, # NEW: Use GPU pipeline
+            return_raw_audio=True,  # NEW: Use GPU pipeline
         )
 
         val_ds = WakewordDataset(
@@ -559,7 +545,7 @@ def start_training(
             fallback_to_audio=True,  # FORCE TRUE to handle shape mismatches automatically
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
-            return_raw_audio=True, # NEW: Use GPU pipeline
+            return_raw_audio=True,  # NEW: Use GPU pipeline
         )
 
         # test_ds is not used in training, so we don't load it here to save memory
@@ -586,9 +572,7 @@ def start_training(
                     batch_sampler=train_sampler,
                     num_workers=config.training.num_workers,
                     pin_memory=True,
-                    persistent_workers=True
-                    if config.training.num_workers > 0
-                    else False,
+                    persistent_workers=True if config.training.num_workers > 0 else False,
                     prefetch_factor=prefetch_factor,
                 )
                 training_state.add_log(
@@ -603,9 +587,7 @@ def start_training(
                     shuffle=True,
                     num_workers=config.training.num_workers,
                     pin_memory=True,
-                    persistent_workers=True
-                    if config.training.num_workers > 0
-                    else False,
+                    persistent_workers=True if config.training.num_workers > 0 else False,
                     prefetch_factor=prefetch_factor,
                 )
         else:
@@ -645,7 +627,9 @@ def start_training(
 
         # Prepare for QAT if enabled
         if config.qat.enabled:
-            training_state.add_log(f"Preparing model for Quantization Aware Training (Backend: {config.qat.backend})...")
+            training_state.add_log(
+                f"Preparing model for Quantization Aware Training (Backend: {config.qat.backend})..."
+            )
             # We need a dummy input for some QAT preparations (though our current impl doesn't strictly require it)
             # But let's be safe and pass it if we have dimensions
             training_state.model = prepare_model_for_qat(training_state.model, config.qat)
@@ -656,13 +640,9 @@ def start_training(
         if run_lr_finder:
             training_state.add_log("Running LR Finder (this may take a few minutes)...")
             try:
-                optimizer = torch.optim.AdamW(
-                    training_state.model.parameters(), lr=config.training.learning_rate
-                )
+                optimizer = torch.optim.AdamW(training_state.model.parameters(), lr=config.training.learning_rate)
                 criterion = torch.nn.CrossEntropyLoss()
-                lr_finder = LRFinder(
-                    training_state.model, optimizer, criterion, device="cuda"
-                )
+                lr_finder = LRFinder(training_state.model, optimizer, criterion, device="cuda")
 
                 lrs, losses = lr_finder.range_test(
                     training_state.train_loader,
@@ -674,9 +654,7 @@ def start_training(
 
                 if 1e-5 <= optimal_lr <= 1e-2:
                     config.training.learning_rate = optimal_lr
-                    training_state.add_log(
-                        f"✅ LR Finder suggested: {optimal_lr:.2e} (applied)"
-                    )
+                    training_state.add_log(f"✅ LR Finder suggested: {optimal_lr:.2e} (applied)")
                 else:
                     training_state.add_log(
                         f"⚠️ LR Finder suggested {optimal_lr:.2e} (out of range, keeping {config.training.learning_rate:.2e})"
@@ -693,9 +671,11 @@ def start_training(
 
         # Create trainer with EMA if enabled
         TrainerClass = DistillationTrainer if config.distillation.enabled else Trainer
-        
+
         if config.distillation.enabled:
-            training_state.add_log(f"Knowledge Distillation enabled (Teacher: {config.distillation.teacher_architecture})")
+            training_state.add_log(
+                f"Knowledge Distillation enabled (Teacher: {config.distillation.teacher_architecture})"
+            )
 
         training_state.trainer = TrainerClass(
             model=training_state.model,
@@ -712,10 +692,10 @@ def start_training(
         start_epoch = 0
         if resume_path:
             training_state.trainer.checkpoint_manager.load_checkpoint(
-                resume_path, 
-                training_state.trainer.model, 
-                training_state.trainer.optimizer, 
-                training_state.trainer.device
+                resume_path,
+                training_state.trainer.model,
+                training_state.trainer.optimizer,
+                training_state.trainer.device,
             )
             # Load state
             checkpoint = torch.load(resume_path, map_location="cpu")
@@ -728,9 +708,7 @@ def start_training(
 
         if use_wandb:
             try:
-                wandb_callback = WandbCallback(
-                    project_name=wandb_project, config=config.to_dict()
-                )
+                wandb_callback = WandbCallback(project_name=wandb_project, config=config.to_dict())
                 training_state.trainer.add_callback(wandb_callback)
                 training_state.add_log("✅ W&B logging enabled")
             except Exception as e:
@@ -751,9 +729,7 @@ def start_training(
         # Start training in background thread
         training_state.is_training = True
         training_state.should_stop = False
-        training_state.training_thread = threading.Thread(
-            target=training_worker, daemon=True
-        )
+        training_state.training_thread = threading.Thread(target=training_worker, daemon=True)
         if training_state.training_thread:
             training_state.training_thread.start()
 
@@ -788,7 +764,7 @@ def stop_training() -> str:
     training_state.should_stop = True
     if training_state.trainer:
         training_state.trainer.stop()
-    
+
     training_state.add_log("Stop requested. Training will stop after current epoch...")
 
     return "⏹️ Stopping training..."
@@ -858,7 +834,7 @@ def hpo_worker(config: WakewordConfig, n_trials: int, study_name: str) -> None:
     """Background worker for HPO"""
     try:
         training_state.add_log(f"Starting HPO study '{study_name}'...")
-        
+
         # Use centralized paths
         splits_dir = paths.SPLITS
 
@@ -888,34 +864,27 @@ def hpo_worker(config: WakewordConfig, n_trials: int, study_name: str) -> None:
 
         # Optimize config for GPU pipeline
         hpo_config = config.copy()
-        hpo_config.training.num_workers = min(hpo_config.training.num_workers, 16) 
+        hpo_config.training.num_workers = min(hpo_config.training.num_workers, 16)
         hpo_config.training.pin_memory = True
-        
+
         train_loader = DataLoader(
-            train_ds, 
-            batch_size=hpo_config.training.batch_size, 
+            train_ds,
+            batch_size=hpo_config.training.batch_size,
             shuffle=True,
             num_workers=hpo_config.training.num_workers,
-            pin_memory=True
+            pin_memory=True,
         )
         val_loader = DataLoader(
-            val_ds, 
-            batch_size=hpo_config.training.batch_size, 
+            val_ds,
+            batch_size=hpo_config.training.batch_size,
             shuffle=False,
             num_workers=hpo_config.training.num_workers,
-            pin_memory=True
+            pin_memory=True,
         )
 
         # Run HPO with logging callback
-        study = run_hpo(
-            hpo_config, 
-            train_loader, 
-            val_loader, 
-            n_trials, 
-            study_name,
-            log_callback=training_state.add_log
-        )
-        
+        study = run_hpo(hpo_config, train_loader, val_loader, n_trials, study_name, log_callback=training_state.add_log)
+
         training_state.add_log(f"✅ HPO study '{study_name}' finished successfully.")
 
     except Exception as e:
@@ -925,9 +894,7 @@ def hpo_worker(config: WakewordConfig, n_trials: int, study_name: str) -> None:
         training_state.is_training = False
 
 
-def start_hpo(
-    state: gr.State, n_trials: int, study_name: str, param_groups: List[str]
-) -> Tuple[str, pd.DataFrame]:
+def start_hpo(state: gr.State, n_trials: int, study_name: str, param_groups: List[str]) -> Tuple[str, pd.DataFrame]:
     """Start HPO study in background"""
     if training_state.is_training:
         return "⚠️ Training already in progress", None
@@ -960,7 +927,7 @@ def start_hpo(
             training_state.add_log("✅ HPO Study Complete!")
             # Store best params in state for "Apply" feature
             state["best_hpo_params"] = study.best_params
-            
+
         except Exception as e:
             logger.exception("HPO failed")
             training_state.add_log(f"❌ HPO failed: {str(e)}")
@@ -978,10 +945,10 @@ def apply_best_params(state: gr.State) -> str:
     """Apply best HPO params to current config"""
     if "best_hpo_params" not in state or not state["best_hpo_params"]:
         return "⚠️ No HPO results found to apply. Run HPO first."
-    
+
     best_params = state["best_hpo_params"]
     config = state["config"]
-    
+
     # Map flat params to config structure
     # Training
     if "learning_rate" in best_params:
@@ -992,13 +959,13 @@ def apply_best_params(state: gr.State) -> str:
         config.optimizer.weight_decay = best_params["weight_decay"]
     if "optimizer" in best_params:
         config.optimizer.optimizer = best_params["optimizer"]
-        
+
     # Model
     if "dropout" in best_params:
         config.model.dropout = best_params["dropout"]
     if "hidden_size" in best_params:
         config.model.hidden_size = best_params["hidden_size"]
-        
+
     # Augmentation
     if "background_noise_prob" in best_params:
         config.augmentation.background_noise_prob = best_params["background_noise_prob"]
@@ -1012,11 +979,11 @@ def apply_best_params(state: gr.State) -> str:
         config.augmentation.freq_mask_param = best_params["freq_mask_param"]
     if "time_mask_param" in best_params:
         config.augmentation.time_mask_param = best_params["time_mask_param"]
-        
+
     # Data
     if "n_mels" in best_params:
         config.data.n_mels = best_params["n_mels"]
-        
+
     # Loss
     if "loss_function" in best_params:
         config.loss.loss_function = best_params["loss_function"]
@@ -1030,20 +997,20 @@ def save_best_profile(state: gr.State) -> str:
     """Save best HPO params as a new user profile"""
     if "best_hpo_params" not in state or not state["best_hpo_params"]:
         return "⚠️ No HPO results found to save."
-        
+
     # Apply params first to ensure config is up to date
     apply_best_params(state)
-    
+
     # Create filename
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     profile_name = f"user_profile_{timestamp}"
     filename = f"{profile_name}.yaml"
     save_path = paths.CONFIGS / filename
-    
+
     # Update config metadata
     state["config"].config_name = profile_name
     state["config"].description = f"User generated profile from HPO results on {timestamp} (User)"
-    
+
     # Save
     try:
         state["config"].save(save_path)
@@ -1087,35 +1054,36 @@ def calculate_dataset_ratios() -> Tuple[str, float, float, float]:
         train_manifest = paths.SPLITS / "train.json"
         if not train_manifest.exists():
             return "❌ train.json not found", 1, 1, 1
-            
+
         import json
+
         with open(train_manifest, "r") as f:
             data = json.load(f)
-            
+
         # Count classes
         counts = {"positive": 0, "negative": 0, "hard_negative": 0}
-        
+
         # Handle both list (legacy) and dict (new) formats
         items = data
         if isinstance(data, dict):
             items = data.get("files", [])
-            
+
         for item in items:
             cat = item.get("category", "negative")
             if cat in counts:
                 counts[cat] += 1
-                
+
         if sum(counts.values()) == 0:
-             return "❌ Dataset empty", 1, 1, 1
-             
+            return "❌ Dataset empty", 1, 1, 1
+
         # Find min non-zero count to normalize
         min_count = min([c for c in counts.values() if c > 0], default=1)
-        
+
         # Calculate ratios (rounded to nearest integer for cleaner UI)
         r_pos = max(1, round(counts["positive"] / min_count))
         r_neg = max(1, round(counts["negative"] / min_count))
         r_hard = max(1, round(counts["hard_negative"] / min_count))
-        
+
         msg = (
             f"✅ Calculated from {sum(counts.values())} samples:\n"
             f"Pos: {counts['positive']} ({r_pos}x)\n"
@@ -1123,7 +1091,7 @@ def calculate_dataset_ratios() -> Tuple[str, float, float, float]:
             f"Hard: {counts['hard_negative']} ({r_hard}x)"
         )
         return msg, r_pos, r_neg, r_hard
-        
+
     except Exception as e:
         return f"❌ Error: {str(e)}", 1, 1, 1
 
@@ -1140,16 +1108,12 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 🚀 Model Training")
-        gr.Markdown(
-            "Train your wakeword model with real-time monitoring and GPU acceleration."
-        )
+        gr.Markdown("Train your wakeword model with real-time monitoring and GPU acceleration.")
 
         # Advanced Features Section
         with gr.Accordion("⚙️ Advanced Training Features", open=False):
             gr.Markdown("### Production-Ready Features")
-            gr.Markdown(
-                "Enable advanced features for improved model quality and training efficiency."
-            )
+            gr.Markdown("Enable advanced features for improved model quality and training efficiency.")
 
             with gr.Row():
                 with gr.Column():
@@ -1206,27 +1170,27 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                             minimum=0,
                             info="Ratio of hard negatives",
                         )
-                    
+
                     calc_ratios_btn = gr.Button("🧮 Auto-Calculate Ratios", size="sm")
                     ratio_status = gr.Textbox(label="Ratio Status", value="", interactive=False, lines=2)
 
                 with gr.Column():
                     gr.Markdown("#### 🔄 Resume Training")
-                    
+
                     with gr.Row():
                         checkpoint_dropdown = gr.Dropdown(
                             label="Select Checkpoint",
                             choices=list_checkpoints(),
                             value=None,
                             interactive=True,
-                            info="Select a .pt file to resume from"
+                            info="Select a .pt file to resume from",
                         )
                         refresh_ckpt_btn = gr.Button("🔄", size="sm", scale=0)
-                        
+
                     resume_training = gr.Checkbox(
                         label="Resume from selected",
                         value=False,
-                        info="Load weights and optimizer state from checkpoint"
+                        info="Load weights and optimizer state from checkpoint",
                     )
 
                 with gr.Column():
@@ -1236,9 +1200,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         value=False,
                         info="Automatically discover optimal learning rate (-10-15% training time)",
                     )
-                    gr.Markdown(
-                        "*Note: LR Finder runs before training starts and may take a few minutes*"
-                    )
+                    gr.Markdown("*Note: LR Finder runs before training starts and may take a few minutes*")
 
             with gr.Row():
                 with gr.Column():
@@ -1266,12 +1228,8 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         with gr.Tabs():
             with gr.TabItem("🧠 Training"):
                 with gr.Row():
-                    start_training_btn = gr.Button(
-                        "▶️ Start Training", variant="primary", scale=2
-                    )
-                    stop_training_btn = gr.Button(
-                        "⏹️ Stop Training", variant="stop", scale=1
-                    )
+                    start_training_btn = gr.Button("▶️ Start Training", variant="primary", scale=2)
+                    stop_training_btn = gr.Button("⏹️ Stop Training", variant="stop", scale=1)
             with gr.TabItem("🔬 Hyperparameter Optimization"):
                 with gr.Row():
                     hpo_status = gr.Textbox(
@@ -1290,15 +1248,15 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     study_name = gr.Textbox(label="Study Name", value="wakeword-hpo")
                 with gr.Row():
                     start_hpo_btn = gr.Button("🚀 Start HPO Study", variant="primary")
-                
+
                 with gr.Row():
                     hpo_param_groups = gr.CheckboxGroup(
                         label="Parameter Groups to Optimize",
                         choices=["Training", "Model", "Augmentation", "Data", "Loss"],
                         value=["Training", "Model"],
-                        info="Select which parameters to include in the search space"
+                        info="Select which parameters to include in the search space",
                     )
-                    
+
                 with gr.Row():
                     apply_params_btn = gr.Button("✅ Apply Best Params", size="sm")
                     save_profile_btn = gr.Button("💾 Save as Profile", size="sm")
@@ -1312,44 +1270,28 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### Training Status")
-                training_status = gr.Textbox(
-                    label="Status", value="Ready to train", lines=2, interactive=False
-                )
+                training_status = gr.Textbox(label="Status", value="Ready to train", lines=2, interactive=False)
 
                 gr.Markdown("### Current Progress")
-                current_epoch = gr.Textbox(
-                    label="Epoch", value="0/0", interactive=False
-                )
-                current_batch = gr.Textbox(
-                    label="Batch", value="0/0", interactive=False
-                )
+                current_epoch = gr.Textbox(label="Epoch", value="0/0", interactive=False)
+                current_batch = gr.Textbox(label="Batch", value="0/0", interactive=False)
 
                 gr.Markdown("### Current Metrics")
                 with gr.Row():
-                    train_loss = gr.Number(
-                        label="Train Loss", value=0.0, interactive=False
-                    )
+                    train_loss = gr.Number(label="Train Loss", value=0.0, interactive=False)
                     val_loss = gr.Number(label="Val Loss", value=0.0, interactive=False)
 
                 with gr.Row():
-                    train_acc = gr.Number(
-                        label="Train Acc (%)", value=0.0, interactive=False
-                    )
-                    val_acc = gr.Number(
-                        label="Val Acc (%)", value=0.0, interactive=False
-                    )
+                    train_acc = gr.Number(label="Train Acc (%)", value=0.0, interactive=False)
+                    val_acc = gr.Number(label="Val Acc (%)", value=0.0, interactive=False)
 
                 with gr.Row():
                     fpr = gr.Number(label="FPR (%)", value=0.0, interactive=False)
                     fnr = gr.Number(label="FNR (%)", value=0.0, interactive=False)
 
                 with gr.Row():
-                    speed = gr.Number(
-                        label="Speed (samples/sec)", value=0.0, interactive=False
-                    )
-                    gpu_util = gr.Number(
-                        label="GPU Util (%)", value=0.0, interactive=False
-                    )
+                    speed = gr.Number(label="Speed (samples/sec)", value=0.0, interactive=False)
+                    gpu_util = gr.Number(label="GPU Util (%)", value=0.0, interactive=False)
 
                 eta = gr.Textbox(label="ETA", value="--:--:--", interactive=False)
 
@@ -1360,9 +1302,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 loss_plot = gr.Plot(label="Loss Curves", value=create_loss_plot())
 
                 # Accuracy plot
-                accuracy_plot = gr.Plot(
-                    label="Accuracy Curves", value=create_accuracy_plot()
-                )
+                accuracy_plot = gr.Plot(label="Accuracy Curves", value=create_accuracy_plot())
 
                 # Metrics plot
                 metrics_plot = gr.Plot(
@@ -1392,16 +1332,10 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
 
         with gr.Row():
             with gr.Column():
-                best_epoch = gr.Textbox(
-                    label="Best Epoch", value="--", interactive=False
-                )
-                best_val_loss = gr.Number(
-                    label="Best Val Loss", value=0.0, interactive=False
-                )
+                best_epoch = gr.Textbox(label="Best Epoch", value="--", interactive=False)
+                best_val_loss = gr.Number(label="Best Val Loss", value=0.0, interactive=False)
             with gr.Column():
-                best_val_acc = gr.Number(
-                    label="Best Val Acc (%)", value=0.0, interactive=False
-                )
+                best_val_acc = gr.Number(label="Best Val Acc (%)", value=0.0, interactive=False)
                 model_path = gr.Textbox(
                     label="Checkpoint Path",
                     value="No model saved yet",
@@ -1414,11 +1348,11 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
             # Last 2 args are resume_training (bool) and checkpoint_dropdown (str)
             resume_checked = args[-2]
             ckpt_path = args[-1]
-            
+
             # Pass everything else + formatted resume path
             actual_args = list(args[:-2])
             actual_args.append(ckpt_path if resume_checked else None)
-            
+
             return start_training(*actual_args)
 
         start_training_btn.click(
@@ -1437,7 +1371,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 wandb_project,
                 wandb_api_key,
                 resume_training,
-                checkpoint_dropdown
+                checkpoint_dropdown,
             ],
             outputs=[
                 training_status,
@@ -1453,18 +1387,14 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         calc_ratios_btn.click(
             fn=calculate_dataset_ratios,
             inputs=[],
-            outputs=[ratio_status, sampler_ratio_pos, sampler_ratio_neg, sampler_ratio_hard]
+            outputs=[ratio_status, sampler_ratio_pos, sampler_ratio_neg, sampler_ratio_hard],
         )
-        
+
         # Refresh Checkpoints Handler
         def refresh_checkpoints() -> gr.Dropdown:
             return gr.Dropdown(choices=list_checkpoints())
-            
-        refresh_ckpt_btn.click(
-            fn=refresh_checkpoints,
-            inputs=[],
-            outputs=[checkpoint_dropdown]
-        )
+
+        refresh_ckpt_btn.click(fn=refresh_checkpoints, inputs=[], outputs=[checkpoint_dropdown])
 
         stop_training_btn.click(fn=stop_training, outputs=[training_status])
 
@@ -1474,17 +1404,9 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
             outputs=[hpo_status, hpo_results],
         )
 
-        apply_params_btn.click(
-            fn=apply_best_params,
-            inputs=[state],
-            outputs=[hpo_action_status]
-        )
+        apply_params_btn.click(fn=apply_best_params, inputs=[state], outputs=[hpo_action_status])
 
-        save_profile_btn.click(
-            fn=save_best_profile,
-            inputs=[state],
-            outputs=[hpo_action_status]
-        )
+        save_profile_btn.click(fn=save_best_profile, inputs=[state], outputs=[hpo_action_status])
 
         # Auto-refresh for live updates
         status_refresh = gr.Timer(value=2.0, active=True)  # Update every 2 seconds

@@ -10,7 +10,7 @@ This module provides classes for detecting wakewords in streaming audio using:
 
 # Standard library imports
 from collections import deque  # For efficient fixed-size buffers
-from typing import Optional, Tuple, List, Deque  # Type hints for better code clarity
+from typing import Deque, List, Optional, Tuple  # Type hints for better code clarity
 
 # Third-party imports
 import numpy as np  # For numerical operations on audio arrays
@@ -53,11 +53,7 @@ class StreamingDetector:
             vote_threshold: Number of votes needed for detection
         """
         self.threshold_on = threshold_on
-        self.threshold_off = (
-            threshold_off
-            if threshold_off is not None
-            else max(threshold_on - hysteresis, 0)
-        )
+        self.threshold_off = threshold_off if threshold_off is not None else max(threshold_on - hysteresis, 0)
         self.lockout_ms = lockout_ms
         self.vote_window = vote_window
         self.vote_threshold = vote_threshold
@@ -285,9 +281,7 @@ if __name__ == "__main__":
     # Test 1: Basic detector
     print("\n1. Testing StreamingDetector...")
 
-    detector = StreamingDetector(
-        threshold_on=0.7, vote_window=5, vote_threshold=3, lockout_ms=1500
-    )
+    detector = StreamingDetector(threshold_on=0.7, vote_window=5, vote_threshold=3, lockout_ms=1500)
 
     # Simulate scores
     test_scores = [
@@ -315,9 +309,7 @@ if __name__ == "__main__":
     # Test 2: Sliding window processor
     print("\n2. Testing SlidingWindowProcessor...")
 
-    processor = SlidingWindowProcessor(
-        window_duration_s=1.0, hop_duration_s=0.1, sample_rate=16000
-    )
+    processor = SlidingWindowProcessor(window_duration_s=1.0, hop_duration_s=0.1, sample_rate=16000)
 
     # Create dummy audio (5 seconds)
     audio = np.random.randn(5 * 16000)
@@ -357,9 +349,7 @@ if __name__ == "__main__":
     for timestamp_ms, score in hyst_scores:
         detected = detector_hyst.step(score, timestamp_ms)
         state = "ACTIVE" if detector_hyst.is_active else "INACTIVE"
-        print(
-            f"  t={timestamp_ms}ms, score={score:.2f}, state={state}, detected={detected}"
-        )
+        print(f"  t={timestamp_ms}ms, score={score:.2f}, state={state}, detected={detected}")
 
     print(f"  ✅ Hysteresis test passed")
 

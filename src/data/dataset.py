@@ -2,10 +2,11 @@
 PyTorch Dataset for Wakeword Training
 Handles audio loading, preprocessing, and augmentation
 """
+
 import json
-from pathlib import Path
-from typing import Dict, Optional, Tuple, Any, List, cast
 from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import structlog
@@ -91,9 +92,7 @@ class WakewordDataset(Dataset):
         self.return_raw_audio = return_raw_audio
 
         # NEW: NPY feature parameters
-        self.use_precomputed_features_for_training = (
-            use_precomputed_features_for_training
-        )
+        self.use_precomputed_features_for_training = use_precomputed_features_for_training
         self.npy_cache_features = npy_cache_features
         self.fallback_to_audio = fallback_to_audio
 
@@ -106,7 +105,7 @@ class WakewordDataset(Dataset):
             self.cmvn = CMVN(stats_path=cmvn_path)
             logger.info(f"CMVN loaded from {cmvn_path}")
         elif apply_cmvn and return_raw_audio:
-             logger.info("CMVN enabled but deferred to GPU pipeline (return_raw_audio=True)")
+            logger.info("CMVN enabled but deferred to GPU pipeline (return_raw_audio=True)")
 
         # Load manifest
         with open(self.manifest_path, "r") as f:
@@ -119,9 +118,7 @@ class WakewordDataset(Dataset):
         self.label_map = self._create_label_map(class_mapping)
 
         # Audio processor
-        self.audio_processor = AudioProcessor(
-            target_sr=sample_rate, target_duration=audio_duration
-        )
+        self.audio_processor = AudioProcessor(target_sr=sample_rate, target_duration=audio_duration)
 
         # Cache for loaded audio
         self.audio_cache: Optional[Dict[int, np.ndarray]] = {} if cache_audio else None
@@ -154,9 +151,9 @@ class WakewordDataset(Dataset):
             rir_files = None
 
             if background_noise_dir and Path(background_noise_dir).exists():
-                background_files = list(
-                    Path(background_noise_dir).rglob("*.wav")
-                ) + list(Path(background_noise_dir).rglob("*.mp3"))
+                background_files = list(Path(background_noise_dir).rglob("*.wav")) + list(
+                    Path(background_noise_dir).rglob("*.mp3")
+                )
                 logger.info(f"Found {len(background_files)} background noise files")
 
             if rir_dir and Path(rir_dir).exists():
@@ -204,7 +201,7 @@ class WakewordDataset(Dataset):
         """
         if class_mapping is not None:
             return class_mapping
-            
+
         # Binary classification: positive (1) vs everything else (0)
         # Note: background and rirs are NOT training samples - they're augmentation sources
         label_map = {"positive": 1, "negative": 0, "hard_negative": 0}
@@ -218,20 +215,20 @@ class WakewordDataset(Dataset):
     def _load_from_npy(self, file_info_json: str, idx: int) -> Optional[torch.Tensor]:
         """
         Load precomputed features from .npy file
-        
+
         Args:
             file_info_json: JSON string of file metadata
             idx: Index of the item in the dataset
-            
+
         Returns:
             Feature tensor or None if not found
         """
         # Check cache first
         if self.feature_cache is not None and idx in self.feature_cache:
             return self.feature_cache[idx]
-        
+
         file_info = json.loads(file_info_json)
-        
+
         # Get NPY path from manifest
         npy_path = file_info.get("npy_path")
 
@@ -248,14 +245,12 @@ class WakewordDataset(Dataset):
 
             # Validate shape
             if self.feature_extractor is None:
-                 # If feature extractor is not available, we can't validate shape against it.
-                 # This might happen if return_raw_audio=True but we are somehow loading NPY?
-                 # Or if we just want to skip validation.
-                 pass
+                # If feature extractor is not available, we can't validate shape against it.
+                # This might happen if return_raw_audio=True but we are somehow loading NPY?
+                # Or if we just want to skip validation.
+                pass
             else:
-                expected_shape = self.feature_extractor.get_output_shape(
-                    int(self.audio_duration * self.sample_rate)
-                )
+                expected_shape = self.feature_extractor.get_output_shape(int(self.audio_duration * self.sample_rate))
 
                 if features_tensor.shape != expected_shape:
                     logger.warning(
@@ -266,8 +261,8 @@ class WakewordDataset(Dataset):
                     raise ValueError(f"Shape mismatch: {features_tensor.shape} != {expected_shape}")
                 # BUG FIX: Changed file_path to npy_path (file_path was undefined variable)
                 if not self.fallback_to_audio:
-                     raise FileNotFoundError(f"NPY shape mismatch for {npy_path} and fallback_to_audio=False")
-                return None # Return None to trigger fallback
+                    raise FileNotFoundError(f"NPY shape mismatch for {npy_path} and fallback_to_audio=False")
+                return None  # Return None to trigger fallback
 
             # Cache if enabled
             if self.feature_cache is not None:
@@ -292,7 +287,7 @@ class WakewordDataset(Dataset):
         file_info = self.files[idx]
         file_path = Path(file_info["path"])
         category = file_info["category"]
-        label = self.label_map.get(category, 0) # Default to 0 if unknown
+        label = self.label_map.get(category, 0)  # Default to 0 if unknown
 
         # NEW: GPU Pipeline Support - Return raw audio immediately
         if self.return_raw_audio:
@@ -303,12 +298,12 @@ class WakewordDataset(Dataset):
                 audio = self.audio_processor.process_audio(file_path)
                 if self.audio_cache is not None:
                     self.audio_cache[idx] = audio
-            
+
             # Convert to tensor (1, Samples)
             audio_tensor = torch.from_numpy(audio).float()
             if audio_tensor.ndim == 1:
                 audio_tensor = audio_tensor.unsqueeze(0)
-                
+
             metadata = {
                 "path": str(file_path),
                 "category": category,
@@ -342,9 +337,7 @@ class WakewordDataset(Dataset):
 
                 elif not self.fallback_to_audio:
                     # Strict fallback logic: raise error if NPY missing
-                    raise FileNotFoundError(
-                        f"NPY features missing for {file_path} and fallback_to_audio=False"
-                    )
+                    raise FileNotFoundError(f"NPY features missing for {file_path} and fallback_to_audio=False")
 
             except Exception as e:
                 if not self.fallback_to_audio:
@@ -444,9 +437,7 @@ class WakewordDataset(Dataset):
 
         # Guard: Check if any class has zero samples
         if np.any(label_counts == 0):
-            logger.warning(
-                "Zero samples in one or more classes, returning equal weights"
-            )
+            logger.warning("Zero samples in one or more classes, returning equal weights")
             return torch.ones(len(label_counts))
 
         # Guard: Check if only one class exists
@@ -594,10 +585,7 @@ def load_dataset_splits(
         return_raw_audio=return_raw_audio,
     )
 
-    logger.info(
-        f"Datasets loaded: train={len(train_dataset)}, "
-        f"val={len(val_dataset)}, test={len(test_dataset)}"
-    )
+    logger.info(f"Datasets loaded: train={len(train_dataset)}, " f"val={len(val_dataset)}, test={len(test_dataset)}")
 
     return train_dataset, val_dataset, test_dataset
 

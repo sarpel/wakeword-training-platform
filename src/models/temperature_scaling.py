@@ -4,13 +4,12 @@ Learns optimal temperature parameter to calibrate model confidence
 """
 
 import logging
+from typing import Any, cast
+
 import torch
 import torch.nn as nn
-import torch.utils.data
 import torch.optim as optim
-from typing import cast, Any
-
-
+import torch.utils.data
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +94,7 @@ class TemperatureScaling(nn.Module):
             final_loss = float(criterion(scaled_logits, labels).item())
 
         if verbose:
-            logger.info(
-                f"Temperature scaling fitted: "
-                f"T={self.temperature.item():.4f}, "
-                f"NLL={final_loss:.4f}"
-            )
+            logger.info(f"Temperature scaling fitted: " f"T={self.temperature.item():.4f}, " f"NLL={final_loss:.4f}")
 
         return final_loss
 
@@ -160,16 +155,12 @@ def calibrate_model(
 
     # Fit temperature scaling
     temp_scaling = TemperatureScaling()
-    temp_scaling.fit(
-        logits=all_logits_tensor, labels=all_labels_tensor, lr=lr, max_iter=max_iter, verbose=True
-    )
+    temp_scaling.fit(logits=all_logits_tensor, labels=all_labels_tensor, lr=lr, max_iter=max_iter, verbose=True)
 
     return temp_scaling
 
 
-def apply_temperature_scaling(
-    model: nn.Module, temp_scaling: TemperatureScaling
-) -> nn.Module:
+def apply_temperature_scaling(model: nn.Module, temp_scaling: TemperatureScaling) -> nn.Module:
     """
     Wrap model with temperature scaling
 
@@ -241,9 +232,7 @@ if __name__ == "__main__":
     original_preds = logits.argmax(dim=1)
     scaled_preds = scaled_logits.argmax(dim=1)
 
-    assert torch.equal(
-        original_preds, scaled_preds
-    ), "Temperature scaling changed predictions!"
+    assert torch.equal(original_preds, scaled_preds), "Temperature scaling changed predictions!"
     print(f"\n✅ Predictions preserved after calibration")
 
     print("\n✅ Temperature scaling test complete")

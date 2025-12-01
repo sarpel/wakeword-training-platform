@@ -2,11 +2,12 @@
 Checkpoint Management Utilities
 Handle checkpoint loading, saving, and management
 """
+
 import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 import structlog
 import torch
@@ -100,9 +101,7 @@ class CheckpointManager:
         if improved:
             best_path = self.checkpoint_dir / "best_model.pt"
             torch.save(checkpoint, best_path)
-            logger.info(
-                f"Saved best model: {best_path} (F1: {val_metrics.f1_score:.4f})"
-            )
+            logger.info(f"Saved best model: {best_path} (F1: {val_metrics.f1_score:.4f})")
 
         # Save epoch checkpoint
         should_save = False
@@ -170,9 +169,7 @@ class CheckpointManager:
 
         return checkpoints
 
-    def get_best_checkpoint(
-        self, metric: str = "f1_score", mode: str = "max"
-    ) -> Optional[CheckpointInfo]:
+    def get_best_checkpoint(self, metric: str = "f1_score", mode: str = "max") -> Optional[CheckpointInfo]:
         """
         Get best checkpoint based on metric
 
@@ -355,9 +352,7 @@ class CheckpointManager:
         torch.save(snapshot, snapshot_path)
         logger.info(f"Created model snapshot: {snapshot_path}")
 
-    def load_model_snapshot(
-        self, model: nn.Module, snapshot_name: str, device: str = "cuda"
-    ) -> Dict[str, Any]:
+    def load_model_snapshot(self, model: nn.Module, snapshot_name: str, device: str = "cuda") -> Dict[str, Any]:
         """
         Load model from snapshot
 
@@ -382,9 +377,7 @@ class CheckpointManager:
         return cast(Dict[str, Any], snapshot.get("metadata", {}))
 
 
-def extract_model_for_inference(
-    checkpoint_path: Path, output_path: Path, device: str = "cuda"
-) -> None:
+def extract_model_for_inference(checkpoint_path: Path, output_path: Path, device: str = "cuda") -> None:
     """
     Extract model weights from checkpoint for inference-only use
 
@@ -419,9 +412,7 @@ def extract_model_for_inference(
     logger.info(f"  Size reduction: {(1 - new_size/original_size)*100:.1f}%")
 
 
-def compare_checkpoints(
-    checkpoint_paths: List[Path], metric: str = "val_f1"
-) -> List[Tuple[Path, float]]:
+def compare_checkpoints(checkpoint_paths: List[Path], metric: str = "val_f1") -> List[Tuple[Path, float]]:
     """
     Compare multiple checkpoints by metric
 

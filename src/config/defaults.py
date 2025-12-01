@@ -2,6 +2,7 @@
 Default Configuration Parameters for Wakeword Training
 Defines basic and advanced training hyperparameters
 """
+
 import copy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -29,9 +30,7 @@ class DataConfig:
 
     # NEW: NPY feature parameters
     use_precomputed_features_for_training: bool = True  # Enable NPY loading
-    npy_feature_dir: str = (
-        "data/npy"  # Directory with split .npy files (train/val/test)
-    )
+    npy_feature_dir: str = "data/npy"  # Directory with split .npy files (train/val/test)
     npy_feature_type: str = "mel"  # mel, mfcc (must match extraction)
     npy_cache_features: bool = True  # Cache loaded features in RAM
     fallback_to_audio: bool = True  # If NPY missing, load raw audio
@@ -57,9 +56,7 @@ class TrainingConfig:
     persistent_workers: bool = True
 
     # Checkpointing
-    checkpoint_frequency: str = (
-        "every_5_epochs"  # best_only, every_epoch, every_5_epochs, every_10_epochs
-    )
+    checkpoint_frequency: str = "every_5_epochs"  # best_only, every_epoch, every_5_epochs, every_10_epochs
     save_best_only: bool = True
 
     # EMA Parameters
@@ -210,7 +207,7 @@ class QATConfig:
 
     enabled: bool = False
     backend: str = "fbgemm"  # fbgemm (x86), qnnpack (ARM)
-    
+
     # When to start QAT (usually after some epochs of normal training)
     start_epoch: int = 5
 
@@ -225,12 +222,12 @@ class DistillationConfig:
 
     enabled: bool = False
     teacher_model_path: str = ""  # Path to pretrained teacher checkpoint
-    teacher_architecture: str = "wav2vec2" 
-    
+    teacher_architecture: str = "wav2vec2"
+
     # Distillation parameters
     temperature: float = 2.0
     alpha: float = 0.5  # Weight for distillation loss (1-alpha for student loss)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -247,7 +244,7 @@ class WakewordConfig:
     augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     loss: LossConfig = field(default_factory=LossConfig)
-    
+
     # New optional configurations
     qat: QATConfig = field(default_factory=QATConfig)
     distillation: DistillationConfig = field(default_factory=DistillationConfig)
@@ -293,9 +290,7 @@ class WakewordConfig:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "w") as f:
-            yaml.safe_dump(
-                self.to_dict(), f, default_flow_style=False, sort_keys=False
-            )  # <-- safe_dump
+            yaml.safe_dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)  # <-- safe_dump
 
     @classmethod
     def load(cls, path: Path) -> "WakewordConfig":

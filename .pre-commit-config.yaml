@@ -63,7 +63,7 @@ repos:
   rev: 1.7.8
   hooks:
   - id: bandit
-    args: [-c, pyproject.toml, -r, src/, --format, custom, --msg-template, "{abspath}:{line}: {test_id}: {severity}: {msg}"]
+    args: [-c, pyproject.toml, -r, src/, --format, custom, --msg-template, '{abspath}:{line}: {test_id}: {severity}: {msg}']
     additional_dependencies: ['bandit[toml]']
     exclude: ^tests/
 

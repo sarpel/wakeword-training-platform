@@ -2,7 +2,8 @@
 Dataset Health Checker and Briefing System
 Analyzes dataset quality and provides recommendations
 """
-from typing import Dict, List, Any
+
+from typing import Any, Dict, List
 
 import structlog
 
@@ -84,13 +85,9 @@ class DatasetHealthChecker:
         if positive_count == 0:
             self.issues.append("❌ CRITICAL: No positive samples found")
             self.health_score -= 50
-            self.recommendations.append(
-                "• Record wakeword utterances from multiple speakers"
-            )
+            self.recommendations.append("• Record wakeword utterances from multiple speakers")
         elif positive_count < self.MIN_POSITIVE_SAMPLES:
-            self.warnings.append(
-                f"⚠️  Low positive samples: {positive_count} (minimum: {self.MIN_POSITIVE_SAMPLES})"
-            )
+            self.warnings.append(f"⚠️  Low positive samples: {positive_count} (minimum: {self.MIN_POSITIVE_SAMPLES})")
             self.health_score -= 20
             self.recommendations.append(
                 f"• Collect at least {self.MIN_POSITIVE_SAMPLES - positive_count} more positive samples"
@@ -116,9 +113,7 @@ class DatasetHealthChecker:
         if negative_count == 0:
             self.issues.append("❌ CRITICAL: No negative samples found")
             self.health_score -= 30
-            self.recommendations.append(
-                "• Collect general speech and non-wakeword utterances"
-            )
+            self.recommendations.append("• Collect general speech and non-wakeword utterances")
             return
 
         ratio = negative_count / positive_count
@@ -129,20 +124,12 @@ class DatasetHealthChecker:
                 f"(recommended: {self.MIN_NEGATIVE_TO_POSITIVE_RATIO:.0f}-{self.MAX_NEGATIVE_TO_POSITIVE_RATIO:.0f}:1)"
             )
             self.health_score -= 15
-            needed = int(
-                positive_count * self.MIN_NEGATIVE_TO_POSITIVE_RATIO - negative_count
-            )
-            self.recommendations.append(
-                f"• Collect approximately {needed} more negative samples"
-            )
+            needed = int(positive_count * self.MIN_NEGATIVE_TO_POSITIVE_RATIO - negative_count)
+            self.recommendations.append(f"• Collect approximately {needed} more negative samples")
         elif ratio > self.MAX_NEGATIVE_TO_POSITIVE_RATIO * 2:
-            self.warnings.append(
-                f"⚠️  Very high negative ratio: {ratio:.1f}:1 (may slow training)"
-            )
+            self.warnings.append(f"⚠️  Very high negative ratio: {ratio:.1f}:1 (may slow training)")
             self.health_score -= 5
-            self.recommendations.append(
-                "• Consider reducing negative samples or adding more positives"
-            )
+            self.recommendations.append("• Consider reducing negative samples or adding more positives")
 
     def _check_hard_negatives(self) -> None:
         """Check hard negative samples"""
@@ -169,12 +156,8 @@ class DatasetHealthChecker:
                     f"(recommended: {self.HARD_NEGATIVE_RATIO*100:.0f}%)"
                 )
                 self.health_score -= 8
-                needed = int(
-                    negative_count * self.HARD_NEGATIVE_RATIO - hard_negative_count
-                )
-                self.recommendations.append(
-                    f"• Collect approximately {needed} more hard negative samples"
-                )
+                needed = int(negative_count * self.HARD_NEGATIVE_RATIO - hard_negative_count)
+                self.recommendations.append(f"• Collect approximately {needed} more hard negative samples")
 
     def _check_sample_rates(self) -> None:
         """Check sample rate consistency"""
@@ -197,13 +180,10 @@ class DatasetHealthChecker:
         low_rate_found = any(sr < self.MIN_SAMPLE_RATE for sr in all_sample_rates)
         if low_rate_found:
             self.warnings.append(
-                f"⚠️  Low sample rate detected (< {self.MIN_SAMPLE_RATE}Hz)\n"
-                "  Audio quality may be insufficient"
+                f"⚠️  Low sample rate detected (< {self.MIN_SAMPLE_RATE}Hz)\n" "  Audio quality may be insufficient"
             )
             self.health_score -= 10
-            self.recommendations.append(
-                f"• Re-record audio at {self.MIN_SAMPLE_RATE}Hz or higher"
-            )
+            self.recommendations.append(f"• Re-record audio at {self.MIN_SAMPLE_RATE}Hz or higher")
 
         # Check for inconsistency
         if inconsistent_categories:
@@ -243,15 +223,11 @@ class DatasetHealthChecker:
         categories = self.stats.get("categories", {})
 
         # Check if background noise exists
-        if (
-            "background" not in categories
-            or categories["background"].get("file_count", 0) == 0
-        ):
+        if "background" not in categories or categories["background"].get("file_count", 0) == 0:
             self.warnings.append("⚠️  No background noise samples found")
             self.health_score -= 8
             self.recommendations.append(
-                "• Collect background noise (white noise, environmental sounds)\n"
-                "  for realistic augmentation"
+                "• Collect background noise (white noise, environmental sounds)\n" "  for realistic augmentation"
             )
 
         # Check if RIRs exist
@@ -259,8 +235,7 @@ class DatasetHealthChecker:
             self.warnings.append("⚠️  No Room Impulse Response (RIR) samples found")
             self.health_score -= 5
             self.recommendations.append(
-                "• Collect or download RIR samples for reverberation simulation\n"
-                "  Improves real-world performance"
+                "• Collect or download RIR samples for reverberation simulation\n" "  Improves real-world performance"
             )
 
     def _generate_assessment(self) -> str:
@@ -341,9 +316,7 @@ class DatasetHealthChecker:
         report.append(f"  Background Samples:    {stats['background_samples']:,}")
         report.append(f"  RIR Samples:           {stats['rir_samples']:,}")
         report.append(f"  Total Samples:         {stats['total_samples']:,}")
-        report.append(
-            f"  Total Duration:        {stats['total_duration_minutes']:.1f} minutes"
-        )
+        report.append(f"  Total Duration:        {stats['total_duration_minutes']:.1f} minutes")
         report.append(f"  Neg:Pos Ratio:         {stats['negative_to_positive_ratio']}")
         report.append("")
 

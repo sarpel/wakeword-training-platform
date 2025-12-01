@@ -2,8 +2,10 @@
 Model Evaluator for File-Based and Test Set Evaluation
 GPU-accelerated batch evaluation with comprehensive metrics
 """
+
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any, Union, TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union, cast
+
 if TYPE_CHECKING:
     from src.config.defaults import WakewordConfig
 
@@ -13,14 +15,14 @@ import torch
 import torch.nn as nn
 
 from src.config.cuda_utils import enforce_cuda
-from src.data.audio_utils import AudioProcessor as CpuAudioProcessor # Renamed for clarity
-from src.data.processor import AudioProcessor as GpuAudioProcessor # This is the one we want
+from src.data.audio_utils import AudioProcessor as CpuAudioProcessor  # Renamed for clarity
 from src.data.feature_extraction import FeatureExtractor
-from src.training.metrics import MetricsCalculator, MetricResults
-from src.evaluation.file_evaluator import evaluate_file, evaluate_files
-from src.evaluation.dataset_evaluator import evaluate_dataset, get_roc_curve_data
+from src.data.processor import AudioProcessor as GpuAudioProcessor  # This is the one we want
 from src.evaluation.advanced_evaluator import evaluate_with_advanced_metrics
+from src.evaluation.dataset_evaluator import evaluate_dataset, get_roc_curve_data
+from src.evaluation.file_evaluator import evaluate_file, evaluate_files
 from src.evaluation.types import EvaluationResult
+from src.training.metrics import MetricResults, MetricsCalculator
 
 logger = structlog.get_logger(__name__)
 
@@ -72,10 +74,11 @@ class ModelEvaluator:
         # Audio processor
         # Create CMVN path
         cmvn_path = Path("data/cmvn_stats.json")
-        
+
         processor_config: Optional["WakewordConfig"] = None
         if config is not None:
             from src.config.defaults import WakewordConfig
+
             if isinstance(config, dict):
                 processor_config = WakewordConfig.from_dict(config)
             else:
@@ -83,18 +86,13 @@ class ModelEvaluator:
 
         if processor_config is None:
             from src.config.defaults import WakewordConfig
+
             processor_config = WakewordConfig()
 
-        self.audio_processor = GpuAudioProcessor(
-            config=processor_config, # Use passed config
-            device=device
-        )
+        self.audio_processor = GpuAudioProcessor(config=processor_config, device=device)  # Use passed config
 
         # CPU Audio Processor for file loading
-        self.cpu_audio_processor = CpuAudioProcessor(
-            target_sr=sample_rate,
-            target_duration=audio_duration
-        )
+        self.cpu_audio_processor = CpuAudioProcessor(target_sr=sample_rate, target_duration=audio_duration)
 
         # Normalize feature type (handle legacy 'mel_spectrogram')
         if feature_type == "mel_spectrogram":
@@ -116,9 +114,7 @@ class ModelEvaluator:
 
         logger.info(f"ModelEvaluator initialized on {device}")
 
-    def evaluate_file(
-        self, audio_path: Path, threshold: float = 0.5
-    ) -> EvaluationResult:
+    def evaluate_file(self, audio_path: Path, threshold: float = 0.5) -> EvaluationResult:
         return evaluate_file(self, audio_path, threshold)
 
     def evaluate_files(
@@ -131,9 +127,7 @@ class ModelEvaluator:
     ) -> Tuple[MetricResults, List[EvaluationResult]]:
         return evaluate_dataset(self, dataset, threshold, batch_size)
 
-    def get_roc_curve_data(
-        self, dataset: Any, batch_size: int = 32
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def get_roc_curve_data(self, dataset: Any, batch_size: int = 32) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return get_roc_curve_data(self, dataset, batch_size)
 
     def evaluate_with_advanced_metrics(
@@ -143,14 +137,10 @@ class ModelEvaluator:
         target_fah: float = 1.0,
         batch_size: int = 32,
     ) -> Dict:
-        return evaluate_with_advanced_metrics(
-            self, dataset, total_seconds, target_fah, batch_size
-        )
+        return evaluate_with_advanced_metrics(self, dataset, total_seconds, target_fah, batch_size)
 
 
-def load_model_for_evaluation(
-    checkpoint_path: Path, device: str = "cuda"
-) -> Tuple[nn.Module, Dict]:
+def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tuple[nn.Module, Dict]:
     """
     Load trained model from checkpoint
 

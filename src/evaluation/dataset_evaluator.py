@@ -1,7 +1,9 @@
-from typing import List, Tuple, TYPE_CHECKING, Sized, cast, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Sized, Tuple, cast
+
 if TYPE_CHECKING:
     from src.evaluation.evaluator import ModelEvaluator
     from torch.utils.data import Dataset
+
 import time
 from pathlib import Path
 
@@ -31,7 +33,9 @@ def evaluate_dataset(
     """
     from torch.utils.data import DataLoader
 
-    def collate_fn(batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
+    def collate_fn(
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
 
@@ -69,7 +73,7 @@ def evaluate_dataset(
             # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
             if inputs.ndim <= 3:
                 inputs = evaluator.audio_processor(inputs)
-            
+
             # Apply memory format optimization
             inputs = inputs.to(memory_format=torch.channels_last)
 
@@ -98,9 +102,7 @@ def evaluate_dataset(
             ):
                 results.append(
                     EvaluationResult(
-                        filename=Path(meta["path"]).name
-                        if "path" in meta
-                        else f"sample_{batch_idx}_{i}",
+                        filename=Path(meta["path"]).name if "path" in meta else f"sample_{batch_idx}_{i}",
                         prediction="Positive" if pred_class == 1 else "Negative",
                         confidence=float(confidence),
                         latency_ms=batch_latency,
@@ -112,9 +114,7 @@ def evaluate_dataset(
     all_preds = torch.cat(all_predictions, dim=0)
     all_targs = torch.cat(all_targets, dim=0)
 
-    metrics = evaluator.metrics_calculator.calculate(
-        all_preds, all_targs, threshold=threshold
-    )
+    metrics = evaluator.metrics_calculator.calculate(all_preds, all_targs, threshold=threshold)
 
     logger.info(f"Evaluation complete: {metrics}")
 
@@ -136,7 +136,9 @@ def get_roc_curve_data(
     """
     from torch.utils.data import DataLoader
 
-    def collate_fn(batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
+    def collate_fn(
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
 
@@ -168,7 +170,7 @@ def get_roc_curve_data(
             # NEW: GPU Processing Pipeline for Raw Audio
             if inputs.ndim <= 3:
                 inputs = evaluator.audio_processor(inputs)
-            
+
             # Apply memory format optimization
             inputs = inputs.to(memory_format=torch.channels_last)
 

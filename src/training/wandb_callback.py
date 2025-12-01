@@ -3,7 +3,8 @@ try:
 except ImportError:
     wandb = None  # type: ignore
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from src.training.metrics import MetricResults
 
 
@@ -23,12 +24,10 @@ class WandbCallback:
         # Ensure we don't have an active run
         if wandb.run is not None:
             wandb.finish()
-            
+
         wandb.init(project=project_name, config=config, reinit=True)
 
-    def on_epoch_end(
-        self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults
-    ) -> None:
+    def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
         """Logs metrics at the end of an epoch."""
         wandb.log(
             {

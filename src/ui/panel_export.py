@@ -5,20 +5,17 @@ Panel 5: ONNX Export
 - Model validation and benchmarking
 - Performance comparison
 """
+
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import gradio as gr
 import pandas as pd
 import structlog
 import torch
 
-from src.export.onnx_exporter import (
-    export_model_to_onnx,
-    validate_onnx_model,
-    benchmark_onnx_model,
-)
+from src.export.onnx_exporter import benchmark_onnx_model, export_model_to_onnx, validate_onnx_model
 
 logger = structlog.get_logger(__name__)
 
@@ -272,13 +269,9 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
             model_info["Inference"] = "✅ Success"
 
         if validation_results.get("numerically_equivalent", False):
-            model_info[
-                "Numerical Match"
-            ] = f"✅ Max diff: {validation_results['max_difference']:.6f}"
+            model_info["Numerical Match"] = f"✅ Max diff: {validation_results['max_difference']:.6f}"
         elif "max_difference" in validation_results:
-            model_info[
-                "Numerical Match"
-            ] = f"⚠️ Max diff: {validation_results['max_difference']:.6f}"
+            model_info["Numerical Match"] = f"⚠️ Max diff: {validation_results['max_difference']:.6f}"
 
         # Benchmark if validation successful
         if validation_results.get("valid", False):
@@ -360,9 +353,7 @@ def create_export_panel() -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 📦 ONNX Export")
-        gr.Markdown(
-            "Convert trained PyTorch models to ONNX format for deployment with quantization options."
-        )
+        gr.Markdown("Convert trained PyTorch models to ONNX format for deployment with quantization options.")
 
         gr.Markdown("### Select Model Checkpoint")
 
@@ -371,9 +362,11 @@ def create_export_panel() -> gr.Blocks:
                 choices=get_available_checkpoints(),
                 label="Model Checkpoint",
                 info="Select a trained model to export",
-                value=get_available_checkpoints()[0]
-                if get_available_checkpoints()[0] != "No checkpoints available"
-                else None,
+                value=(
+                    get_available_checkpoints()[0]
+                    if get_available_checkpoints()[0] != "No checkpoints available"
+                    else None
+                ),
             )
             refresh_checkpoints_btn = gr.Button("🔄 Refresh", scale=0)
 
@@ -419,16 +412,14 @@ def create_export_panel() -> gr.Blocks:
                     value=False,
                     info="8-bit: ~75% smaller, slight accuracy loss",
                 )
-                
+
                 export_tflite = gr.Checkbox(
                     label="Export to TFLite (via onnx2tf)",
                     value=False,
                     info="Convert ONNX to TFLite for embedded devices",
                 )
 
-                gr.Markdown(
-                    "**Note**: Quantization reduces model size and improves inference speed"
-                )
+                gr.Markdown("**Note**: Quantization reduces model size and improves inference speed")
 
         with gr.Row():
             export_btn = gr.Button("🚀 Export to ONNX", variant="primary", scale=2)
@@ -484,14 +475,10 @@ def create_export_panel() -> gr.Blocks:
             checkpoints = get_available_checkpoints()
             return gr.update(
                 choices=checkpoints,
-                value=checkpoints[0]
-                if checkpoints[0] != "No checkpoints available"
-                else None,
+                value=checkpoints[0] if checkpoints[0] != "No checkpoints available" else None,
             )
 
-        refresh_checkpoints_btn.click(
-            fn=refresh_checkpoints_handler, outputs=[checkpoint_selector]
-        )
+        refresh_checkpoints_btn.click(fn=refresh_checkpoints_handler, outputs=[checkpoint_selector])
 
         export_btn.click(
             fn=export_to_onnx,
@@ -520,9 +507,7 @@ def create_export_panel() -> gr.Blocks:
             else:
                 return None, status, gr.update(visible=False)
 
-        download_btn.click(
-            fn=download_handler, outputs=[download_file, export_status, download_file]
-        )
+        download_btn.click(fn=download_handler, outputs=[download_file, export_status, download_file])
 
     return panel
 

@@ -2,9 +2,10 @@
 Corpus-level Cepstral Mean Variance Normalization (CMVN)
 Implements global normalization statistics with persistence
 """
+
 import json
 from pathlib import Path
-from typing import Optional, Tuple, List, Any
+from typing import Any, List, Optional, Tuple
 
 import structlog
 import torch
@@ -38,11 +39,11 @@ class CMVN(nn.Module):
         # Strategy: use self.register_buffer("mean", torch.tensor(...)) only when we have values.
         # But __init__ must set up state.
         # Let's init as buffers if we can load them, otherwise placeholders.
-        
+
         self.register_buffer("mean", torch.zeros(1))
         self.register_buffer("std", torch.zeros(1))
         self.register_buffer("count", torch.tensor(0, dtype=torch.long))
-        
+
         # Flag to check if initialized
         self._initialized = False
 
@@ -51,9 +52,7 @@ class CMVN(nn.Module):
             self.load_stats()
             logger.info(f"Loaded CMVN stats from {self.stats_path}")
 
-    def compute_stats(
-        self, features_list: List[torch.Tensor], save: bool = True
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def compute_stats(self, features_list: List[torch.Tensor], save: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Compute global mean and std from feature list
 
@@ -100,7 +99,7 @@ class CMVN(nn.Module):
         mean = sum_features / total_frames
         variance = (sum_squared / total_frames) - (mean**2)
         std = torch.sqrt(variance.clamp(min=self.eps))
-        
+
         # Update buffers
         self.mean = mean
         self.std = std
@@ -134,7 +133,7 @@ class CMVN(nn.Module):
 
         # Handle batch dimension
         original_ndim = features.ndim
-        if original_ndim == 2: # (C, T)
+        if original_ndim == 2:  # (C, T)
             features = features.unsqueeze(0)
 
         # Normalize: (x - mean) / std
@@ -157,7 +156,7 @@ class CMVN(nn.Module):
     def denormalize(self, features: torch.Tensor) -> torch.Tensor:
         """Reverse CMVN normalization"""
         if not self._initialized:
-             raise RuntimeError("CMVN stats not computed.")
+            raise RuntimeError("CMVN stats not computed.")
 
         original_ndim = features.ndim
         if original_ndim == 2:
@@ -199,8 +198,10 @@ class CMVN(nn.Module):
     def load_stats(self, path: Optional[Path] = None) -> None:
         """Load CMVN statistics from JSON"""
         load_path = Path(path) if path else self.stats_path
-        if load_path is None: raise ValueError("No stats path provided")
-        if not load_path.exists(): raise FileNotFoundError(f"Stats file not found: {load_path}")
+        if load_path is None:
+            raise ValueError("No stats path provided")
+        if not load_path.exists():
+            raise FileNotFoundError(f"Stats file not found: {load_path}")
 
         with open(load_path, "r") as f:
             stats_dict = json.load(f)
@@ -208,7 +209,7 @@ class CMVN(nn.Module):
         # Load into buffers and move to device if module already on device (handled by register_buffer persistence logic usually, but here we set manually)
         # We must respect current device if possible, or let .to(device) handle it later.
         device = self.mean.device
-        
+
         # Create new tensors from loaded data
         new_mean = torch.tensor(stats_dict["mean"], dtype=torch.float32, device=device)
         new_std = torch.tensor(stats_dict["std"], dtype=torch.float32, device=device)
@@ -234,9 +235,8 @@ class CMVN(nn.Module):
 
 from torch.utils.data import Dataset
 
-def compute_cmvn_from_dataset(
-    dataset: Dataset, stats_path: Path, max_samples: Optional[int] = None
-) -> CMVN:
+
+def compute_cmvn_from_dataset(dataset: Dataset, stats_path: Path, max_samples: Optional[int] = None) -> CMVN:
     """
     Compute CMVN statistics from a PyTorch dataset
 
@@ -284,9 +284,7 @@ if __name__ == "__main__":
         features = torch.randn(feature_dim, time_steps) + (i * 0.1)
         features_list.append(features)
 
-    print(
-        f"Created {num_utterances} dummy feature tensors ({feature_dim}x{time_steps})"
-    )
+    print(f"Created {num_utterances} dummy feature tensors ({feature_dim}x{time_steps})")
 
     # Compute CMVN stats
     cmvn = CMVN(stats_path=Path("test_cmvn_stats.json"))

@@ -1,16 +1,16 @@
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from typing import Optional, Callable, List
+from typing import Callable, List, Optional
 
 import optuna
 import structlog
 from torch.utils.data import DataLoader
 
 from src.config.defaults import WakewordConfig
-from src.training.metrics import MetricResults
 from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
+from src.training.metrics import MetricResults
 from src.training.trainer import Trainer
 
 logger = structlog.get_logger(__name__)
@@ -39,9 +39,7 @@ class OptunaPruningCallback:
 
         # Handle pruning based on the reported value
         if self.trial.should_prune():
-            message = (
-                f"Trial pruned at epoch {epoch} with {self.monitor}={current_score:.4f}"
-            )
+            message = f"Trial pruned at epoch {epoch} with {self.monitor}={current_score:.4f}"
             logger.info(message)
             if self.log_callback:
                 self.log_callback(f"✂️ {message}")
@@ -78,18 +76,12 @@ class Objective:
         trial_config = self.config.copy()
 
         # --- 1. Expand Search Space based on param_groups ---
-        
+
         # Group: Training
         if "Training" in self.param_groups:
-            trial_config.training.learning_rate = trial.suggest_float(
-                "learning_rate", 1e-5, 1e-2, log=True
-            )
-            trial_config.optimizer.weight_decay = trial.suggest_float(
-                "weight_decay", 1e-6, 1e-3, log=True
-            )
-            trial_config.optimizer.optimizer = trial.suggest_categorical(
-                "optimizer", ["adam", "adamw"]
-            )
+            trial_config.training.learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
+            trial_config.optimizer.weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True)
+            trial_config.optimizer.optimizer = trial.suggest_categorical("optimizer", ["adam", "adamw"])
             # Batch size (requires recreating DataLoaders)
             batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
             trial_config.training.batch_size = batch_size
@@ -100,19 +92,13 @@ class Objective:
             # Only suggest hidden_size if architecture supports it (RNNs)
             if trial_config.model.architecture in ["lstm", "gru"]:
                 trial_config.model.hidden_size = trial.suggest_categorical("hidden_size", [64, 128, 256])
-            
+
         # Group: Augmentation
         if "Augmentation" in self.param_groups:
-            trial_config.augmentation.background_noise_prob = trial.suggest_float(
-                "background_noise_prob", 0.1, 0.9
-            )
+            trial_config.augmentation.background_noise_prob = trial.suggest_float("background_noise_prob", 0.1, 0.9)
             trial_config.augmentation.rir_prob = trial.suggest_float("rir_prob", 0.1, 0.8)
-            trial_config.augmentation.time_stretch_min = trial.suggest_float(
-                "time_stretch_min", 0.8, 0.95
-            )
-            trial_config.augmentation.time_stretch_max = trial.suggest_float(
-                "time_stretch_max", 1.05, 1.2
-            )
+            trial_config.augmentation.time_stretch_min = trial.suggest_float("time_stretch_min", 0.8, 0.95)
+            trial_config.augmentation.time_stretch_max = trial.suggest_float("time_stretch_max", 1.05, 1.2)
             # SpecAugment parameters
             trial_config.augmentation.freq_mask_param = trial.suggest_int("freq_mask_param", 10, 40)
             trial_config.augmentation.time_mask_param = trial.suggest_int("time_mask_param", 20, 60)
@@ -122,10 +108,12 @@ class Objective:
             # Be careful with n_mels as it changes input size
             n_mels = trial.suggest_categorical("n_mels", [40, 64, 80])
             trial_config.data.n_mels = n_mels
-            
+
         # Group: Loss
         if "Loss" in self.param_groups:
-            trial_config.loss.loss_function = trial.suggest_categorical("loss_function", ["cross_entropy", "focal_loss"])
+            trial_config.loss.loss_function = trial.suggest_categorical(
+                "loss_function", ["cross_entropy", "focal_loss"]
+            )
             if trial_config.loss.loss_function == "focal_loss":
                 trial_config.loss.focal_gamma = trial.suggest_float("focal_gamma", 1.0, 4.0)
 
@@ -149,7 +137,7 @@ class Objective:
             shuffle=True,
             num_workers=self.config.training.num_workers,
             pin_memory=self.config.training.pin_memory,
-            persistent_workers=True if self.config.training.num_workers > 0 else False
+            persistent_workers=True if self.config.training.num_workers > 0 else False,
         )
         val_loader_trial = DataLoader(
             self.val_loader.dataset,
@@ -157,7 +145,7 @@ class Objective:
             shuffle=False,
             num_workers=self.config.training.num_workers,
             pin_memory=self.config.training.pin_memory,
-            persistent_workers=True if self.config.training.num_workers > 0 else False
+            persistent_workers=True if self.config.training.num_workers > 0 else False,
         )
 
         # Create a temporary directory for checkpoints for this trial
@@ -193,9 +181,7 @@ class Objective:
 
             # --- 3. Early Pruning ---
             # Add pruning callback
-            pruning_callback = OptunaPruningCallback(
-                trial, monitor="f1_score", log_callback=self.log_callback
-            )
+            pruning_callback = OptunaPruningCallback(trial, monitor="f1_score", log_callback=self.log_callback)
             trainer.add_callback(pruning_callback)
 
             try:
@@ -218,7 +204,7 @@ class Objective:
                     # Create models dir if not exists
                     save_path = Path("models/hpo_best_model.pt")
                     save_path.parent.mkdir(parents=True, exist_ok=True)
-                    
+
                     source_path = checkpoint_dir / "best_model.pt"
                     if source_path.exists():
                         shutil.copy(source_path, save_path)
@@ -250,14 +236,12 @@ def run_hpo(
     # Use MedianPruner to stop unpromising trials early
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5)
 
-    study = optuna.create_study(
-        direction="maximize", study_name=study_name, pruner=pruner, load_if_exists=True
-    )
+    study = optuna.create_study(direction="maximize", study_name=study_name, pruner=pruner, load_if_exists=True)
 
     if log_callback:
         log_callback(f"Starting HPO study '{study_name}' with {n_trials} trials.")
     logger.info(f"Starting HPO study '{study_name}' with {n_trials} trials.")
-    
+
     study.optimize(objective, n_trials=n_trials)
 
     if log_callback:

@@ -2,6 +2,7 @@
 Feature Extraction for Wakeword Detection
 Compute mel-spectrograms and MFCCs on GPU
 """
+
 from typing import Literal, Optional, Tuple, cast
 
 import structlog
@@ -15,7 +16,7 @@ logger = structlog.get_logger(__name__)
 class FeatureExtractor(nn.Module):
     """
     Extract features (mel-spectrogram or MFCC) from audio waveforms.
-    
+
     Inherits from nn.Module to support GPU acceleration and seamless integration
     with training pipelines.
     """
@@ -56,7 +57,7 @@ class FeatureExtractor(nn.Module):
         self.feature_type = feature_type
         self.n_mels = n_mels
         self.n_mfcc = n_mfcc
-        
+
         if win_length is None:
             win_length = n_fft
 
@@ -101,8 +102,7 @@ class FeatureExtractor(nn.Module):
             self.to(device)
 
         logger.info(
-            f"FeatureExtractor initialized: {feature_type}, "
-            f"n_mels={n_mels}, n_fft={n_fft}, hop_length={hop_length}"
+            f"FeatureExtractor initialized: {feature_type}, " f"n_mels={n_mels}, n_fft={n_fft}, hop_length={hop_length}"
         )
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
@@ -128,9 +128,9 @@ class FeatureExtractor(nn.Module):
             # Assume (batch, samples) or (1, samples)
             squeeze_output = False
         elif waveform.dim() == 3 and waveform.shape[1] == 1:
-             # (batch, 1, samples) -> (batch, samples)
-             waveform = waveform.squeeze(1)
-             squeeze_output = False
+            # (batch, 1, samples) -> (batch, samples)
+            waveform = waveform.squeeze(1)
+            squeeze_output = False
         else:
             raise ValueError(f"Expected 1D or 2D waveform (or 3D with 1 channel), got shape {original_shape}")
 
@@ -197,9 +197,7 @@ if __name__ == "__main__":
 
     # Test mel-spectrogram
     print("\nTesting mel-spectrogram extraction...")
-    mel_extractor = FeatureExtractor(
-        sample_rate=16000, feature_type="mel", n_mels=64, device=device
-    )
+    mel_extractor = FeatureExtractor(sample_rate=16000, feature_type="mel", n_mels=64, device=device)
 
     # Create dummy waveform (1.5 seconds at 16kHz)
     dummy_waveform = torch.randn(24000).to(device)
@@ -219,9 +217,7 @@ if __name__ == "__main__":
 
     # Test MFCC
     print("\nTesting MFCC extraction...")
-    mfcc_extractor = FeatureExtractor(
-        sample_rate=16000, feature_type="mfcc", n_mfcc=40, device=device
-    )
+    mfcc_extractor = FeatureExtractor(sample_rate=16000, feature_type="mfcc", n_mfcc=40, device=device)
 
     mfcc_features = mfcc_extractor(dummy_waveform)
     print(f"MFCC shape: {mfcc_features.shape}")

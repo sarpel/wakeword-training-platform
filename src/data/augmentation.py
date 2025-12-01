@@ -2,6 +2,7 @@
 Audio Data Augmentation Pipeline
 GPU-accelerated augmentation using torchaudio and torch operations
 """
+
 import random
 from pathlib import Path
 from typing import List, Optional, Tuple, cast
@@ -48,7 +49,7 @@ class AudioAugmentation(nn.Module):
         """
         super().__init__()
         self.sample_rate = sample_rate
-        
+
         # Store parameters
         self.time_stretch_range = time_stretch_range
         self.pitch_shift_range = pitch_shift_range
@@ -64,7 +65,7 @@ class AudioAugmentation(nn.Module):
         # We initialize them as empty buffers. If files are provided, we load them.
         self.register_buffer("background_noises", torch.empty(0))
         self.register_buffer("rirs", torch.empty(0))
-        
+
         if background_noise_files:
             self._load_background_noises(background_noise_files)
 
@@ -75,8 +76,7 @@ class AudioAugmentation(nn.Module):
             self.to(device)
 
         logger.info(
-            f"Augmentation initialized: {len(self.background_noises)} background noises, "
-            f"{len(self.rirs)} RIRs"
+            f"Augmentation initialized: {len(self.background_noises)} background noises, " f"{len(self.rirs)} RIRs"
         )
 
     def _pad_and_stack(self, waveforms: List[torch.Tensor]) -> torch.Tensor:
@@ -85,14 +85,14 @@ class AudioAugmentation(nn.Module):
         """
         if not waveforms:
             return torch.empty(0)
-            
+
         max_len = max(w.shape[-1] for w in waveforms)
         padded_waveforms = []
         for w in waveforms:
             if w.shape[-1] < max_len:
                 w = F.pad(w, (0, max_len - w.shape[-1]))
             padded_waveforms.append(w)
-            
+
         # Stack: (N, 1, Samples)
         return torch.stack(padded_waveforms)
 
@@ -108,13 +108,13 @@ class AudioAugmentation(nn.Module):
                     waveform = T.Resample(sr, self.sample_rate)(waveform)
                 if waveform.shape[0] > 1:
                     waveform = torch.mean(waveform, dim=0, keepdim=True)
-                
+
                 # Trim to reasonable max length (e.g., 5s) to save VRAM
                 max_len = self.sample_rate * 5
                 if waveform.shape[-1] > max_len:
                     start = random.randint(0, waveform.shape[-1] - max_len)
-                    waveform = waveform[:, start:start+max_len]
-                    
+                    waveform = waveform[:, start : start + max_len]
+
                 loaded_noises.append(waveform)
             except Exception as e:
                 logger.warning(f"Failed to load noise {noise_file}: {e}")
@@ -128,7 +128,7 @@ class AudioAugmentation(nn.Module):
         all_rir_files = list(set(rir_files))
         max_rirs = min(len(all_rir_files), 200)
         logger.info(f"Loading up to {max_rirs} RIRs...")
-        
+
         loaded_rirs = []
         for rir_file in all_rir_files[:max_rirs]:
             try:
@@ -137,12 +137,12 @@ class AudioAugmentation(nn.Module):
                     waveform = T.Resample(sr, self.sample_rate)(waveform)
                 if waveform.shape[0] > 1:
                     waveform = torch.mean(waveform, dim=0, keepdim=True)
-                
+
                 # Validate (simplified)
                 energy = torch.sum(waveform**2).item()
                 if energy < 1e-6 or not torch.isfinite(waveform).all():
                     continue
-                    
+
                 # Normalize
                 waveform = waveform / (torch.max(torch.abs(waveform)) + 1e-8)
                 loaded_rirs.append(waveform)
@@ -160,33 +160,35 @@ class AudioAugmentation(nn.Module):
         """Batch time stretch using interpolation"""
         # waveform: (Batch, 1, Samples)
         factor = random.uniform(*self.time_stretch_range)
-        if factor == 1.0: return waveform
-        
+        if factor == 1.0:
+            return waveform
+
         original_len = waveform.shape[-1]
         new_len = int(original_len / factor)
-        
+
         out = F.interpolate(waveform, size=new_len, mode="linear", align_corners=False)
-        
+
         if new_len < original_len:
             out = F.pad(out, (0, original_len - new_len))
         else:
             out = out[..., :original_len]
-            
+
         return cast(torch.Tensor, out)
 
     def pitch_shift(self, waveform: torch.Tensor) -> torch.Tensor:
         """Batch pitch shift"""
         n_steps = random.randint(*self.pitch_shift_range)
-        if n_steps == 0: return waveform
-        
+        if n_steps == 0:
+            return waveform
+
         # Similar implementation using interpolate tricks
         shift_rate = 2 ** (n_steps / 12)
         # 1. Time stretch by 1/rate (changes pitch & speed)
         # 2. Resample back to original speed (restores speed, keeps pitch change) -> This requires Resample transform which is complex on batch variable rates
         # Simpler: Use time stretch + pretend sample rate changed (which we fix by interpolation)
-        
+
         # Stretch
-        stretched = F.interpolate(waveform, scale_factor=1/shift_rate, mode="linear", align_corners=False)
+        stretched = F.interpolate(waveform, scale_factor=1 / shift_rate, mode="linear", align_corners=False)
         # Resample back to original length matches original duration
         out = F.interpolate(stretched, size=waveform.shape[-1], mode="linear", align_corners=False)
         return cast(torch.Tensor, out)
@@ -199,7 +201,7 @@ class AudioAugmentation(nn.Module):
         shift_ms = random.randint(*self.time_shift_range_ms)
         if shift_ms == 0:
             return waveform
-            
+
         shift_samples = int(shift_ms * self.sample_rate / 1000)
         return torch.roll(waveform, shifts=shift_samples, dims=-1)
 
@@ -209,16 +211,16 @@ class AudioAugmentation(nn.Module):
             return waveform + torch.randn_like(waveform) * 0.01
 
         batch_size, _, samples = waveform.shape
-        
+
         # Select random noises for each element in batch
         indices = torch.randint(0, len(self.background_noises), (batch_size,), device=self.background_noises.device)
-        noises = self.background_noises[indices] # (B, 1, NoiseSamples)
-        
+        noises = self.background_noises[indices]  # (B, 1, NoiseSamples)
+
         # Crop/Loop noises to match waveform length
         if noises.shape[-1] > samples:
             # Random start
             start = random.randint(0, noises.shape[-1] - samples)
-            noises = noises[..., start:start+samples]
+            noises = noises[..., start : start + samples]
         else:
             # Repeat
             repeats = (samples // noises.shape[-1]) + 1
@@ -232,55 +234,58 @@ class AudioAugmentation(nn.Module):
         sig_power = waveform.pow(2).mean(dim=-1, keepdim=True)
         noise_power = noises.pow(2).mean(dim=-1, keepdim=True)
         scale = torch.sqrt(sig_power / (noise_power * snr_linear + 1e-8))
-        
+
         noisy = waveform + scale * noises
-        
+
         # Normalize
         max_vals = noisy.abs().max(dim=-1, keepdim=True)[0]
         noisy = noisy / (max_vals + 1e-8)
-        
+
         return cast(torch.Tensor, noisy)
 
     def apply_rir(self, waveform: torch.Tensor) -> torch.Tensor:
         """Apply RIR convolution to batch"""
-        if self.rirs.numel() == 0: return waveform
-        
+        if self.rirs.numel() == 0:
+            return waveform
+
         batch_size, _, samples = waveform.shape
-        
+
         # Select random RIRs
         indices = torch.randint(0, len(self.rirs), (batch_size,), device=self.rirs.device)
-        selected_rirs = self.rirs[indices] # (B, 1, RirSamples)
-        
+        selected_rirs = self.rirs[indices]  # (B, 1, RirSamples)
+
         # Trim RIRs to remove tail silence/save compute (optional)
-        
+
         # Convolution using FFT
         # Pad to (N + M - 1)
         n_fft = samples + selected_rirs.shape[-1] - 1
         # Next power of 2
         n_fft = 2 ** (n_fft - 1).bit_length()
-        
+
         spec_w = torch.fft.rfft(waveform, n=n_fft)
         spec_r = torch.fft.rfft(selected_rirs, n=n_fft)
-        
+
         convolved = torch.fft.irfft(spec_w * spec_r, n=n_fft)
-        
+
         # Trim to original length
         wet = convolved[..., :samples]
-        
+
         # Normalize wet
         # We match energy to input
         input_energy = waveform.pow(2).mean(dim=-1, keepdim=True)
         wet_energy = wet.pow(2).mean(dim=-1, keepdim=True)
         wet = wet * torch.sqrt(input_energy / (wet_energy + 1e-8))
-        
+
         # Mix
-        ratios = torch.empty(batch_size, 1, 1, device=waveform.device).uniform_(self.rir_dry_wet_min, self.rir_dry_wet_max)
+        ratios = torch.empty(batch_size, 1, 1, device=waveform.device).uniform_(
+            self.rir_dry_wet_min, self.rir_dry_wet_max
+        )
         mixed = ratios * waveform + (1 - ratios) * wet
-        
+
         # Final normalize
         max_vals = mixed.abs().max(dim=-1, keepdim=True)[0]
         mixed = mixed / (max_vals + 1e-8)
-        
+
         return cast(torch.Tensor, mixed)
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
@@ -291,34 +296,35 @@ class AudioAugmentation(nn.Module):
         # Standardization
         original_ndim = waveform.ndim
         if original_ndim == 1:
-            waveform = waveform.unsqueeze(0).unsqueeze(0) # (1, 1, S)
+            waveform = waveform.unsqueeze(0).unsqueeze(0)  # (1, 1, S)
         elif original_ndim == 2:
-            waveform = waveform.unsqueeze(1) # (B, 1, S)
-            
+            waveform = waveform.unsqueeze(1)  # (B, 1, S)
+
         # Apply
         if self.training:
             if random.random() < 0.5:
                 waveform = self.time_stretch(waveform)
-                
+
             if random.random() < 0.5:
                 waveform = self.pitch_shift(waveform)
-                
+
             if random.random() < self.time_shift_prob:
                 waveform = self.random_time_shift(waveform)
 
             if random.random() < self.background_noise_prob:
                 waveform = self.add_background_noise(waveform)
-                
+
             if random.random() < self.rir_prob:
                 waveform = self.apply_rir(waveform)
-                
+
         # Restore shape
         if original_ndim == 1:
             waveform = waveform.squeeze(0).squeeze(0)
         elif original_ndim == 2:
             waveform = waveform.squeeze(1)
-            
+
         return waveform
+
 
 # SpecAugment remains mostly the same, ensuring T.FrequencyMasking works on GPU tensors
 class SpecAugment(nn.Module):

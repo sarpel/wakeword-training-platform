@@ -2,7 +2,8 @@
 Exponential Moving Average (EMA) for model parameters
 Maintains shadow copy of model weights for more stable inference
 """
-from typing import Optional, Dict, Any, Tuple
+
+from typing import Any, Dict, Optional, Tuple
 
 import structlog
 import torch
@@ -21,9 +22,7 @@ class EMA:
     Higher decay (closer to 1.0) = slower adaptation
     """
 
-    def __init__(
-        self, model: nn.Module, decay: float = 0.999, device: Optional[str] = None
-    ):
+    def __init__(self, model: nn.Module, decay: float = 0.999, device: Optional[str] = None):
         """
         Initialize EMA
 
@@ -66,9 +65,7 @@ class EMA:
             for name, param in self.model.named_parameters():
                 if param.requires_grad and name in self.shadow_params:
                     # EMA update: shadow = decay * shadow + (1-decay) * current
-                    self.shadow_params[name].mul_(current_decay).add_(
-                        param.data, alpha=(1.0 - current_decay)
-                    )
+                    self.shadow_params[name].mul_(current_decay).add_(param.data, alpha=(1.0 - current_decay))
 
         self.num_updates += 1
 
@@ -176,12 +173,8 @@ class EMAScheduler:
 
         else:
             # Middle phase: interpolate
-            progress = (epoch - self.warmup_epochs) / max(
-                (total_epochs - self.final_epochs - self.warmup_epochs), 1
-            )
-            decay = (
-                self.initial_decay + (self.final_decay - self.initial_decay) * progress
-            )
+            progress = (epoch - self.warmup_epochs) / max((total_epochs - self.final_epochs - self.warmup_epochs), 1)
+            decay = self.initial_decay + (self.final_decay - self.initial_decay) * progress
 
         # Update EMA decay
         self.ema.decay = decay
@@ -234,9 +227,7 @@ if __name__ == "__main__":
     # Create dummy model
     model = nn.Sequential(nn.Linear(10, 20), nn.ReLU(), nn.Linear(20, 2))
 
-    print(
-        f"Created test model with {sum(p.numel() for p in model.parameters())} parameters"
-    )
+    print(f"Created test model with {sum(p.numel() for p in model.parameters())} parameters")
 
     # Get initial weights
     initial_weight = model[0].weight.data.clone()
@@ -277,18 +268,14 @@ if __name__ == "__main__":
     ema.restore(original_params)
     restored_weight = model[0].weight.data.clone()
 
-    assert torch.allclose(
-        restored_weight, final_weight
-    ), "Parameters not restored correctly"
+    assert torch.allclose(restored_weight, final_weight), "Parameters not restored correctly"
     print(f"  ✅ Parameters restored correctly")
 
     # Test scheduler
     print(f"\nTesting EMA Scheduler...")
 
     ema2 = EMA(model, decay=0.999)
-    scheduler = EMAScheduler(
-        ema2, initial_decay=0.999, final_decay=0.9995, warmup_epochs=5, final_epochs=10
-    )
+    scheduler = EMAScheduler(ema2, initial_decay=0.999, final_decay=0.9995, warmup_epochs=5, final_epochs=10)
 
     total_epochs = 50
     print(f"  Total epochs: {total_epochs}")

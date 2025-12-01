@@ -2,9 +2,10 @@
 Real-Time Microphone Inference
 Streaming audio capture and wakeword detection
 """
+
 import queue
 import threading
-from typing import Callable, Optional, Tuple, Any
+from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 import structlog
@@ -19,9 +20,10 @@ except ImportError:
     sd = None
     logger.warning("sounddevice not installed. Microphone inference not available.")
 
+from pathlib import Path
+
 from src.config.cuda_utils import enforce_cuda
 from src.data.processor import AudioProcessor as GpuAudioProcessor
-from pathlib import Path
 
 
 class MicrophoneInference:
@@ -60,9 +62,7 @@ class MicrophoneInference:
             hop_length: Hop length for STFT
         """
         if sd is None:
-            raise ImportError(
-                "sounddevice not installed. " "Install with: pip install sounddevice"
-            )
+            raise ImportError("sounddevice not installed. " "Install with: pip install sounddevice")
 
         # Enforce CUDA
         enforce_cuda()
@@ -82,12 +82,11 @@ class MicrophoneInference:
         # Audio processor (GPU with CMVN)
         cmvn_path = Path("data/cmvn_stats.json")
         from src.config.defaults import WakewordConfig
+
         self.audio_processor = GpuAudioProcessor(
-            config=WakewordConfig(), # Use defaults
-            cmvn_path=cmvn_path if cmvn_path.exists() else None,
-            device=device
+            config=WakewordConfig(), cmvn_path=cmvn_path if cmvn_path.exists() else None, device=device  # Use defaults
         )
-        
+
         # We don't need separate FeatureExtractor as GpuAudioProcessor handles it
         self.feature_extractor = None
 
@@ -141,9 +140,7 @@ class MicrophoneInference:
                     while len(self.audio_buffer) >= self.chunk_samples:
                         # Extract chunk
                         chunk = self.audio_buffer[: self.chunk_samples]
-                        self.audio_buffer = self.audio_buffer[
-                            self.chunk_samples // 2 :
-                        ]  # 50% overlap
+                        self.audio_buffer = self.audio_buffer[self.chunk_samples // 2 :]  # 50% overlap
 
                         # Process chunk
                         confidence, is_positive = self._process_chunk(chunk)
@@ -190,7 +187,7 @@ class MicrophoneInference:
             # Input to GpuAudioProcessor should be (Batch, Samples)
             if audio_tensor.ndim == 1:
                 audio_tensor = audio_tensor.unsqueeze(0)
-            
+
             audio_tensor = audio_tensor.to(self.device)
             features = self.audio_processor(audio_tensor)
 
@@ -245,9 +242,7 @@ class MicrophoneInference:
 
         # Start processing thread
         self.is_recording = True
-        self.processing_thread = threading.Thread(
-            target=self._processing_worker, daemon=True
-        )
+        self.processing_thread = threading.Thread(target=self._processing_worker, daemon=True)
         self.processing_thread.start()
 
         # Start audio stream
@@ -292,6 +287,7 @@ class MicrophoneInference:
         """
         try:
             from typing import cast
+
             return cast(Optional[Tuple[float, bool, np.ndarray]], self.result_queue.get_nowait())
         except queue.Empty:
             return None
@@ -354,9 +350,7 @@ class SimulatedMicrophoneInference:
 
             confidence = random.random()
             is_positive = confidence >= self.threshold
-            dummy_audio = np.random.randn(int(self.sample_rate * 1.5)).astype(
-                np.float32
-            )
+            dummy_audio = np.random.randn(int(self.sample_rate * 1.5)).astype(np.float32)
             return confidence, is_positive, dummy_audio
         return None
 

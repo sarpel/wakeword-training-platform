@@ -2,6 +2,7 @@
 Model Architectures for Wakeword Detection
 Supports: ResNet18, MobileNetV3, LSTM, GRU, TCN
 """
+
 import logging
 from typing import Any, List, cast
 
@@ -10,6 +11,7 @@ import torch.nn as nn
 
 try:
     import torchvision.models as models
+
     HAS_TORCHVISION = True
 except ImportError:
     HAS_TORCHVISION = False
@@ -50,15 +52,11 @@ class ResNet18Wakeword(nn.Module):
 
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
-            self.resnet.conv1 = nn.Conv2d(
-                input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False
-            )
+            self.resnet.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
         # Replace final fully connected layer
         num_features = self.resnet.fc.in_features
-        self.resnet.fc = nn.Sequential(
-            nn.Dropout(dropout), nn.Linear(num_features, num_classes)
-        )
+        self.resnet.fc = nn.Sequential(nn.Dropout(dropout), nn.Linear(num_features, num_classes))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -90,7 +88,7 @@ class ResNet18Wakeword(nn.Module):
 
         x = self.resnet.avgpool(x)
         x = torch.flatten(x, 1)
-        
+
         return x
 
 
@@ -120,9 +118,7 @@ class MobileNetV3Wakeword(nn.Module):
             raise ImportError("torchvision is required for MobileNetV3. Please install it.")
 
         if pretrained:
-            self.mobilenet = models.mobilenet_v3_small(
-                weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
-            )
+            self.mobilenet = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
         else:
             self.mobilenet = models.mobilenet_v3_small(weights=None)
 
@@ -205,9 +201,7 @@ class LSTMWakeword(nn.Module):
 
         # Output layer
         lstm_output_size = hidden_size * 2 if bidirectional else hidden_size
-        self.fc = nn.Sequential(
-            nn.Dropout(dropout), nn.Linear(lstm_output_size, num_classes)
-        )
+        self.fc = nn.Sequential(nn.Dropout(dropout), nn.Linear(lstm_output_size, num_classes))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -221,12 +215,12 @@ class LSTMWakeword(nn.Module):
         """
         # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
         # RNN expects (Batch, Time, Features)
-        
+
         # If 4D input (B, C, F, T)
         if x.dim() == 4:
             if x.size(1) == 1:
                 x = x.squeeze(1)
-        
+
         # Now x is likely 3D (B, F, T) or (B, T, F)
         if x.dim() == 3:
             # Check if we need to transpose
@@ -238,10 +232,10 @@ class LSTMWakeword(nn.Module):
                 # Is (B, F, T) -> Transpose to (B, T, F)
                 x = x.transpose(1, 2)
             else:
-                 # Ambiguous, assume (B, F, T) and transpose if F matches better?
-                 # Or just assume standard (B, F, T) coming from AudioProcessor
-                 if x.size(1) < x.size(2): # Heuristic: F < T usually
-                     x = x.transpose(1, 2)
+                # Ambiguous, assume (B, F, T) and transpose if F matches better?
+                # Or just assume standard (B, F, T) coming from AudioProcessor
+                if x.size(1) < x.size(2):  # Heuristic: F < T usually
+                    x = x.transpose(1, 2)
 
         # LSTM forward
         lstm_out, (h_n, c_n) = self.lstm(x)
@@ -309,9 +303,7 @@ class GRUWakeword(nn.Module):
 
         # Output layer
         gru_output_size = hidden_size * 2 if bidirectional else hidden_size
-        self.fc = nn.Sequential(
-            nn.Dropout(dropout), nn.Linear(gru_output_size, num_classes)
-        )
+        self.fc = nn.Sequential(nn.Dropout(dropout), nn.Linear(gru_output_size, num_classes))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -325,12 +317,12 @@ class GRUWakeword(nn.Module):
         """
         # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
         # RNN expects (Batch, Time, Features)
-        
+
         # If 4D input (B, C, F, T)
         if x.dim() == 4:
             if x.size(1) == 1:
                 x = x.squeeze(1)
-        
+
         # Now x is likely 3D (B, F, T) or (B, T, F)
         if x.dim() == 3:
             # Check if we need to transpose
@@ -342,9 +334,9 @@ class GRUWakeword(nn.Module):
                 # Is (B, F, T) -> Transpose to (B, T, F)
                 x = x.transpose(1, 2)
             else:
-                 # Ambiguous, assume (B, F, T) and transpose if F matches better?
-                 if x.size(1) < x.size(2): # Heuristic: F < T usually
-                     x = x.transpose(1, 2)
+                # Ambiguous, assume (B, F, T) and transpose if F matches better?
+                if x.size(1) < x.size(2):  # Heuristic: F < T usually
+                    x = x.transpose(1, 2)
 
         # GRU forward
         gru_out, h_n = self.gru(x)
@@ -466,11 +458,7 @@ class TemporalBlock(nn.Module):
         self.dropout2 = nn.Dropout(dropout)
 
         # Downsample for residual connection if needed
-        self.downsample = (
-            nn.Conv1d(in_channels, out_channels, 1)
-            if in_channels != out_channels
-            else None
-        )
+        self.downsample = nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels else None
         self.relu = nn.ReLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -542,20 +530,20 @@ class TCNWakeword(nn.Module):
         """
         # Input shape: (Batch, Channels, Time, Freq) or (Batch, Channels, Freq, Time)
         # TCN expects (Batch, Channels, Length)
-        
+
         # If 4D input (B, C, F, T) or (B, C, T, F)
         if x.dim() == 4:
             # Assuming (B, 1, F, T) standard from AudioProcessor
             # We want to treat Freq as channels for TCN? Or just flatten?
             # Usually TCN for audio takes (B, InputSize, Time)
-            
+
             # If shape is (B, 1, F, T) -> squeeze -> (B, F, T)
             if x.size(1) == 1:
                 x = x.squeeze(1)
-            
+
         # Now x is likely 3D (B, F, T) or (B, T, F)
         # We need (B, InputSize, Time) where InputSize matches self.tcn.input_size
-        
+
         if x.dim() == 3:
             # Check which dimension matches input_size
             if x.size(1) == self.input_size:
@@ -566,7 +554,7 @@ class TCNWakeword(nn.Module):
                 x = x.transpose(1, 2)
             else:
                 # Ambiguous or mismatch, try to infer from common shapes
-                # If neither matches, we might have a problem, but let's assume 
+                # If neither matches, we might have a problem, but let's assume
                 # standard (B, F, T) is what we want if F is closer to input_size
                 pass
 
@@ -585,6 +573,7 @@ class TinyConvWakeword(nn.Module):
     Size: ~50KB parameters
     Compute: ~2M FLOPs
     """
+
     def __init__(self, num_classes: int = 2, input_channels: int = 1, dropout: float = 0.3, **kwargs: Any) -> None:
         super().__init__()
         self.features = nn.Sequential(
@@ -592,29 +581,22 @@ class TinyConvWakeword(nn.Module):
             nn.Conv2d(input_channels, 16, kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
-            
             # Block 2
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
-            
             # Block 3 (Depthwise Separable mostly for efficiency, here just standard small)
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            
             # Block 4
             nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
         )
-        
+
         self.pool = nn.AdaptiveAvgPool2d(1)
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Dropout(dropout),
-            nn.Linear(64, num_classes)
-        )
+        self.classifier = nn.Sequential(nn.Flatten(), nn.Dropout(dropout), nn.Linear(64, num_classes))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
@@ -684,9 +666,7 @@ class CDDNNWakeword(nn.Module):
         return x
 
 
-def create_model(
-    architecture: str, num_classes: int = 2, pretrained: bool = False, **kwargs: Any
-) -> nn.Module:
+def create_model(architecture: str, num_classes: int = 2, pretrained: bool = False, **kwargs: Any) -> nn.Module:
     """
     Factory function to create models
 

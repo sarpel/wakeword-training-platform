@@ -2,6 +2,7 @@
 Loss Functions for Wakeword Detection
 Includes: Cross Entropy with Label Smoothing, Focal Loss
 """
+
 import logging
 from typing import Optional, cast
 
@@ -57,9 +58,7 @@ class LabelSmoothingCrossEntropy(nn.Module):
         target_one_hot = F.one_hot(target, num_classes).float()
 
         # Apply label smoothing
-        smooth_target = target_one_hot * self.confidence + (1 - target_one_hot) * (
-            self.smoothing / (num_classes - 1)
-        )
+        smooth_target = target_one_hot * self.confidence + (1 - target_one_hot) * (self.smoothing / (num_classes - 1))
 
         # Calculate loss
         loss = -torch.sum(smooth_target * log_probs, dim=-1)
@@ -108,9 +107,7 @@ class FocalLoss(nn.Module):
 
         # Guard: Don't use both alpha and class_weights simultaneously
         if alpha is not None and weight is not None:
-            logger.warning(
-                "Both alpha and class_weights provided. Using class_weights only, ignoring alpha."
-            )
+            logger.warning("Both alpha and class_weights provided. Using class_weights only, ignoring alpha.")
             self.alpha: Optional[float] = None
             self.weight: Optional[torch.Tensor] = weight
         else:
@@ -198,7 +195,7 @@ class TripletLoss(nn.Module):
         """Compute pairwise distance matrix"""
         # embeddings: (batch_size, embed_dim)
         # Return: (batch_size, batch_size)
-        
+
         if self.distance_metric == "euclidean":
             # ||a - b||^2 = ||a||^2 + ||b||^2 - 2<a, b>
             dot_product = torch.matmul(embeddings, embeddings.t())
@@ -207,12 +204,12 @@ class TripletLoss(nn.Module):
             # Ensure non-negative due to numerical errors
             distances = F.relu(distances)
             return torch.sqrt(distances + 1e-16)  # Add epsilon for stability
-            
+
         elif self.distance_metric == "cosine":
-             # 1 - cos(a, b)
+            # 1 - cos(a, b)
             normalized = F.normalize(embeddings, p=2, dim=1)
             return cast(torch.Tensor, 1 - torch.matmul(normalized, normalized.t()))
-            
+
         else:
             raise ValueError(f"Unknown distance metric: {self.distance_metric}")
 
@@ -229,30 +226,30 @@ class TripletLoss(nn.Module):
         """
         # Get pairwise distances
         dists = self._pairwise_distance(embeddings)
-        
+
         # Create mask for positive and negative pairs
         # mask[i, j] = 1 if target[i] == target[j]
         batch_size = embeddings.size(0)
-        target = target.unsqueeze(1) # (B, 1)
-        mask_pos = target.eq(target.t()) # (B, B)
+        target = target.unsqueeze(1)  # (B, 1)
+        mask_pos = target.eq(target.t())  # (B, B)
         mask_neg = ~mask_pos
-        
+
         # For each anchor, find the hardest positive (max distance)
-        # We multiply by mask to zero out negatives, but we need to handle cases where 
+        # We multiply by mask to zero out negatives, but we need to handle cases where
         # valid positives are smaller than 0 (not possible for distance)
         # Maximize dist(a, p)
         # dists * mask_pos gives distances for positives, 0 for negatives
         hardest_pos_dist = (dists * mask_pos.float()).max(dim=1)[0]
-        
+
         # For each anchor, find the hardest negative (min distance)
         # We add max_dist to positives so they don't interfere with min
         max_dist = dists.max()
         dists_with_penalty = dists + max_dist * mask_pos.float()
         hardest_neg_dist = dists_with_penalty.min(dim=1)[0]
-        
+
         # Calculate Triplet Loss: max(d(a, p) - d(a, n) + margin, 0)
         triplet_loss = F.relu(hardest_pos_dist - hardest_neg_dist + self.margin)
-        
+
         # Return mean loss
         return triplet_loss.mean()
 
@@ -294,25 +291,18 @@ def create_loss_function(
 
     if loss_name == "cross_entropy":
         if label_smoothing > 0:
-            return LabelSmoothingCrossEntropy(
-                smoothing=label_smoothing, weight=class_weights, reduction="mean"
-            )
+            return LabelSmoothingCrossEntropy(smoothing=label_smoothing, weight=class_weights, reduction="mean")
         else:
             return nn.CrossEntropyLoss(weight=class_weights, reduction="mean")
 
     elif loss_name == "focal_loss" or loss_name == "focal":
-        return FocalLoss(
-            alpha=focal_alpha, gamma=focal_gamma, weight=class_weights, reduction="mean"
-        )
+        return FocalLoss(alpha=focal_alpha, gamma=focal_gamma, weight=class_weights, reduction="mean")
 
     elif loss_name == "triplet_loss":
         return TripletLoss(margin=triplet_margin)
 
     else:
-        raise ValueError(
-            f"Unknown loss function: {loss_name}. "
-            f"Supported: cross_entropy, focal_loss, triplet_loss"
-        )
+        raise ValueError(f"Unknown loss function: {loss_name}. " f"Supported: cross_entropy, focal_loss, triplet_loss")
 
 
 if __name__ == "__main__":

@@ -4,18 +4,19 @@ Panel 2: Configuration Management
 - Configuration presets
 - Save/load configuration
 """
+
 import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple, Optional, Any
+from typing import Any, List, Optional, Tuple
 
 import gradio as gr
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.defaults import WakewordConfig, QATConfig, DistillationConfig
+from src.config.defaults import DistillationConfig, QATConfig, WakewordConfig
 from src.config.logger import get_data_logger
 from src.config.presets import get_preset, list_presets
 from src.config.validator import ConfigValidator
@@ -76,7 +77,10 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                             info="Length of audio clips",
                         )
                         n_mfcc = gr.Slider(
-                            minimum=0, maximum=80, value=0, step=1,
+                            minimum=0,
+                            maximum=80,
+                            value=0,
+                            step=1,
                             label="MFCC Coefficients",
                             info="0 to use mel only",
                         )
@@ -84,7 +88,10 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         n_fft = gr.Number(label="FFT Size", value=400)
                         hop_length = gr.Number(label="Hop Length", value=160)
                         n_mels = gr.Slider(
-                            minimum=32, maximum=256, value=40, step=1,
+                            minimum=32,
+                            maximum=256,
+                            value=40,
+                            step=1,
                             label="Mel Bands",
                         )
 
@@ -93,81 +100,49 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     gr.Markdown("Performance: 40-60% faster training for large datasets")
                     with gr.Row():
                         use_precomputed_features_for_training = gr.Checkbox(
-                            label="Use Precomputed NPY", value=True,
-                            info="Load features from .npy files"
+                            label="Use Precomputed NPY", value=True, info="Load features from .npy files"
                         )
                         npy_cache_features = gr.Checkbox(
-                            label="Cache in RAM", value=True,
-                            info="Faster but uses more memory"
+                            label="Cache in RAM", value=True, info="Faster but uses more memory"
                         )
                         fallback_to_audio = gr.Checkbox(
-                            label="Fallback to Audio", value=False,
-                            info="Load raw audio if .npy missing"
+                            label="Fallback to Audio", value=False, info="Load raw audio if .npy missing"
                         )
                     with gr.Row():
-                        npy_feature_dir = gr.Textbox(
-                            label="NPY Directory", value="data/npy"
-                        )
-                        npy_feature_type = gr.Dropdown(
-                            choices=["mel", "mfcc"], value="mel",
-                            label="Feature Type"
-                        )
+                        npy_feature_dir = gr.Textbox(label="NPY Directory", value="data/npy")
+                        npy_feature_type = gr.Dropdown(choices=["mel", "mfcc"], value="mel", label="Feature Type")
 
                 with gr.Group():
                     gr.Markdown("### 🛠️ Augmentation")
-                    
+
                     gr.Markdown("**Time Domain**")
                     with gr.Row():
-                        time_stretch_min = gr.Number(
-                            label="Time Stretch Min", value=0.85, step=0.01
-                        )
-                        time_stretch_max = gr.Number(
-                            label="Time Stretch Max", value=1.15, step=0.01
-                        )
-                        pitch_shift_min = gr.Number(
-                            label="Pitch Shift Min", value=-2, step=1
-                        )
-                        pitch_shift_max = gr.Number(
-                            label="Pitch Shift Max", value=2, step=1
-                        )
-                    
+                        time_stretch_min = gr.Number(label="Time Stretch Min", value=0.85, step=0.01)
+                        time_stretch_max = gr.Number(label="Time Stretch Max", value=1.15, step=0.01)
+                        pitch_shift_min = gr.Number(label="Pitch Shift Min", value=-2, step=1)
+                        pitch_shift_max = gr.Number(label="Pitch Shift Max", value=2, step=1)
+
                     with gr.Row():
                         time_shift_prob = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.4, step=0.1,
-                            label="Time Shift Prob"
+                            minimum=0.0, maximum=1.0, value=0.4, step=0.1, label="Time Shift Prob"
                         )
-                        time_shift_min_ms = gr.Number(
-                            label="Shift Min (ms)", value=-100, step=10
-                        )
-                        time_shift_max_ms = gr.Number(
-                            label="Shift Max (ms)", value=100, step=10
-                        )
+                        time_shift_min_ms = gr.Number(label="Shift Min (ms)", value=-100, step=10)
+                        time_shift_max_ms = gr.Number(label="Shift Max (ms)", value=100, step=10)
 
                     gr.Markdown("**Noise & RIR**")
                     with gr.Row():
                         background_noise_prob = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.4, step=0.05,
-                            label="Bg Noise Prob"
+                            minimum=0.0, maximum=1.0, value=0.4, step=0.05, label="Bg Noise Prob"
                         )
                         noise_snr_min = gr.Number(label="SNR Min (dB)", value=5, step=1)
                         noise_snr_max = gr.Number(label="SNR Max (dB)", value=20, step=1)
-                    
+
                     with gr.Row():
-                        rir_prob = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.25, step=0.05,
-                            label="RIR Prob"
-                        )
-                        rir_dry_wet_min = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.3, step=0.05,
-                            label="Dry/Wet Min"
-                        )
-                        rir_dry_wet_max = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.7, step=0.05,
-                            label="Dry/Wet Max"
-                        )
+                        rir_prob = gr.Slider(minimum=0.0, maximum=1.0, value=0.25, step=0.05, label="RIR Prob")
+                        rir_dry_wet_min = gr.Slider(minimum=0.0, maximum=1.0, value=0.3, step=0.05, label="Dry/Wet Min")
+                        rir_dry_wet_max = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.05, label="Dry/Wet Max")
                         rir_dry_wet_strategy = gr.Dropdown(
-                            choices=["random", "fixed", "adaptive"], value="random",
-                            label="Mix Strategy"
+                            choices=["random", "fixed", "adaptive"], value="random", label="Mix Strategy"
                         )
 
                     gr.Markdown("**SpecAugment**")
@@ -191,10 +166,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                             label="Architecture",
                         )
                         num_classes = gr.Number(label="Classes", value=2)
-                        dropout = gr.Slider(
-                            minimum=0.0, maximum=0.9, value=0.2, step=0.05,
-                            label="Dropout"
-                        )
+                        dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.2, step=0.05, label="Dropout")
 
                     gr.Markdown("**Architecture Specifics**")
                     with gr.Row():
@@ -202,7 +174,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         hidden_size = gr.Number(label="RNN Hidden Size", value=128)
                         num_layers = gr.Slider(minimum=1, maximum=5, value=2, step=1, label="RNN Layers")
                         bidirectional = gr.Checkbox(label="RNN Bidirectional", value=True)
-                    
+
                     with gr.Row():
                         # TCN
                         tcn_num_channels = gr.Textbox(label="TCN Channels", value="64, 128, 256")
@@ -213,26 +185,17 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         # CD-DNN
                         cddnn_hidden_layers = gr.Textbox(label="CD-DNN Layers", value="512, 256, 128")
                         cddnn_context_frames = gr.Number(label="Context Frames", value=50)
-                        cddnn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="CD-DNN Dropout")
+                        cddnn_dropout = gr.Slider(
+                            minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="CD-DNN Dropout"
+                        )
 
                 with gr.Group():
                     gr.Markdown("### 🏋️ Training Loop")
                     with gr.Row():
-                        batch_size = gr.Slider(
-                            minimum=8, maximum=1024, value=32, step=8,
-                            label="Batch Size"
-                        )
-                        epochs = gr.Slider(
-                            minimum=10, maximum=200, value=100, step=5,
-                            label="Epochs"
-                        )
-                        num_workers = gr.Slider(
-                            minimum=0, maximum=32, value=16, step=1,
-                            label="Workers"
-                        )
-                        mixed_precision = gr.Checkbox(
-                            label="Mixed Precision (FP16)", value=True
-                        )
+                        batch_size = gr.Slider(minimum=8, maximum=1024, value=32, step=8, label="Batch Size")
+                        epochs = gr.Slider(minimum=10, maximum=200, value=100, step=5, label="Epochs")
+                        num_workers = gr.Slider(minimum=0, maximum=32, value=16, step=1, label="Workers")
+                        mixed_precision = gr.Checkbox(label="Mixed Precision (FP16)", value=True)
 
                 with gr.Group():
                     gr.Markdown("### 🚀 Advanced Training")
@@ -242,17 +205,14 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         ema_decay = gr.Number(label="EMA Decay", value=0.999, step=0.0001)
                         ema_final_decay = gr.Number(label="EMA Final Decay", value=0.9995, step=0.0001)
                         ema_final_epochs = gr.Number(label="EMA Final Epochs", value=10)
-                    
+
                     with gr.Row():
                         checkpoint_frequency = gr.Dropdown(
                             choices=["every_epoch", "every_5_epochs", "every_10_epochs", "best_only"],
                             value="best_only",
-                            label="Checkpoint Freq"
+                            label="Checkpoint Freq",
                         )
-                        early_stopping = gr.Slider(
-                            minimum=5, maximum=50, value=15, step=1,
-                            label="Early Stopping"
-                        )
+                        early_stopping = gr.Slider(minimum=5, maximum=50, value=15, step=1, label="Early Stopping")
                         metric_window_size = gr.Number(label="Metric Window", value=100)
 
             # =================================================================
@@ -262,18 +222,9 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 with gr.Group():
                     gr.Markdown("### 📉 Optimizer & Scheduler")
                     with gr.Row():
-                        optimizer = gr.Dropdown(
-                            choices=["adam", "sgd", "adamw"], value="adamw",
-                            label="Optimizer"
-                        )
-                        learning_rate = gr.Number(
-                            label="Learning Rate", value=0.001, step=0.0001,
-                            precision=None
-                        )
-                        weight_decay = gr.Number(
-                            label="Weight Decay", value=1e-4, step=1e-5,
-                            precision=None
-                        )
+                        optimizer = gr.Dropdown(choices=["adam", "sgd", "adamw"], value="adamw", label="Optimizer")
+                        learning_rate = gr.Number(label="Learning Rate", value=0.001, step=0.0001, precision=None)
+                        weight_decay = gr.Number(label="Weight Decay", value=1e-4, step=1e-5, precision=None)
                         gradient_clip = gr.Number(label="Grad Clip", value=1.0, step=0.1)
 
                     with gr.Row():
@@ -283,8 +234,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
 
                     with gr.Row():
                         scheduler = gr.Dropdown(
-                            choices=["cosine", "step", "plateau", "none"], value="cosine",
-                            label="Scheduler"
+                            choices=["cosine", "step", "plateau", "none"], value="cosine", label="Scheduler"
                         )
                         step_size = gr.Number(label="Step Size", value=10)
                         scheduler_gamma = gr.Number(label="Gamma", value=0.5, step=0.1)
@@ -297,32 +247,26 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         loss_function = gr.Dropdown(
                             choices=["cross_entropy", "focal_loss", "triplet_loss"],
                             value="focal_loss",
-                            label="Loss Function"
+                            label="Loss Function",
                         )
                         label_smoothing = gr.Slider(
-                            minimum=0.0, maximum=0.3, value=0.05, step=0.01,
-                            label="Label Smoothing"
+                            minimum=0.0, maximum=0.3, value=0.05, step=0.01, label="Label Smoothing"
                         )
                         class_weights = gr.Dropdown(
-                            choices=["balanced", "none", "custom"], value="balanced",
-                            label="Class Weights"
+                            choices=["balanced", "none", "custom"], value="balanced", label="Class Weights"
                         )
-                        hard_negative_weight = gr.Number(
-                            label="Hard Neg Weight", value=3.0, step=0.1
-                        )
+                        hard_negative_weight = gr.Number(label="Hard Neg Weight", value=3.0, step=0.1)
 
                     with gr.Row():
                         focal_alpha = gr.Number(label="Focal Alpha", value=0.25, step=0.01)
                         focal_gamma = gr.Number(label="Focal Gamma", value=2.0, step=0.1)
                         triplet_margin = gr.Slider(
-                            minimum=0.1, maximum=5.0, value=1.0, step=0.1,
-                            label="Triplet Margin"
+                            minimum=0.1, maximum=5.0, value=1.0, step=0.1, label="Triplet Margin"
                         )
                         sampler_strategy = gr.Dropdown(
-                            choices=["weighted", "balanced", "none"], value="weighted",
-                            label="Sampler"
+                            choices=["weighted", "balanced", "none"], value="weighted", label="Sampler"
                         )
-                    
+
                     with gr.Row():
                         class_weight_min = gr.Number(label="Class Weight Min", value=0.1, step=0.1)
                         class_weight_max = gr.Number(label="Class Weight Max", value=100.0, step=10.0)
@@ -332,26 +276,16 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     with gr.Row():
                         # QAT
                         qat_enabled = gr.Checkbox(label="Enable QAT", value=True)
-                        qat_backend = gr.Dropdown(
-                            choices=["fbgemm", "qnnpack"], value="qnnpack",
-                            label="QAT Backend"
-                        )
+                        qat_backend = gr.Dropdown(choices=["fbgemm", "qnnpack"], value="qnnpack", label="QAT Backend")
                         qat_start_epoch = gr.Number(label="QAT Start Epoch", value=10)
 
                     with gr.Row():
                         # Distillation
                         distillation_enabled = gr.Checkbox(label="Enable Distillation", value=False)
-                        teacher_arch = gr.Dropdown(
-                            choices=["wav2vec2"], value="wav2vec2",
-                            label="Teacher Arch"
-                        )
-                        dist_temp = gr.Slider(
-                            minimum=1.0, maximum=10.0, value=2.0, step=0.5,
-                            label="Distillation Temp"
-                        )
+                        teacher_arch = gr.Dropdown(choices=["wav2vec2"], value="wav2vec2", label="Teacher Arch")
+                        dist_temp = gr.Slider(minimum=1.0, maximum=10.0, value=2.0, step=0.5, label="Distillation Temp")
                         dist_alpha = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.5, step=0.1,
-                            label="Distillation Alpha"
+                            minimum=0.0, maximum=1.0, value=0.5, step=0.1, label="Distillation Alpha"
                         )
 
         gr.Markdown("---")
@@ -376,41 +310,102 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
         # Collect all inputs for easier handling
         all_inputs = [
             # Data (0-5)
-            sample_rate, audio_duration, n_mfcc, n_fft, hop_length, n_mels,
+            sample_rate,
+            audio_duration,
+            n_mfcc,
+            n_fft,
+            hop_length,
+            n_mels,
             # NPY (6-10)
-            use_precomputed_features_for_training, npy_cache_features, fallback_to_audio, npy_feature_dir, npy_feature_type,
+            use_precomputed_features_for_training,
+            npy_cache_features,
+            fallback_to_audio,
+            npy_feature_dir,
+            npy_feature_type,
             # Training (11-14)
-            batch_size, epochs, learning_rate, early_stopping,
+            batch_size,
+            epochs,
+            learning_rate,
+            early_stopping,
             # Model (15-20)
-            architecture, num_classes, dropout, hidden_size, num_layers, bidirectional,
+            architecture,
+            num_classes,
+            dropout,
+            hidden_size,
+            num_layers,
+            bidirectional,
             # Augmentation (21-31)
-            time_stretch_min, time_stretch_max, pitch_shift_min, pitch_shift_max, background_noise_prob, rir_prob, noise_snr_min, noise_snr_max,
-            rir_dry_wet_min, rir_dry_wet_max, rir_dry_wet_strategy,
+            time_stretch_min,
+            time_stretch_max,
+            pitch_shift_min,
+            pitch_shift_max,
+            background_noise_prob,
+            rir_prob,
+            noise_snr_min,
+            noise_snr_max,
+            rir_dry_wet_min,
+            rir_dry_wet_max,
+            rir_dry_wet_strategy,
             # SpecAugment (32-36)
-            use_spec_augment, freq_mask_param, time_mask_param, n_freq_masks, n_time_masks,
+            use_spec_augment,
+            freq_mask_param,
+            time_mask_param,
+            n_freq_masks,
+            n_time_masks,
             # Optimizer (37-48)
-            optimizer, scheduler, weight_decay, gradient_clip, mixed_precision,
-            momentum, warmup_epochs, min_lr, step_size, scheduler_gamma, scheduler_patience, scheduler_factor,
+            optimizer,
+            scheduler,
+            weight_decay,
+            gradient_clip,
+            mixed_precision,
+            momentum,
+            warmup_epochs,
+            min_lr,
+            step_size,
+            scheduler_gamma,
+            scheduler_patience,
+            scheduler_factor,
             # Workers (49)
             num_workers,
             # Loss (50-56)
-            loss_function, label_smoothing, class_weights, hard_negative_weight,
-            focal_alpha, focal_gamma, sampler_strategy,
+            loss_function,
+            label_smoothing,
+            class_weights,
+            hard_negative_weight,
+            focal_alpha,
+            focal_gamma,
+            sampler_strategy,
             # Checkpoint (57)
             checkpoint_frequency,
             # Time Shift (58-60)
-            time_shift_prob, time_shift_min_ms, time_shift_max_ms,
+            time_shift_prob,
+            time_shift_min_ms,
+            time_shift_max_ms,
             # Triplet (61)
             triplet_margin,
             # QAT (62-64)
-            qat_enabled, qat_backend, qat_start_epoch,
+            qat_enabled,
+            qat_backend,
+            qat_start_epoch,
             # Distillation (65-68)
-            distillation_enabled, teacher_arch, dist_temp, dist_alpha,
+            distillation_enabled,
+            teacher_arch,
+            dist_temp,
+            dist_alpha,
             # New Params (69-82)
-            use_ema, ema_decay, ema_final_decay, ema_final_epochs, metric_window_size,
-            tcn_num_channels, tcn_kernel_size, tcn_dropout,
-            cddnn_hidden_layers, cddnn_context_frames, cddnn_dropout,
-            class_weight_min, class_weight_max
+            use_ema,
+            ema_decay,
+            ema_final_decay,
+            ema_final_epochs,
+            metric_window_size,
+            tcn_num_channels,
+            tcn_kernel_size,
+            tcn_dropout,
+            cddnn_hidden_layers,
+            cddnn_context_frames,
+            cddnn_dropout,
+            class_weight_min,
+            class_weight_max,
         ]
 
         # Event handlers with full implementation
@@ -419,12 +414,12 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
             from src.config.defaults import (
                 AugmentationConfig,
                 DataConfig,
+                DistillationConfig,
                 LossConfig,
                 ModelConfig,
                 OptimizerConfig,
-                TrainingConfig,
                 QATConfig,
-                DistillationConfig,
+                TrainingConfig,
             )
 
             return WakewordConfig(
@@ -520,16 +515,16 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     class_weight_max=float(params[81]),
                 ),
                 qat=QATConfig(
-                    enabled=bool(params[62]), 
+                    enabled=bool(params[62]),
                     backend=params[63],
                     start_epoch=int(params[64]),
                 ),
                 distillation=DistillationConfig(
-                    enabled=bool(params[65]), 
-                    teacher_architecture=params[66], 
-                    temperature=float(params[67]), 
-                    alpha=float(params[68])
-                )
+                    enabled=bool(params[65]),
+                    teacher_architecture=params[66],
+                    temperature=float(params[67]),
+                    alpha=float(params[68]),
+                ),
             )
 
         def _config_to_params(config: WakewordConfig) -> List[Any]:
@@ -664,10 +659,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 error_msg = f"Error loading preset: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple(
-                    [None] * len(all_inputs)
-                    + [f"❌ {error_msg}", gr.update(visible=False)]
-                )
+                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
 
         def update_config_handler(*params: Any) -> str:
             """Update current configuration from UI"""
@@ -729,15 +721,13 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 config_dir = Path("configs")
                 if not config_dir.exists():
                     return tuple(
-                        [None] * len(all_inputs)
-                        + ["❌ No saved configurations found", gr.update(visible=False)]
+                        [None] * len(all_inputs) + ["❌ No saved configurations found", gr.update(visible=False)]
                     )
 
                 config_files = sorted(config_dir.glob("config_*.yaml"), reverse=True)
                 if not config_files:
                     return tuple(
-                        [None] * len(all_inputs)
-                        + ["❌ No saved configurations found", gr.update(visible=False)]
+                        [None] * len(all_inputs) + ["❌ No saved configurations found", gr.update(visible=False)]
                     )
 
                 # Load most recent
@@ -764,10 +754,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 error_msg = f"Error loading configuration: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple(
-                    [None] * len(all_inputs)
-                    + [f"❌ {error_msg}", gr.update(visible=False)]
-                )
+                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
 
         def reset_config_handler() -> Tuple:
             """Reset to default configuration"""
@@ -797,10 +784,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 error_msg = f"Error resetting configuration: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple(
-                    [None] * len(all_inputs)
-                    + [f"❌ {error_msg}", gr.update(visible=False)]
-                )
+                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
 
         def validate_config_handler(*params: Any) -> Tuple[str, str]:
             """Validate current configuration"""
@@ -822,9 +806,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 else:
                     status = f"❌ Configuration has {len([i for i in issues if i.severity == 'error'])} errors"
 
-                logger.info(
-                    f"Validation complete: {'valid' if is_valid else 'invalid'}"
-                )
+                logger.info(f"Validation complete: {'valid' if is_valid else 'invalid'}")
 
                 return status, gr.update(value=report, visible=True)
 
@@ -849,9 +831,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
             outputs=all_inputs + [config_status, validation_report],
         )
 
-        save_config_btn.click(
-            fn=save_config_handler, inputs=all_inputs, outputs=[config_status]
-        )
+        save_config_btn.click(fn=save_config_handler, inputs=all_inputs, outputs=[config_status])
 
         load_config_btn.click(
             fn=load_config_handler,

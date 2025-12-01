@@ -2,18 +2,19 @@
 Configuration Presets for Different Use Cases
 Provides optimized configurations for various scenarios
 """
+
 from typing import Callable, Dict
 
 from src.config.defaults import (
     AugmentationConfig,
     DataConfig,
+    DistillationConfig,
     LossConfig,
     ModelConfig,
     OptimizerConfig,
+    QATConfig,
     TrainingConfig,
     WakewordConfig,
-    QATConfig,
-    DistillationConfig,
 )
 
 
@@ -48,9 +49,7 @@ def get_small_dataset_preset() -> WakewordConfig:
     return WakewordConfig(
         config_name="small_dataset",
         description="Optimized for small datasets (<10k samples) with aggressive augmentation",
-        data=DataConfig(
-            sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64
-        ),
+        data=DataConfig(sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64),
         training=TrainingConfig(
             batch_size=16,  # Smaller batch for limited data
             epochs=100,  # More epochs
@@ -105,9 +104,7 @@ def get_large_dataset_preset() -> WakewordConfig:
     return WakewordConfig(
         config_name="large_dataset",
         description="Optimized for large datasets (>100k samples) with faster training",
-        data=DataConfig(
-            sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64
-        ),
+        data=DataConfig(sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64),
         training=TrainingConfig(
             batch_size=128,  # Larger batch for better GPU utilization
             epochs=30,  # Fewer epochs needed with large data
@@ -442,9 +439,7 @@ def get_preset(preset_name: str) -> WakewordConfig:
     """
     if preset_name not in PRESETS:
         available = ", ".join(PRESETS.keys())
-        raise ValueError(
-            f"Preset '{preset_name}' not found. " f"Available presets: {available}"
-        )
+        raise ValueError(f"Preset '{preset_name}' not found. " f"Available presets: {available}")
 
     return PRESETS[preset_name]()
 

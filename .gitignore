@@ -28,4 +28,3 @@ configs/
 wakeword_training_platform.egg-info/
 .vscode/
 server/venv/
-

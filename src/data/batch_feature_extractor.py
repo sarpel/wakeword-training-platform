@@ -2,8 +2,9 @@
 Batch Feature Extraction for NPY Generation
 Extracts features from entire datasets and saves as .npy files
 """
+
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Any
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import structlog
@@ -45,9 +46,7 @@ class BatchFeatureExtractor:
         )
 
         # Initialize audio processor
-        self.audio_processor = AudioProcessor(
-            target_sr=config.sample_rate, target_duration=config.audio_duration
-        )
+        self.audio_processor = AudioProcessor(target_sr=config.sample_rate, target_duration=config.audio_duration)
 
         logger.info(f"BatchFeatureExtractor initialized on {self.device}")
 
@@ -85,9 +84,7 @@ class BatchFeatureExtractor:
         logger.info(f"Extracting features for {len(audio_files)} files...")
 
         # Process in batches
-        for i in tqdm(
-            range(0, len(audio_files), batch_size), desc="Extracting features"
-        ):
+        for i in tqdm(range(0, len(audio_files), batch_size), desc="Extracting features"):
             batch_files = audio_files[i : i + batch_size]
 
             # Load audio batch
@@ -103,17 +100,13 @@ class BatchFeatureExtractor:
                 except Exception as e:
                     logger.error(f"Failed to load {audio_file}: {e}")
                     results["failed_count"] += 1
-                    results["failed_files"].append(
-                        {"path": str(audio_file), "error": str(e)}
-                    )
+                    results["failed_files"].append({"path": str(audio_file), "error": str(e)})
 
             if not audio_batch:
                 continue
 
             # Convert to tensor batch
-            audio_tensor = (
-                torch.from_numpy(np.stack(audio_batch)).float().to(self.device)
-            )
+            audio_tensor = torch.from_numpy(np.stack(audio_batch)).float().to(self.device)
 
             # Extract features (on GPU if available)
             with torch.no_grad():
@@ -143,12 +136,8 @@ class BatchFeatureExtractor:
                             # Preserve everything from category onwards
                             # Example: data/raw/positive/hey_cut/en/file.wav
                             #       -> data/raw/npy/positive/hey_cut/en/file.npy
-                            relative_parts = parts[
-                                category_idx:
-                            ]  # positive/hey_cut/en/file.wav
-                            output_path = output_dir.joinpath(
-                                *relative_parts
-                            ).with_suffix(".npy")
+                            relative_parts = parts[category_idx:]  # positive/hey_cut/en/file.wav
+                            output_path = output_dir.joinpath(*relative_parts).with_suffix(".npy")
                         else:
                             # Fallback: just use filename
                             output_path = output_dir / (audio_file.stem + ".npy")
@@ -168,9 +157,7 @@ class BatchFeatureExtractor:
                 except Exception as e:
                     logger.error(f"Failed to save {output_path}: {e}")
                     results["failed_count"] += 1
-                    results["failed_files"].append(
-                        {"path": str(audio_file), "error": f"Save failed: {str(e)}"}
-                    )
+                    results["failed_files"].append({"path": str(audio_file), "error": f"Save failed: {str(e)}"})
 
             # Update progress
             if progress_callback:
@@ -178,10 +165,7 @@ class BatchFeatureExtractor:
                 msg = f"{results['success_count']} extracted, {results['failed_count']} failed"
                 progress_callback(current, len(audio_files), msg)
 
-        logger.info(
-            f"Extraction complete: {results['success_count']} success, "
-            f"{results['failed_count']} failed"
-        )
+        logger.info(f"Extraction complete: {results['success_count']} success, " f"{results['failed_count']} failed")
 
         return results
 
@@ -216,9 +200,7 @@ class BatchFeatureExtractor:
             for file_info in manifest["files"]:
                 all_audio_files.append(Path(file_info["path"]))
 
-        logger.info(
-            f"Found {len(all_audio_files)} files across {len(manifest_files)} manifests"
-        )
+        logger.info(f"Found {len(all_audio_files)} files across {len(manifest_files)} manifests")
 
         # Extract features
         return self.extract_dataset(
@@ -237,9 +219,7 @@ if __name__ == "__main__":
     # Test with default config
     config = DataConfig()
 
-    extractor = BatchFeatureExtractor(
-        config=config, device="cuda" if torch.cuda.is_available() else "cpu"
-    )
+    extractor = BatchFeatureExtractor(config=config, device="cuda" if torch.cuda.is_available() else "cpu")
 
     print(f"Extractor initialized on: {extractor.device}")
     print("Batch Feature Extractor module loaded successfully")

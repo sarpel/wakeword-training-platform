@@ -1,4 +1,5 @@
-from typing import Dict, TYPE_CHECKING, Sized, cast, List, Tuple, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Sized, Tuple, cast
+
 if TYPE_CHECKING:
     from src.evaluation.evaluator import ModelEvaluator
     from torch.utils.data import Dataset
@@ -32,7 +33,9 @@ def evaluate_with_advanced_metrics(
     """
     from torch.utils.data import DataLoader
 
-    def collate_fn(batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
+    def collate_fn(
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
         features = torch.stack(features)
@@ -63,7 +66,7 @@ def evaluate_with_advanced_metrics(
             # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
             if inputs.ndim <= 3:
                 inputs = evaluator.audio_processor(inputs)
-            
+
             # Apply memory format optimization
             inputs = inputs.to(memory_format=torch.channels_last)
 

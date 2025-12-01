@@ -2,6 +2,7 @@
 Main Gradio Application
 Wakeword Training Platform with 6 panels
 """
+
 import warnings
 
 # Suppress specific warnings
@@ -44,30 +45,30 @@ def suppress_windows_asyncio_errors() -> None:
         def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
             # Check if this is the specific harmless error
             exception = context.get("exception")
-            
+
             # Check for ConnectionResetError (WinError 10054)
             # This is very common on Windows when clients disconnect abruptly
             if isinstance(exception, ConnectionResetError):
                 return
-                
+
             # Check for OSError with 10054
-            if isinstance(exception, OSError) and getattr(exception, 'winerror', 0) == 10054:
+            if isinstance(exception, OSError) and getattr(exception, "winerror", 0) == 10054:
                 return
-                
+
             # Check message for ProactorBasePipeTransport
             message = context.get("message", "")
             if "_ProactorBasePipeTransport" in message:
                 return
-                
+
             # Check handle string for ProactorBasePipeTransport
             # The error often comes from _call_connection_lost
             handle = context.get("handle")
             if handle and "_ProactorBasePipeTransport" in str(handle):
                 return
-                
+
             if "source_traceback" in context:
-                 if "_call_connection_lost" in str(context["source_traceback"]):
-                     return
+                if "_call_connection_lost" in str(context["source_traceback"]):
+                    return
 
             # For other exceptions, use default handling
             loop.default_exception_handler(context)
@@ -185,30 +186,30 @@ def create_app() -> gr.Blocks:
         GPU-accelerated with PyTorch & CUDA
         """
         )
-        
+
         # Wire up the Auto-Start Pipeline button from Panel 1
         # We access the button and handler exposed by create_dataset_panel
         # and connect inputs from other panels that we now have access to.
         # Note: create_training_panel returns a Block, but we didn't modify it to expose inputs.
         # However, we can access components if they were assigned to the block object or returned.
-        
-        # Actually, create_training_panel just returns the `panel` object. 
+
+        # Actually, create_training_panel just returns the `panel` object.
         # We cannot easily access internal components of `panel_training` unless we modify it too.
         # BUT, for the "Auto-Start" button, we assumed default values or passed state.
-        # 
+        #
         # Let's look at `panel_dataset.auto_start_handler` signature.
-        # It requires Training Params. 
-        # 
+        # It requires Training Params.
+        #
         # Since we cannot get the *live* values from Panel 3 components (because we don't have references to them),
         # we will use sensible defaults for the pipeline, OR rely on the "Loaded Config" step in the handler
         # which tries to load `configs/wakeword_config.yaml`.
         #
         # So we just need to wire the button to the handler, passing the Panel 1 inputs we DO have references to (via panel_dataset.inputs)
         # and hardcode/default the others, trusting the handler's config loading logic.
-        
+
         if hasattr(panel_dataset, "auto_start_btn"):
             ds_inputs = panel_dataset.inputs
-            
+
             # Define default states for training parameters
             s_use_cmvn = gr.State(True)
             s_use_ema = gr.State(True)
@@ -250,9 +251,9 @@ def create_app() -> gr.Blocks:
                     s_use_wandb,
                     s_wandb_proj,
                     panel_training.wandb_api_key,  # Use the component from Panel 3
-                    global_state,    # The global state dict
+                    global_state,  # The global state dict
                 ],
-                outputs=[panel_dataset.auto_log]
+                outputs=[panel_dataset.auto_log],
             )
 
     logger.info("Application created successfully")

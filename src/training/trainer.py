@@ -6,7 +6,7 @@ GPU-accelerated training with checkpointing, early stopping, and metrics trackin
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 
 if TYPE_CHECKING:
     from src.config.defaults import WakewordConfig
@@ -21,6 +21,9 @@ logger = structlog.get_logger(__name__)
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
 
+import shutil
+import threading
+
 from src.config.cuda_utils import enforce_cuda
 from src.config.seed_utils import set_seed
 from src.data.augmentation import SpecAugment
@@ -29,14 +32,8 @@ from src.models.losses import create_loss_function
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.ema import EMA, EMAScheduler
 from src.training.metrics import MetricMonitor, MetricsTracker
-from src.training.optimizer_factory import (
-    create_grad_scaler,
-    create_optimizer_and_scheduler,
-    get_learning_rate,
-)
+from src.training.optimizer_factory import create_grad_scaler, create_optimizer_and_scheduler, get_learning_rate
 from src.training.training_loop import train_epoch, validate_epoch
-import threading
-import shutil
 
 
 @dataclass
@@ -88,13 +85,13 @@ class Trainer:
 
         self.device = device
         self.config = config
-        
+
         # Determine EMA settings (Argument > Config > Default)
         if use_ema is not None:
             self.use_ema = use_ema
         else:
             self.use_ema = getattr(config.training, "use_ema", True)
-            
+
         if ema_decay is not None:
             ema_decay = ema_decay
         else:
@@ -119,11 +116,10 @@ class Trainer:
 
         # NEW: Audio Processor for GPU-based augmentation/feature extraction
         from src.config.paths import paths
+
         cmvn_path = paths.CMVN_STATS
         self.audio_processor = AudioProcessor(
-            config=config,
-            cmvn_path=cmvn_path if cmvn_path.exists() else None,
-            device=device
+            config=config, cmvn_path=cmvn_path if cmvn_path.exists() else None, device=device
         )
 
         # Create loss function
@@ -138,9 +134,7 @@ class Trainer:
         ).to(device)
 
         # Create optimizer and scheduler (self.model ile kur)
-        self.optimizer, self.scheduler = create_optimizer_and_scheduler(
-            self.model, config
-        )  # CHANGE
+        self.optimizer, self.scheduler = create_optimizer_and_scheduler(self.model, config)  # CHANGE
 
         # Mixed precision training (Only on CUDA)
         self.use_mixed_precision = config.optimizer.mixed_precision and device == "cuda"
@@ -206,8 +200,6 @@ class Trainer:
         logger.info(f"  SpecAugment: {self.use_spec_augment}")
         logger.info(f"  EMA: {self.use_ema}")
 
-
-
     def train(
         self,
         start_epoch: int = 0,
@@ -228,9 +220,7 @@ class Trainer:
         set_seed(seed, deterministic=deterministic)
 
         if resume_from is not None:
-            self.checkpoint_manager.load_checkpoint(
-                resume_from, self.model, self.optimizer, self.device
-            )
+            self.checkpoint_manager.load_checkpoint(resume_from, self.model, self.optimizer, self.device)
             start_epoch = self.state.epoch + 1
             logger.info(f"Resumed from checkpoint at epoch {start_epoch}")
 
@@ -268,9 +258,7 @@ class Trainer:
 
                 # Update EMA decay schedule
                 if self.ema_scheduler is not None:
-                    ema_decay = self.ema_scheduler.step(
-                        epoch, self.config.training.epochs
-                    )
+                    ema_decay = self.ema_scheduler.step(epoch, self.config.training.epochs)
                     logger.debug(f"EMA decay updated to {ema_decay:.5f}")
 
                 history["train_loss"].append(train_loss)
@@ -284,13 +272,9 @@ class Trainer:
 
                 self.val_metrics_tracker.save_epoch_metrics(val_metrics)
 
-                improved = self._check_improvement(
-                    val_loss, val_metrics.f1_score, val_metrics.fpr
-                )
+                improved = self._check_improvement(val_loss, val_metrics.f1_score, val_metrics.fpr)
 
-                self.checkpoint_manager.save_checkpoint(
-                    self, epoch, val_loss, val_metrics, improved
-                )
+                self.checkpoint_manager.save_checkpoint(self, epoch, val_loss, val_metrics, improved)
 
                 if self._should_stop_early():
                     logger.info(f"Early stopping triggered after {epoch+1} epochs")
@@ -300,9 +284,7 @@ class Trainer:
                     logger.info(f"Training stopped by user after {epoch+1} epochs")
                     break
 
-                self._call_callbacks(
-                    "on_epoch_end", epoch, train_loss, val_loss, val_metrics
-                )
+                self._call_callbacks("on_epoch_end", epoch, train_loss, val_loss, val_metrics)
 
                 logger.info(f"Epoch {epoch+1}/{self.config.training.epochs}")
                 logger.info(f"  Train: Loss={train_loss:.4f}, Acc={train_acc:.4f}")
@@ -328,17 +310,11 @@ class Trainer:
         logger.info(f"  Best val FPR: {self.state.best_val_fpr:.4f}")
         logger.info("=" * 80)
 
-        best_f1_epoch, best_f1_metrics = self.val_metrics_tracker.get_best_epoch(
-            "f1_score"
-        )
-        best_fpr_epoch, best_fpr_metrics = self.val_metrics_tracker.get_best_epoch(
-            "fpr"
-        )
+        best_f1_epoch, best_f1_metrics = self.val_metrics_tracker.get_best_epoch("f1_score")
+        best_fpr_epoch, best_fpr_metrics = self.val_metrics_tracker.get_best_epoch("fpr")
 
         if best_f1_metrics:
-            logger.info(
-                f"\nBest F1 Score: {best_f1_metrics.f1_score:.4f} (Epoch {best_f1_epoch+1})"
-            )
+            logger.info(f"\nBest F1 Score: {best_f1_metrics.f1_score:.4f} (Epoch {best_f1_epoch+1})")
         if best_fpr_metrics:
             logger.info(f"Best FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
 
@@ -366,9 +342,7 @@ class Trainer:
                 except TypeError:
                     self.scheduler.step()
 
-    def _check_improvement(
-        self, val_loss: float, val_f1: float, val_fpr: float
-    ) -> bool:
+    def _check_improvement(self, val_loss: float, val_f1: float, val_fpr: float) -> bool:
         """Check if model improved based on primary metric (val_f1)
         Simplified to use single primary metric for early stopping
         """
@@ -410,26 +384,27 @@ class Trainer:
         self.stop_event.set()
 
     def compute_loss(
-        self, 
-        outputs: torch.Tensor, 
-        targets: torch.Tensor, 
+        self,
+        outputs: torch.Tensor,
+        targets: torch.Tensor,
         inputs: Optional[torch.Tensor] = None,
-        processed_inputs: Optional[torch.Tensor] = None
+        processed_inputs: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Compute loss. Can be overridden for distillation or custom logic.
-        
+
         Args:
             outputs: Model predictions
             targets: Ground truth labels
             inputs: Original raw inputs (optional, for distillation/teacher)
             processed_inputs: Processed inputs/features (optional, for embedding extraction)
-            
+
         Returns:
             Loss tensor
         """
         # Check if using TripletLoss
         from src.models.losses import TripletLoss
+
         if isinstance(self.criterion, TripletLoss):
             # For TripletLoss, we need embeddings, not logits.
             # Re-compute embeddings using processed_inputs if available.
@@ -477,12 +452,11 @@ if __name__ == "__main__":
     train_loader = DataLoader(dummy_dataset, batch_size=8, shuffle=True)
     val_loader = DataLoader(dummy_dataset, batch_size=8, shuffle=False)
 
-    print(
-        f"✅ Created data loaders: {len(train_loader)} train batches, {len(val_loader)} val batches"
-    )
+    print(f"✅ Created data loaders: {len(train_loader)} train batches, {len(val_loader)} val batches")
 
     # Create dummy checkpoint manager
     from src.training.checkpoint_manager import CheckpointManager
+
     checkpoint_manager = CheckpointManager(checkpoint_dir=Path("test_checkpoints"))
 
     # Create trainer

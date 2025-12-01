@@ -2,8 +2,9 @@
 Audio Utilities for Wakeword Training Platform
 File validation, loading, and basic processing
 """
+
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import librosa
 import numpy as np
@@ -165,15 +166,13 @@ class AudioValidator:
             warnings.append(f"Very low sample rate: {metadata['sample_rate']}Hz")
             quality_score -= 30
         elif metadata["sample_rate"] < 16000:
-            warnings.append(
-                f"Low sample rate: {metadata['sample_rate']}Hz (16kHz recommended)"
-            )
+            warnings.append(f"Low sample rate: {metadata['sample_rate']}Hz (16kHz recommended)")
             quality_score -= 10
 
         # Check duration
         # RIRs are naturally short (impulses), so we allow down to 0.1s
         min_duration = 0.1 if is_rir else 0.4
-        
+
         if metadata["duration"] < min_duration:
             should_exclude = True
             exclude_reason = f"Too short: {metadata['duration']:.2f}s (min {min_duration}s)"
@@ -183,14 +182,10 @@ class AudioValidator:
             exclude_reason = f"Too long: {metadata['duration']:.2f}s (max 2.5s for ESP32)"
             quality_score = 0
         elif metadata["duration"] < 0.3 and not is_rir:
-            warnings.append(
-                f"Short duration: {metadata['duration']:.2f}s (0.6s+ recommended)"
-            )
+            warnings.append(f"Short duration: {metadata['duration']:.2f}s (0.6s+ recommended)")
             quality_score -= 10
         elif metadata["duration"] > 1.5:
-            warnings.append(
-                f"Long duration: {metadata['duration']:.2f}s (1.5s recommended for 'Hey Katya')"
-            )
+            warnings.append(f"Long duration: {metadata['duration']:.2f}s (1.5s recommended for 'Hey Katya')")
             quality_score -= 5
 
         # Check channels (Informational only, not a quality penalty)
@@ -234,9 +229,7 @@ class AudioProcessor:
             Processed audio array (mono, target_sr, target_duration)
         """
         # Load audio
-        audio, sr = AudioValidator.load_audio(
-            file_path, target_sr=self.target_sr, mono=True
-        )
+        audio, sr = AudioValidator.load_audio(file_path, target_sr=self.target_sr, mono=True)
 
         # Normalize length
         audio = self._normalize_length(audio, pad_mode)
@@ -278,9 +271,7 @@ class AudioProcessor:
                 # Cast pad_mode to satisfy numpy's type requirements
                 return np.pad(audio, (pad_left, pad_right), mode=pad_mode)  # type: ignore[no-any-return, arg-type, call-overload]
 
-    def _normalize_amplitude(
-        self, audio: np.ndarray, target_level: float = 0.3
-    ) -> np.ndarray:
+    def _normalize_amplitude(self, audio: np.ndarray, target_level: float = 0.3) -> np.ndarray:
         """
         Normalize audio amplitude
 
@@ -325,9 +316,7 @@ class AudioProcessor:
             Trimmed audio array
         """
         # librosa.effects.trim returns (trimmed_audio, index)
-        trimmed_audio, _ = librosa.effects.trim(
-            audio, top_db=top_db, frame_length=frame_length, hop_length=hop_length
-        )
+        trimmed_audio, _ = librosa.effects.trim(audio, top_db=top_db, frame_length=frame_length, hop_length=hop_length)
         return trimmed_audio
 
 

@@ -2,6 +2,7 @@
 Metrics Tracking for Wakeword Detection
 Includes: Accuracy, Precision, Recall, F1, FPR, FNR, Confusion Matrix
 """
+
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -79,9 +80,7 @@ class MetricsCalculator:
         """
         self.device = device
 
-    def calculate(
-        self, predictions: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5
-    ) -> MetricResults:
+    def calculate(self, predictions: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5) -> MetricResults:
         """
         Calculate all metrics from predictions and targets
 
@@ -124,11 +123,7 @@ class MetricsCalculator:
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
 
-        f1 = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
         # False Positive Rate (FPR): FP / (FP + TN)
         # How often we incorrectly activate on negative samples
@@ -154,9 +149,7 @@ class MetricsCalculator:
             negative_samples=negative_samples,
         )
 
-    def confusion_matrix(
-        self, predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 2
-    ) -> torch.Tensor:
+    def confusion_matrix(self, predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 2) -> torch.Tensor:
         """
         Calculate confusion matrix
 
@@ -175,9 +168,7 @@ class MetricsCalculator:
             pred_classes = predictions.long()
 
         # Create confusion matrix
-        conf_matrix = torch.zeros(
-            num_classes, num_classes, dtype=torch.long, device=self.device
-        )
+        conf_matrix = torch.zeros(num_classes, num_classes, dtype=torch.long, device=self.device)
 
         for t, p in zip(targets, pred_classes):
             conf_matrix[t.long(), p.long()] += 1
@@ -331,9 +322,7 @@ class MetricsTracker:
             else "\nBest Accuracy: N/A"
         )
         summary += (
-            f"\nBest F1 Score: {best_f1.f1_score:.4f} (Epoch {best_f1_epoch+1})"
-            if best_f1
-            else "\nBest F1 Score: N/A"
+            f"\nBest F1 Score: {best_f1.f1_score:.4f} (Epoch {best_f1_epoch+1})" if best_f1 else "\nBest F1 Score: N/A"
         )
         summary += (
             f"\nBest FPR (lowest): {best_fpr.fpr:.4f} (Epoch {best_fpr_epoch+1})"
@@ -445,9 +434,7 @@ def calculate_class_weights(
     # Class 0 (negative), Class 1 (positive)
     weights = torch.tensor([weight_negative, weight_positive], device=device)
 
-    logger.info(
-        f"Calculated class weights ({method}): Negative={weight_negative:.4f}, Positive={weight_positive:.4f}"
-    )
+    logger.info(f"Calculated class weights ({method}): Negative={weight_negative:.4f}, Positive={weight_positive:.4f}")
 
     return weights
 
@@ -468,9 +455,7 @@ if __name__ == "__main__":
     predictions = torch.randn(batch_size, num_classes).to(device)
 
     # Simulate targets (80 negative, 20 positive - imbalanced)
-    targets = torch.cat(
-        [torch.zeros(80, dtype=torch.long), torch.ones(20, dtype=torch.long)]
-    ).to(device)
+    targets = torch.cat([torch.zeros(80, dtype=torch.long), torch.ones(20, dtype=torch.long)]).to(device)
 
     # Shuffle targets
     perm = torch.randperm(batch_size)
@@ -543,9 +528,7 @@ if __name__ == "__main__":
         monitor.update_batch(loss, acc)
 
     running_avg = monitor.get_running_averages()
-    print(
-        f"  Running averages: Loss={running_avg['loss']:.4f}, Acc={running_avg['accuracy']:.4f}"
-    )
+    print(f"  Running averages: Loss={running_avg['loss']:.4f}, Acc={running_avg['accuracy']:.4f}")
     print(f"  ✅ MetricMonitor works")
 
     # Test class weights calculation

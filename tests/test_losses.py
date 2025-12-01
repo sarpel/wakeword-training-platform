@@ -8,7 +8,6 @@ import pytest
 import torch
 
 
-
 class TestLossFunctions:
     """Test suite for custom loss functions."""
 

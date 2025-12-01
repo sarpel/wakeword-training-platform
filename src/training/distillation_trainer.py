@@ -5,10 +5,9 @@ Implements Knowledge Distillation from a Teacher (Wav2Vec2) to a Student (Mobile
 """
 
 import logging
-from typing import Optional, Any
+from typing import Any, Optional
 
 import torch
-
 import torch.nn.functional as F
 
 from src.models.huggingface import Wav2VecWakeword

@@ -2,18 +2,14 @@
 Optimizer and Scheduler Factory
 Creates optimizers and learning rate schedulers from configuration
 """
-from typing import Any, Optional, Tuple, List, Dict, cast, TYPE_CHECKING, Union
+
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 import structlog
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import (
-    CosineAnnealingLR,
-    ReduceLROnPlateau,
-    StepLR,
-    _LRScheduler,
-)
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, StepLR, _LRScheduler
 
 logger = structlog.get_logger(__name__)
 
@@ -94,9 +90,7 @@ class WarmupScheduler:
             "current_epoch": self.current_epoch,
             "base_lrs": self.base_lrs,
             "warmup_epochs": self.warmup_epochs,
-            "base_scheduler_state": self.base_scheduler.state_dict()
-            if self.base_scheduler
-            else None,
+            "base_scheduler_state": self.base_scheduler.state_dict() if self.base_scheduler else None,
         }
         return state
 
@@ -154,15 +148,11 @@ def create_optimizer(
     optimizer: optim.Optimizer
 
     if optimizer_name == "adam":
-        optimizer = optim.Adam(
-            params, lr=learning_rate, betas=betas, weight_decay=weight_decay, **kwargs
-        )
+        optimizer = optim.Adam(params, lr=learning_rate, betas=betas, weight_decay=weight_decay, **kwargs)
         logger.info(f"  Betas: {betas}")
 
     elif optimizer_name == "adamw":
-        optimizer = optim.AdamW(
-            params, lr=learning_rate, betas=betas, weight_decay=weight_decay, **kwargs
-        )
+        optimizer = optim.AdamW(params, lr=learning_rate, betas=betas, weight_decay=weight_decay, **kwargs)
         logger.info(f"  Betas: {betas}")
         logger.info("  Using AdamW (decoupled weight decay)")
 
@@ -179,9 +169,7 @@ def create_optimizer(
         logger.info("  Using Nesterov momentum")
 
     else:
-        raise ValueError(
-            f"Unknown optimizer: {optimizer_name}. " f"Supported: adam, adamw, sgd"
-        )
+        raise ValueError(f"Unknown optimizer: {optimizer_name}. " f"Supported: adam, adamw, sgd")
 
     return optimizer
 
@@ -233,9 +221,7 @@ def create_scheduler(
     if scheduler_name == "cosine":
         # Cosine annealing
         T_max = epochs - warmup_epochs if warmup_epochs > 0 else epochs
-        base_scheduler = CosineAnnealingLR(
-            optimizer, T_max=T_max, eta_min=min_lr, **kwargs
-        )
+        base_scheduler = CosineAnnealingLR(optimizer, T_max=T_max, eta_min=min_lr, **kwargs)
         logger.info(f"  Cosine annealing: T_max={T_max}, eta_min={min_lr}")
 
     elif scheduler_name == "step":
@@ -253,23 +239,16 @@ def create_scheduler(
             min_lr=min_lr,
             **kwargs,
         )
-        logger.info(
-            f"  Reduce on plateau: patience={patience}, factor={factor}, min_lr={min_lr}"
-        )
+        logger.info(f"  Reduce on plateau: patience={patience}, factor={factor}, min_lr={min_lr}")
 
     else:
-        raise ValueError(
-            f"Unknown scheduler: {scheduler_name}. "
-            f"Supported: cosine, step, plateau, none"
-        )
+        raise ValueError(f"Unknown scheduler: {scheduler_name}. " f"Supported: cosine, step, plateau, none")
 
     # Wrap with warmup if needed
     scheduler: Union[WarmupScheduler, CosineAnnealingLR, StepLR, ReduceLROnPlateau]
     if warmup_epochs > 0:
         logger.info(f"  Using warmup: {warmup_epochs} epochs")
-        scheduler = WarmupScheduler(
-            optimizer, warmup_epochs=warmup_epochs, base_scheduler=base_scheduler
-        )
+        scheduler = WarmupScheduler(optimizer, warmup_epochs=warmup_epochs, base_scheduler=base_scheduler)
     else:
         scheduler = base_scheduler
 
@@ -278,9 +257,8 @@ def create_scheduler(
 
 from src.config.defaults import WakewordConfig
 
-def create_optimizer_and_scheduler(
-    model: nn.Module, config: WakewordConfig
-) -> Tuple[optim.Optimizer, Optional[Any]]:
+
+def create_optimizer_and_scheduler(model: nn.Module, config: WakewordConfig) -> Tuple[optim.Optimizer, Optional[Any]]:
     """
     Create optimizer and scheduler from configuration object
 
@@ -341,9 +319,7 @@ def adjust_learning_rate(optimizer: optim.Optimizer, scale: float) -> None:
     for param_group in optimizer.param_groups:
         param_group["lr"] *= scale
 
-    logger.info(
-        f"Learning rate adjusted by {scale}x to {get_learning_rate(optimizer):.6f}"
-    )
+    logger.info(f"Learning rate adjusted by {scale}x to {get_learning_rate(optimizer):.6f}")
 
 
 def create_grad_scaler(enabled: bool = True) -> torch.cuda.amp.GradScaler:
@@ -378,9 +354,7 @@ def clip_gradients(model: nn.Module, max_norm: float, norm_type: float = 2.0) ->
     Returns:
         Total gradient norm before clipping
     """
-    total_norm = torch.nn.utils.clip_grad_norm_(
-        model.parameters(), max_norm=max_norm, norm_type=norm_type
-    )
+    total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm, norm_type=norm_type)
 
     return total_norm.item()
 
@@ -401,9 +375,7 @@ if __name__ == "__main__":
     # Test optimizer creation
     print("\n1. Testing optimizer creation...")
     for opt_name in ["adam", "adamw", "sgd"]:
-        optimizer = create_optimizer(
-            model, optimizer_name=opt_name, learning_rate=0.001, weight_decay=1e-4
-        )
+        optimizer = create_optimizer(model, optimizer_name=opt_name, learning_rate=0.001, weight_decay=1e-4)
         print(f"  ✅ Created {opt_name.upper()} optimizer")
 
     # Test scheduler creation
@@ -411,9 +383,7 @@ if __name__ == "__main__":
     optimizer = create_optimizer(model, optimizer_name="adam", learning_rate=0.001)
 
     for sched_name in ["cosine", "step", "plateau", "none"]:
-        scheduler = create_scheduler(
-            optimizer, scheduler_name=sched_name, epochs=50, warmup_epochs=0
-        )
+        scheduler = create_scheduler(optimizer, scheduler_name=sched_name, epochs=50, warmup_epochs=0)
         if sched_name == "none":
             print(f"  ✅ Scheduler 'none' correctly returns None")
         else:
@@ -422,9 +392,7 @@ if __name__ == "__main__":
     # Test warmup scheduler
     print("\n3. Testing warmup scheduler...")
     optimizer = create_optimizer(model, optimizer_name="adam", learning_rate=0.001)
-    scheduler = create_scheduler(
-        optimizer, scheduler_name="cosine", epochs=50, warmup_epochs=5
-    )
+    scheduler = create_scheduler(optimizer, scheduler_name="cosine", epochs=50, warmup_epochs=5)
 
     print(f"  Initial LR: {get_learning_rate(optimizer):.6f}")
 
@@ -456,7 +424,7 @@ if __name__ == "__main__":
     for p in model.parameters():
         if p.grad is not None:
             total_norm += p.grad.data.norm(2).item() ** 2
-    total_norm_before = total_norm ** 0.5
+    total_norm_before = total_norm**0.5
 
     total_norm_after = clip_gradients(model, max_norm=1.0)
 
@@ -467,9 +435,7 @@ if __name__ == "__main__":
     # Test ReduceLROnPlateau
     print("\n6. Testing ReduceLROnPlateau with metrics...")
     optimizer = create_optimizer(model, optimizer_name="adam", learning_rate=0.001)
-    scheduler = create_scheduler(
-        optimizer, scheduler_name="plateau", patience=3, factor=0.5
-    )
+    scheduler = create_scheduler(optimizer, scheduler_name="plateau", patience=3, factor=0.5)
 
     initial_lr = get_learning_rate(optimizer)
     print(f"  Initial LR: {initial_lr:.6f}")
