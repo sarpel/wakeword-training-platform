@@ -8,7 +8,7 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Any
 
 import gradio as gr
 
@@ -27,7 +27,7 @@ logger = get_data_logger()
 _current_config = None
 
 
-def create_config_panel(state: gr.State = None) -> gr.Blocks:
+def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
     """
     Create Panel 2: Configuration Management
 
@@ -414,7 +414,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
         ]
 
         # Event handlers with full implementation
-        def _params_to_config(params):
+        def _params_to_config(params: List[Any]) -> WakewordConfig:
             """Convert UI parameters to WakewordConfig"""
             from src.config.defaults import (
                 AugmentationConfig,
@@ -532,7 +532,7 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                 )
             )
 
-        def _config_to_params(config: WakewordConfig) -> List:
+        def _config_to_params(config: WakewordConfig) -> List[Any]:
             """Convert WakewordConfig to UI parameters"""
             return [
                 # Data (0-5)
@@ -669,13 +669,35 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     + [f"❌ {error_msg}", gr.update(visible=False)]
                 )
 
-        def save_config_handler(*params) -> str:
+        def update_config_handler(*params: Any) -> str:
+            """Update current configuration from UI"""
+            global _current_config
+
+            try:
+                # Create config from current parameters
+                config = _params_to_config(list(params))
+                _current_config = config
+
+                # Update global state if available
+                if state is not None:
+                    state.value = state.value or {}
+                    state.value["config"] = config
+
+                return "✅ Configuration updated"
+
+            except Exception as e:
+                error_msg = f"Error updating configuration: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                return f"❌ {error_msg}"
+
+        def save_config_handler(*params: Any) -> str:
             """Save configuration to YAML file"""
             global _current_config
 
             try:
                 # Create config from current parameters
-                config = _params_to_config(params)
+                config = _params_to_config(list(params))
                 _current_config = config
 
                 # Update global state if available
@@ -780,13 +802,13 @@ def create_config_panel(state: gr.State = None) -> gr.Blocks:
                     + [f"❌ {error_msg}", gr.update(visible=False)]
                 )
 
-        def validate_config_handler(*params) -> Tuple[str, str]:
+        def validate_config_handler(*params: Any) -> Tuple[str, str]:
             """Validate current configuration"""
             try:
                 logger.info("Validating configuration")
 
                 # Create config from current parameters
-                config = _params_to_config(params)
+                config = _params_to_config(list(params))
 
                 # Validate
                 validator = ConfigValidator()

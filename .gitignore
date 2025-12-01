@@ -22,5 +22,10 @@ wandb/
 .wandb_key
 .serena/
 !src/data/
+!src/models/
 configs/
 .github/
+wakeword_training_platform.egg-info/
+.vscode/
+server/venv/
+

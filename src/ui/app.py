@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 import asyncio
 import sys
 from pathlib import Path
+from typing import Optional
 
 import gradio as gr
 
@@ -30,7 +31,7 @@ from src.ui.panel_export import create_export_panel
 from src.ui.panel_training import create_training_panel
 
 
-def suppress_windows_asyncio_errors():
+def suppress_windows_asyncio_errors() -> None:
     """
     Suppress harmless Windows asyncio errors from closed connections.
 
@@ -40,7 +41,7 @@ def suppress_windows_asyncio_errors():
     """
     if sys.platform == "win32":
 
-        def handle_exception(loop, context):
+        def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
             # Check if this is the specific harmless error
             exception = context.get("exception")
             
@@ -260,10 +261,10 @@ def create_app() -> gr.Blocks:
 
 def launch_app(
     server_name: str = "0.0.0.0",
-    server_port: int = None,
+    server_port: Optional[int] = None,
     share: bool = False,
     inbrowser: bool = True,
-):
+) -> None:
     """
     Launch the Gradio application
 

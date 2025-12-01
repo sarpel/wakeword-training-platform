@@ -4,7 +4,7 @@ GPU-accelerated augmentation using torchaudio and torch operations
 """
 import random
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
 import structlog
 import torch
@@ -42,7 +42,7 @@ class AudioAugmentation(nn.Module):
         # Background noise and RIR paths
         background_noise_files: Optional[List[Path]] = None,
         rir_files: Optional[List[Path]] = None,
-    ):
+    ) -> None:
         """
         Initialize augmentation pipeline
         """
@@ -96,7 +96,7 @@ class AudioAugmentation(nn.Module):
         # Stack: (N, 1, Samples)
         return torch.stack(padded_waveforms)
 
-    def _load_background_noises(self, noise_files: List[Path]):
+    def _load_background_noises(self, noise_files: List[Path]) -> None:
         """Load background noise files into buffer"""
         logger.info(f"Loading {len(noise_files)} background noise files...")
         loaded_noises = []
@@ -122,7 +122,7 @@ class AudioAugmentation(nn.Module):
         if loaded_noises:
             self.register_buffer("background_noises", self._pad_and_stack(loaded_noises))
 
-    def _load_rirs(self, rir_files: List[Path]):
+    def _load_rirs(self, rir_files: List[Path]) -> None:
         """Load RIR files into buffer"""
         # ... similar to previous validation logic ...
         all_rir_files = list(set(rir_files))
@@ -172,7 +172,7 @@ class AudioAugmentation(nn.Module):
         else:
             out = out[..., :original_len]
             
-        return out
+        return cast(torch.Tensor, out)
 
     def pitch_shift(self, waveform: torch.Tensor) -> torch.Tensor:
         """Batch pitch shift"""
@@ -189,7 +189,7 @@ class AudioAugmentation(nn.Module):
         stretched = F.interpolate(waveform, scale_factor=1/shift_rate, mode="linear", align_corners=False)
         # Resample back to original length matches original duration
         out = F.interpolate(stretched, size=waveform.shape[-1], mode="linear", align_corners=False)
-        return out
+        return cast(torch.Tensor, out)
 
     def random_time_shift(self, waveform: torch.Tensor) -> torch.Tensor:
         """
@@ -239,7 +239,7 @@ class AudioAugmentation(nn.Module):
         max_vals = noisy.abs().max(dim=-1, keepdim=True)[0]
         noisy = noisy / (max_vals + 1e-8)
         
-        return noisy
+        return cast(torch.Tensor, noisy)
 
     def apply_rir(self, waveform: torch.Tensor) -> torch.Tensor:
         """Apply RIR convolution to batch"""
@@ -281,7 +281,7 @@ class AudioAugmentation(nn.Module):
         max_vals = mixed.abs().max(dim=-1, keepdim=True)[0]
         mixed = mixed / (max_vals + 1e-8)
         
-        return mixed
+        return cast(torch.Tensor, mixed)
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         """
@@ -332,7 +332,7 @@ class SpecAugment(nn.Module):
         time_mask_param: int = 35,
         n_freq_masks: int = 2,
         n_time_masks: int = 2,
-    ):
+    ) -> None:
         super().__init__()
         # torchaudio.transforms.FrequencyMasking is already nn.Module
         self.freq_mask = T.FrequencyMasking(freq_mask_param)

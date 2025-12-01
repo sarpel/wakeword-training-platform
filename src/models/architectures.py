@@ -3,6 +3,7 @@ Model Architectures for Wakeword Detection
 Supports: ResNet18, MobileNetV3, LSTM, GRU, TCN
 """
 import logging
+from typing import Any, List, cast
 
 import torch
 import torch.nn as nn
@@ -69,7 +70,7 @@ class ResNet18Wakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
-        return self.resnet(x)
+        return cast(torch.Tensor, self.resnet(x))
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -150,7 +151,7 @@ class MobileNetV3Wakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
-        return self.mobilenet(x)
+        return cast(torch.Tensor, self.mobilenet(x))
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -255,7 +256,7 @@ class LSTMWakeword(nn.Module):
         # Classification
         output = self.fc(h_n)
 
-        return output
+        return cast(torch.Tensor, output)
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """Get embeddings (final hidden state)"""
@@ -264,7 +265,7 @@ class LSTMWakeword(nn.Module):
             h_n = torch.cat([h_n[-2], h_n[-1]], dim=1)
         else:
             h_n = h_n[-1]
-        return h_n
+        return cast(torch.Tensor, h_n)
 
 
 class GRUWakeword(nn.Module):
@@ -358,7 +359,7 @@ class GRUWakeword(nn.Module):
         # Classification
         output = self.fc(h_n)
 
-        return output
+        return cast(torch.Tensor, output)
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """Get embeddings (final hidden state)"""
@@ -367,7 +368,7 @@ class GRUWakeword(nn.Module):
             h_n = torch.cat([h_n[-2], h_n[-1]], dim=1)
         else:
             h_n = h_n[-1]
-        return h_n
+        return cast(torch.Tensor, h_n)
 
 
 class TemporalConvNet(nn.Module):
@@ -423,7 +424,7 @@ class TemporalConvNet(nn.Module):
         Returns:
             Output tensor (batch, channels, length)
         """
-        return self.network(x)
+        return cast(torch.Tensor, self.network(x))
 
 
 class TemporalBlock(nn.Module):
@@ -487,7 +488,7 @@ class TemporalBlock(nn.Module):
 
         # Residual connection
         res = x if self.downsample is None else self.downsample(x)
-        return self.relu(out + res)
+        return cast(torch.Tensor, self.relu(out + res))
 
 
 class TCNWakeword(nn.Module):
@@ -575,7 +576,7 @@ class TCNWakeword(nn.Module):
         # Classification
         output = self.fc(tcn_out)
 
-        return output
+        return cast(torch.Tensor, output)
 
 
 class TinyConvWakeword(nn.Module):
@@ -584,7 +585,7 @@ class TinyConvWakeword(nn.Module):
     Size: ~50KB parameters
     Compute: ~2M FLOPs
     """
-    def __init__(self, num_classes=2, input_channels=1, dropout=0.3, **kwargs):
+    def __init__(self, num_classes: int = 2, input_channels: int = 1, dropout: float = 0.3, **kwargs: Any) -> None:
         super().__init__()
         self.features = nn.Sequential(
             # Block 1
@@ -615,7 +616,7 @@ class TinyConvWakeword(nn.Module):
             nn.Linear(64, num_classes)
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
         x = self.pool(x)
         x = self.classifier(x)
@@ -647,7 +648,7 @@ class CDDNNWakeword(nn.Module):
         """
         super().__init__()
 
-        layers = []
+        layers: list[nn.Module] = []
         in_features = input_size
 
         for hidden_size in hidden_layers:
@@ -684,7 +685,7 @@ class CDDNNWakeword(nn.Module):
 
 
 def create_model(
-    architecture: str, num_classes: int = 2, pretrained: bool = False, **kwargs
+    architecture: str, num_classes: int = 2, pretrained: bool = False, **kwargs: Any
 ) -> nn.Module:
     """
     Factory function to create models

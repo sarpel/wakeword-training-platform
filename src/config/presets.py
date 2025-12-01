@@ -2,7 +2,7 @@
 Configuration Presets for Different Use Cases
 Provides optimized configurations for various scenarios
 """
-from typing import Dict
+from typing import Callable, Dict
 
 from src.config.defaults import (
     AugmentationConfig,
@@ -13,6 +13,7 @@ from src.config.defaults import (
     TrainingConfig,
     WakewordConfig,
     QATConfig,
+    DistillationConfig,
 )
 
 
@@ -415,7 +416,7 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
 
 
 # Preset registry
-PRESETS: Dict[str, callable] = {
+PRESETS: Dict[str, Callable[[], WakewordConfig]] = {
     "Default": get_default_preset,
     "Small Dataset (<10k samples)": get_small_dataset_preset,
     "Large Dataset (>100k samples)": get_large_dataset_preset,

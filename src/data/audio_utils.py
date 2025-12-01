@@ -3,7 +3,7 @@ Audio Utilities for Wakeword Training Platform
 File validation, loading, and basic processing
 """
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 
 import librosa
 import numpy as np
@@ -20,10 +20,10 @@ class AudioValidator:
 
     SUPPORTED_FORMATS = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
 
-    def __init__(self):
-        self.valid_files = []
-        self.corrupted_files = []
-        self.unsupported_files = []
+    def __init__(self) -> None:
+        self.valid_files: List[Path] = []
+        self.corrupted_files: List[Path] = []
+        self.unsupported_files: List[Path] = []
 
     @staticmethod
     def is_audio_file(file_path: Path) -> bool:
@@ -41,7 +41,7 @@ class AudioValidator:
     @staticmethod
     def validate_audio_file(
         file_path: Path,
-    ) -> Tuple[bool, Optional[Dict], Optional[str]]:
+    ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
         Validate audio file and extract metadata
 
@@ -55,7 +55,7 @@ class AudioValidator:
             # Try to read audio file
             info = sf.info(str(file_path))
 
-            metadata = {
+            metadata: Dict[str, Any] = {
                 "path": str(file_path),
                 "filename": file_path.name,
                 "format": file_path.suffix.lower(),
@@ -93,6 +93,7 @@ class AudioValidator:
 
         Returns:
             Tuple of (audio_array, sample_rate)
+            Note: librosa.load returns float for sr, but we cast to int for consistency
         """
         try:
             # Load with librosa (handles various formats and resampling)
@@ -104,14 +105,15 @@ class AudioValidator:
                 offset=offset,
             )
 
-            return audio, sr
+            # Cast sample rate to int for type consistency
+            return audio, int(sr)
 
         except Exception as e:
             logger.error(f"Error loading {file_path}: {e}")
             raise AudioProcessingError(f"Failed to load audio file: {file_path}") from e
 
     @staticmethod
-    def get_audio_stats(audio: np.ndarray, sr: int) -> Dict:
+    def get_audio_stats(audio: np.ndarray, sr: int) -> Dict[str, float]:
         """
         Calculate audio statistics
 
@@ -136,7 +138,7 @@ class AudioValidator:
         }
 
     @staticmethod
-    def check_audio_quality(metadata: Dict) -> Dict[str, Any]:
+    def check_audio_quality(metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
         Check audio quality and return warnings/exclusion flags
 
@@ -272,7 +274,9 @@ class AudioProcessor:
             if pad_mode == "constant":
                 return np.pad(audio, (pad_left, pad_right), mode="constant")
             else:
-                return np.pad(audio, (pad_left, pad_right), mode=pad_mode)
+                # Mypy: np.pad mode parameter needs explicit type
+                # Cast pad_mode to satisfy numpy's type requirements
+                return np.pad(audio, (pad_left, pad_right), mode=pad_mode)  # type: ignore[no-any-return, arg-type, call-overload]
 
     def _normalize_amplitude(
         self, audio: np.ndarray, target_level: float = 0.3
@@ -327,7 +331,7 @@ class AudioProcessor:
         return trimmed_audio
 
 
-def scan_audio_files(directory: Path, recursive: bool = True) -> list:
+def scan_audio_files(directory: Path, recursive: bool = True) -> List[Path]:
     """
     Scan directory for audio files
 
@@ -338,7 +342,7 @@ def scan_audio_files(directory: Path, recursive: bool = True) -> list:
     Returns:
         List of audio file paths
     """
-    audio_files = []
+    audio_files: List[Path] = []
 
     if not directory.exists():
         logger.warning(f"Directory does not exist: {directory}")

@@ -7,7 +7,7 @@ Panel 5: ONNX Export
 """
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import gradio as gr
 import pandas as pd
@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 class ExportState:
     """Global export state manager"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.last_export_path: Optional[Path] = None
         self.last_checkpoint: Optional[Path] = None
         self.export_results: Dict = {}
@@ -96,10 +96,10 @@ def export_to_onnx(
         return "❌ Please provide an output filename", ""
 
     try:
-        checkpoint_path = Path(checkpoint_path)
+        checkpoint_path_obj = Path(checkpoint_path)
 
-        if not checkpoint_path.exists():
-            return f"❌ Checkpoint not found: {checkpoint_path}", ""
+        if not checkpoint_path_obj.exists():
+            return f"❌ Checkpoint not found: {checkpoint_path_obj}", ""
 
         # Create output path
         export_dir = Path("models/exports")
@@ -107,11 +107,11 @@ def export_to_onnx(
 
         output_path = export_dir / output_filename
 
-        logger.info(f"Exporting {checkpoint_path} to {output_path}")
+        logger.info(f"Exporting {checkpoint_path_obj} to {output_path}")
 
         # Build log message
         log = f"[{time.strftime('%H:%M:%S')}] Starting ONNX export...\n"
-        log += f"Checkpoint: {checkpoint_path.name}\n"
+        log += f"Checkpoint: {checkpoint_path_obj.name}\n"
         log += f"Output: {output_filename}\n"
         log += f"Opset version: {opset_version}\n"
         log += f"Dynamic batch: {dynamic_batch}\n"
@@ -122,7 +122,7 @@ def export_to_onnx(
 
         # Export
         results = export_model_to_onnx(
-            checkpoint_path=checkpoint_path,
+            checkpoint_path=checkpoint_path_obj,
             output_path=output_path,
             opset_version=opset_version,
             dynamic_batch=dynamic_batch,
@@ -139,7 +139,7 @@ def export_to_onnx(
 
         # Update state
         export_state.last_export_path = output_path
-        export_state.last_checkpoint = checkpoint_path
+        export_state.last_checkpoint = checkpoint_path_obj
         export_state.export_results = results
 
         # Build success message
@@ -207,7 +207,7 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
     Returns:
         Tuple of (model_info_dict, performance_dataframe)
     """
-    if not export_state.last_export_path:
+    if not export_state.last_export_path or not export_state.last_checkpoint:
         return {"status": "❌ No model exported yet. Export a model first."}, None
 
     try:
@@ -330,7 +330,7 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         return {"status": error_msg}, None
 
 
-def download_onnx_model() -> Tuple[str, Optional[str]]:
+def download_onnx_model() -> Tuple[Optional[str], str]:
     """
     Prepare ONNX model for download
 
@@ -480,7 +480,7 @@ def create_export_panel() -> gr.Blocks:
             download_btn = gr.Button("⬇️ Download ONNX Model", variant="primary")
 
         # Event handlers
-        def refresh_checkpoints_handler():
+        def refresh_checkpoints_handler() -> Any:
             checkpoints = get_available_checkpoints()
             return gr.update(
                 choices=checkpoints,
@@ -513,7 +513,7 @@ def create_export_panel() -> gr.Blocks:
             outputs=[model_info, performance_comparison],
         )
 
-        def download_handler():
+        def download_handler() -> Tuple[Optional[str], str, Dict[str, Any]]:
             file_path, status = download_onnx_model()
             if file_path:
                 return file_path, status, gr.update(visible=True, value=file_path)

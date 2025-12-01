@@ -2,7 +2,7 @@
 Feature Extraction for Wakeword Detection
 Compute mel-spectrograms and MFCCs on GPU
 """
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple, cast
 
 import structlog
 import torch
@@ -163,9 +163,9 @@ class FeatureExtractor(nn.Module):
         else:
             raise ValueError(f"Unknown feature type: {self.feature_type}")
 
-        return features
+        return cast(torch.Tensor, features)
 
-    def get_output_shape(self, input_samples: int) -> tuple:
+    def get_output_shape(self, input_samples: int) -> Tuple[int, int, int]:
         """
         Get output shape for given input length
 

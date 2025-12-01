@@ -1,14 +1,23 @@
 """
-Streaming Wakeword Detector
-Implements sliding window, voting, hysteresis, and lockout for real-time detection
+Streaming wakeword detector for real-time audio processing.
+
+This module provides classes for detecting wakewords in streaming audio using:
+- Sliding window processing
+- Voting mechanisms (N out of M detections)
+- Hysteresis (separate on/off thresholds)
+- Lockout periods after detection
 """
-from collections import deque
-from typing import Optional, Tuple
 
-import numpy as np
-import structlog
-import torch
+# Standard library imports
+from collections import deque  # For efficient fixed-size buffers
+from typing import Optional, Tuple, List, Deque  # Type hints for better code clarity
 
+# Third-party imports
+import numpy as np  # For numerical operations on audio arrays
+import structlog  # For structured logging
+import torch  # For PyTorch model inference
+
+# Initialize logger for this module
 logger = structlog.get_logger(__name__)
 
 
@@ -54,7 +63,7 @@ class StreamingDetector:
         self.vote_threshold = vote_threshold
 
         # State
-        self.score_buffer = deque(maxlen=vote_window)
+        self.score_buffer: Deque[float] = deque(maxlen=vote_window)
         self.locked_until_ms = 0
         self.is_active = False
 
@@ -100,7 +109,7 @@ class StreamingDetector:
 
         return False
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset detector state"""
         self.score_buffer.clear()
         self.locked_until_ms = 0
@@ -178,7 +187,7 @@ class SlidingWindowProcessor:
 
 
 def process_audio_stream(
-    model,
+    model: torch.nn.Module,
     audio: np.ndarray,
     sample_rate: int = 16000,
     window_duration_s: float = 1.0,
@@ -188,7 +197,7 @@ def process_audio_stream(
     vote_threshold: int = 3,
     lockout_ms: int = 1500,
     device: str = "cuda",
-) -> Tuple[list, list]:
+) -> Tuple[List[Tuple[int, float]], List[Tuple[int, float]]]:
     """
     Process audio stream and detect wakewords
 

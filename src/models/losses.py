@@ -3,7 +3,7 @@ Loss Functions for Wakeword Detection
 Includes: Cross Entropy with Label Smoothing, Focal Loss
 """
 import logging
-from typing import Optional
+from typing import Optional, cast
 
 import torch
 import torch.nn as nn
@@ -90,7 +90,7 @@ class FocalLoss(nn.Module):
 
     def __init__(
         self,
-        alpha: float = 0.25,
+        alpha: Optional[float] = 0.25,
         gamma: float = 2.0,
         weight: Optional[torch.Tensor] = None,
         reduction: str = "mean",
@@ -111,8 +111,8 @@ class FocalLoss(nn.Module):
             logger.warning(
                 "Both alpha and class_weights provided. Using class_weights only, ignoring alpha."
             )
-            self.alpha = None
-            self.weight = weight
+            self.alpha: Optional[float] = None
+            self.weight: Optional[torch.Tensor] = weight
         else:
             self.alpha = alpha
             self.weight = weight
@@ -167,11 +167,11 @@ class FocalLoss(nn.Module):
 
         # Apply reduction
         if self.reduction == "none":
-            return loss
+            return cast(torch.Tensor, loss)
         elif self.reduction == "mean":
-            return loss.mean()
+            return cast(torch.Tensor, loss.mean())
         elif self.reduction == "sum":
-            return loss.sum()
+            return cast(torch.Tensor, loss.sum())
         else:
             raise ValueError(f"Invalid reduction: {self.reduction}")
 
@@ -211,7 +211,7 @@ class TripletLoss(nn.Module):
         elif self.distance_metric == "cosine":
              # 1 - cos(a, b)
             normalized = F.normalize(embeddings, p=2, dim=1)
-            return 1 - torch.matmul(normalized, normalized.t())
+            return cast(torch.Tensor, 1 - torch.matmul(normalized, normalized.t()))
             
         else:
             raise ValueError(f"Unknown distance metric: {self.distance_metric}")

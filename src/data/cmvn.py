@@ -4,7 +4,7 @@ Implements global normalization statistics with persistence
 """
 import json
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Any
 
 import structlog
 import torch
@@ -19,7 +19,7 @@ class CMVN(nn.Module):
     Inherits from nn.Module for seamless integration with models.
     """
 
-    def __init__(self, stats_path: Optional[Path] = None, eps: float = 1e-8):
+    def __init__(self, stats_path: Optional[Path] = None, eps: float = 1e-8) -> None:
         """
         Initialize CMVN
 
@@ -52,7 +52,7 @@ class CMVN(nn.Module):
             logger.info(f"Loaded CMVN stats from {self.stats_path}")
 
     def compute_stats(
-        self, features_list: list, save: bool = True
+        self, features_list: List[torch.Tensor], save: bool = True
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Compute global mean and std from feature list
@@ -96,6 +96,7 @@ class CMVN(nn.Module):
         # Compute global statistics
         # Ensure calculations are done on CPU initially to avoid VRAM usage for large accumulations
         # Or respect input device.
+        assert sum_features is not None and sum_squared is not None
         mean = sum_features / total_frames
         variance = (sum_squared / total_frames) - (mean**2)
         std = torch.sqrt(variance.clamp(min=self.eps))
@@ -172,7 +173,7 @@ class CMVN(nn.Module):
 
         return denormalized
 
-    def save_stats(self, path: Optional[Path] = None):
+    def save_stats(self, path: Optional[Path] = None) -> None:
         """Save CMVN statistics to JSON"""
         save_path = Path(path) if path else self.stats_path
         if save_path is None:
@@ -195,7 +196,7 @@ class CMVN(nn.Module):
 
         logger.info(f"CMVN stats saved to {save_path}")
 
-    def load_stats(self, path: Optional[Path] = None):
+    def load_stats(self, path: Optional[Path] = None) -> None:
         """Load CMVN statistics from JSON"""
         load_path = Path(path) if path else self.stats_path
         if load_path is None: raise ValueError("No stats path provided")
@@ -231,8 +232,10 @@ class CMVN(nn.Module):
         logger.info(f"CMVN stats loaded from {load_path} (dim={self.mean.shape[0]})")
 
 
+from torch.utils.data import Dataset
+
 def compute_cmvn_from_dataset(
-    dataset, stats_path: Path, max_samples: Optional[int] = None
+    dataset: Dataset, stats_path: Path, max_samples: Optional[int] = None
 ) -> CMVN:
     """
     Compute CMVN statistics from a PyTorch dataset
@@ -245,11 +248,11 @@ def compute_cmvn_from_dataset(
     Returns:
         CMVN object with computed statistics
     """
-    logger.info(f"Computing CMVN stats from dataset (size={len(dataset)})")
+    logger.info(f"Computing CMVN stats from dataset (size={len(dataset)})")  # type: ignore[arg-type]
 
     # Collect features
     features_list = []
-    num_samples = min(len(dataset), max_samples) if max_samples else len(dataset)
+    num_samples = min(len(dataset), max_samples) if max_samples else len(dataset)  # type: ignore[arg-type]
 
     for i in range(num_samples):
         features, _, _ = dataset[i]

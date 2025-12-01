@@ -3,6 +3,7 @@ Seed Setting and Determinism Utilities
 Ensures reproducibility across runs
 """
 import random
+from typing import Any, Dict
 
 import numpy as np
 import structlog
@@ -12,7 +13,7 @@ import torch.backends.cudnn as cudnn
 logger = structlog.get_logger(__name__)
 
 
-def set_seed(seed: int = 42, deterministic: bool = True):
+def set_seed(seed: int = 42, deterministic: bool = True) -> None:
     """
     Set random seed for reproducibility
 
@@ -49,7 +50,7 @@ def set_seed(seed: int = 42, deterministic: bool = True):
     logger.info(f"Random seed: {seed}")
 
 
-def get_rng_state():
+def get_rng_state() -> Dict[str, Any]:
     """
     Get current random number generator state
 
@@ -66,7 +67,7 @@ def get_rng_state():
     }
 
 
-def set_rng_state(state: dict):
+def set_rng_state(state: Dict[str, Any]) -> None:
     """
     Restore random number generator state
 

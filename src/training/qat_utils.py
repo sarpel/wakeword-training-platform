@@ -6,11 +6,12 @@ import logging
 import torch
 import torch.nn as nn
 import torch.quantization
+from typing import Optional
 from src.config.defaults import QATConfig
 
 logger = logging.getLogger(__name__)
 
-def prepare_model_for_qat(model: nn.Module, config: QATConfig, input_example: torch.Tensor = None) -> nn.Module:
+def prepare_model_for_qat(model: nn.Module, config: QATConfig, input_example: Optional[torch.Tensor] = None) -> nn.Module:
     """
     Prepare a model for Quantization Aware Training.
     
@@ -50,7 +51,8 @@ def prepare_model_for_qat(model: nn.Module, config: QATConfig, input_example: to
     
     # 4. Prepare
     # prepare_qat inserts observers and fake quantization modules
-    prepared_model = torch.quantization.prepare_qat(model, inplace=False)
+    # Mypy: Explicitly annotate return type to avoid Any
+    prepared_model: nn.Module = torch.quantization.prepare_qat(model, inplace=False)
     
     logger.info("Model prepared for QAT")
     return prepared_model
@@ -66,5 +68,6 @@ def convert_model_to_quantized(model: nn.Module) -> nn.Module:
         The quantized model (INT8)
     """
     model.eval()
-    quantized_model = torch.quantization.convert(model, inplace=False)
+    # Mypy: Explicitly annotate return type to avoid Any
+    quantized_model: nn.Module = torch.quantization.convert(model, inplace=False)
     return quantized_model

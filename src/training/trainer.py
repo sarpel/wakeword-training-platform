@@ -6,7 +6,10 @@ GPU-accelerated training with checkpointing, early stopping, and metrics trackin
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from src.config.defaults import WakewordConfig
 
 import structlog
 import torch
@@ -108,7 +111,7 @@ class Trainer:
         self.model = model.to(device)
         # channels_last bellek düzeni (Ampere+ için throughput ↑) - Only on CUDA
         if device == "cuda":
-            self.model = self.model.to(memory_format=torch.channels_last)  # CHANGE
+            self.model = self.model.to(memory_format=torch.channels_last)  # type: ignore
 
         # Data loaders
         self.train_loader = train_loader
@@ -162,10 +165,11 @@ class Trainer:
         self.checkpoint_frequency = config.training.checkpoint_frequency
 
         # Callbacks
-        self.callbacks = []
+        self.callbacks: List[Any] = []
 
         # SpecAugment (GPU-based, applied during training only)
         self.use_spec_augment = getattr(config.augmentation, "use_spec_augment", True)
+        self.spec_augment: Optional[SpecAugment] = None
         if self.use_spec_augment:
             self.spec_augment = SpecAugment(
                 freq_mask_param=getattr(config.augmentation, "freq_mask_param", 15),
@@ -174,8 +178,6 @@ class Trainer:
                 n_time_masks=getattr(config.augmentation, "n_time_masks", 2),
             )
             logger.info("SpecAugment initialized (GPU-based)")
-        else:
-            self.spec_augment = None
 
         # EMA (Exponential Moving Average)
         self.ema = None
@@ -204,6 +206,8 @@ class Trainer:
         logger.info(f"  SpecAugment: {self.use_spec_augment}")
         logger.info(f"  EMA: {self.use_ema}")
 
+
+
     def train(
         self,
         start_epoch: int = 0,
@@ -230,7 +234,7 @@ class Trainer:
             start_epoch = self.state.epoch + 1
             logger.info(f"Resumed from checkpoint at epoch {start_epoch}")
 
-        history = {
+        history: Dict[str, List[float]] = {
             "train_loss": [],
             "train_acc": [],
             "val_loss": [],
@@ -331,10 +335,12 @@ class Trainer:
             "fpr"
         )
 
-        logger.info(
-            f"\nBest F1 Score: {best_f1_metrics.f1_score:.4f} (Epoch {best_f1_epoch+1})"
-        )
-        logger.info(f"Best FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
+        if best_f1_metrics:
+            logger.info(
+                f"\nBest F1 Score: {best_f1_metrics.f1_score:.4f} (Epoch {best_f1_epoch+1})"
+            )
+        if best_fpr_metrics:
+            logger.info(f"Best FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
 
         results = {
             "history": history,
@@ -389,7 +395,7 @@ class Trainer:
         """Check if training should stop early"""
         return self.state.epochs_without_improvement >= self.early_stopping_patience
 
-    def add_callback(self, callback: Callable) -> None:
+    def add_callback(self, callback: Any) -> None:
         """Add training callback"""
         self.callbacks.append(callback)
 
@@ -399,7 +405,7 @@ class Trainer:
             if hasattr(callback, event):
                 getattr(callback, event)(*args, **kwargs)
 
-    def stop(self):
+    def stop(self) -> None:
         """Signal the trainer to stop at the next available opportunity"""
         self.stop_event.set()
 
@@ -429,13 +435,13 @@ class Trainer:
             # Re-compute embeddings using processed_inputs if available.
             if processed_inputs is not None and hasattr(self.model, "embed"):
                 embeddings = self.model.embed(processed_inputs)
-                return self.criterion(embeddings, targets)
+                return cast(torch.Tensor, self.criterion(embeddings, targets))
             else:
                 # Fallback: assume outputs are embeddings or model doesn't support embed()
                 # This might happen if using a model without embed() method
-                return self.criterion(outputs, targets)
+                return cast(torch.Tensor, self.criterion(outputs, targets))
 
-        return self.criterion(outputs, targets)
+        return cast(torch.Tensor, self.criterion(outputs, targets))
 
 
 if __name__ == "__main__":

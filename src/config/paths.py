@@ -15,6 +15,7 @@ class ProjectPaths:
     DATA: Path = ROOT / "data"
     SRC: Path = ROOT / "src"
     MODELS: Path = ROOT / "models"
+    CONFIGS: Path = ROOT / "configs"
     
     # Data subdirectories
     RAW_DATA: Path = DATA / "raw"
@@ -32,11 +33,11 @@ class ProjectPaths:
     RIRS: Path = RAW_DATA / "rirs"
     
     @classmethod
-    def ensure_directories(cls):
+    def ensure_directories(cls) -> None:
         """Ensure all critical directories exist"""
         for path in [
             cls.DATA, cls.RAW_DATA, cls.SPLITS, cls.NPY_FEATURES,
-            cls.MODELS, cls.CHECKPOINTS, cls.EXPORTS
+            cls.MODELS, cls.CHECKPOINTS, cls.EXPORTS, cls.CONFIGS
         ]:
             path.mkdir(parents=True, exist_ok=True)
 

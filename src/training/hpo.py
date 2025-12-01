@@ -1,13 +1,14 @@
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 
 import optuna
 import structlog
 from torch.utils.data import DataLoader
 
 from src.config.defaults import WakewordConfig
+from src.training.metrics import MetricResults
 from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.trainer import Trainer
@@ -28,7 +29,7 @@ class OptunaPruningCallback:
         self.monitor = monitor
         self.log_callback = log_callback
 
-    def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics):
+    def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
         # Report current score to Optuna
         # val_metrics is a MetricResults object with attributes like f1_score
         current_score = getattr(val_metrics, self.monitor, 0.0)
@@ -55,7 +56,7 @@ class Objective:
         config: WakewordConfig,
         train_loader: DataLoader,
         val_loader: DataLoader,
-        param_groups: list = None,
+        param_groups: Optional[List[str]] = None,
         log_callback: Optional[Callable[[str], None]] = None,
     ):
         self.config = config
@@ -65,7 +66,7 @@ class Objective:
         self.best_f1 = -1.0
         self.log_callback = log_callback
 
-    def _log(self, message: str):
+    def _log(self, message: str) -> None:
         """Log to both structlog and callback if available"""
         logger.info(message)
         if self.log_callback:
@@ -231,7 +232,7 @@ class Objective:
                 self._log(f"❌ Trial {trial.number} failed: {e}")
                 metric = 0.0
 
-            return metric
+            return float(metric)
 
 
 def run_hpo(
@@ -240,7 +241,7 @@ def run_hpo(
     val_loader: DataLoader,
     n_trials: int = 50,
     study_name: str = "wakeword-hpo",
-    param_groups: list = None,
+    param_groups: Optional[List[str]] = None,
     log_callback: Optional[Callable[[str], None]] = None,
 ) -> optuna.study.Study:
     """Run hyperparameter optimization using Optuna."""

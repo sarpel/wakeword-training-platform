@@ -3,7 +3,7 @@ Batch Feature Extraction for NPY Generation
 Extracts features from entire datasets and saves as .npy files
 """
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Any
 
 import numpy as np
 import structlog
@@ -36,7 +36,7 @@ class BatchFeatureExtractor:
         # Initialize feature extractor
         self.feature_extractor = FeatureExtractor(
             sample_rate=config.sample_rate,
-            feature_type=config.feature_type,
+            feature_type=config.feature_type,  # type: ignore
             n_mels=config.n_mels,
             n_mfcc=config.n_mfcc,
             n_fft=config.n_fft,
@@ -58,7 +58,7 @@ class BatchFeatureExtractor:
         batch_size: int = 32,
         preserve_structure: bool = True,
         progress_callback: Optional[Callable] = None,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Extract features for all audio files
 
@@ -75,7 +75,7 @@ class BatchFeatureExtractor:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        results = {
+        results: Dict[str, Any] = {
             "total_files": len(audio_files),
             "success_count": 0,
             "failed_count": 0,
@@ -191,7 +191,7 @@ class BatchFeatureExtractor:
         output_dir: Path,
         batch_size: int = 32,
         progress_callback: Optional[Callable] = None,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Extract features from dataset manifest files
 

@@ -3,7 +3,9 @@ Model Evaluator for File-Based and Test Set Evaluation
 GPU-accelerated batch evaluation with comprehensive metrics
 """
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Any, Union, TYPE_CHECKING, Literal, cast
+if TYPE_CHECKING:
+    from src.config.defaults import WakewordConfig
 
 import numpy as np
 import structlog
@@ -39,7 +41,7 @@ class ModelEvaluator:
         n_mfcc: int = 0,
         n_fft: int = 400,
         hop_length: int = 160,
-        config: Dict = None,
+        config: Optional[Union[Dict[str, Any], "WakewordConfig"]] = None,
     ):
         """
         Initialize model evaluator
@@ -70,8 +72,21 @@ class ModelEvaluator:
         # Audio processor
         # Create CMVN path
         cmvn_path = Path("data/cmvn_stats.json")
+        
+        processor_config: Optional["WakewordConfig"] = None
+        if config is not None:
+            from src.config.defaults import WakewordConfig
+            if isinstance(config, dict):
+                processor_config = WakewordConfig.from_dict(config)
+            else:
+                processor_config = config
+
+        if processor_config is None:
+            from src.config.defaults import WakewordConfig
+            processor_config = WakewordConfig()
+
         self.audio_processor = GpuAudioProcessor(
-            config=config, # Use passed config
+            config=processor_config, # Use passed config
             device=device
         )
 
@@ -88,7 +103,7 @@ class ModelEvaluator:
         # Feature extractor
         self.feature_extractor = FeatureExtractor(
             sample_rate=sample_rate,
-            feature_type=feature_type,
+            feature_type=cast(Literal["mel", "mfcc"], feature_type),
             n_mels=n_mels,
             n_mfcc=n_mfcc,
             n_fft=n_fft,
@@ -112,18 +127,18 @@ class ModelEvaluator:
         return evaluate_files(self, audio_paths, threshold, batch_size)
 
     def evaluate_dataset(
-        self, dataset, threshold: float = 0.5, batch_size: int = 32
+        self, dataset: Any, threshold: float = 0.5, batch_size: int = 32
     ) -> Tuple[MetricResults, List[EvaluationResult]]:
         return evaluate_dataset(self, dataset, threshold, batch_size)
 
     def get_roc_curve_data(
-        self, dataset, batch_size: int = 32
+        self, dataset: Any, batch_size: int = 32
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return get_roc_curve_data(self, dataset, batch_size)
 
     def evaluate_with_advanced_metrics(
         self,
-        dataset,
+        dataset: Any,
         total_seconds: float,
         target_fah: float = 1.0,
         batch_size: int = 32,

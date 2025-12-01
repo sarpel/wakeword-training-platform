@@ -1,15 +1,16 @@
 try:
     import wandb
 except ImportError:
-    wandb = None
+    wandb = None  # type: ignore
 
+from typing import Dict, Any, Optional
 from src.training.metrics import MetricResults
 
 
 class WandbCallback:
     """A callback to log training metrics to Weights & Biases."""
 
-    def __init__(self, project_name: str, config: dict):
+    def __init__(self, project_name: str, config: Dict[str, Any]):
         """Initializes the WandbCallback.
 
         Args:
@@ -43,7 +44,7 @@ class WandbCallback:
             }
         )
 
-    def on_batch_end(self, batch_idx: int, loss: float, acc: float, step: int = None) -> None:
+    def on_batch_end(self, batch_idx: int, loss: float, acc: float, step: Optional[int] = None) -> None:
         """Logs metrics at the end of a batch."""
         log_dict = {"batch_loss": loss, "batch_acc": acc}
         if step is not None:

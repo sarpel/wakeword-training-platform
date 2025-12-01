@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class CUDAValidator:
     """Validates CUDA availability and provides GPU information"""
 
-    def __init__(self, allow_cpu: bool = False):
+    def __init__(self, allow_cpu: bool = False) -> None:
         self.cuda_available = torch.cuda.is_available()
         self.device_count = torch.cuda.device_count() if self.cuda_available else 0
         self.allow_cpu = allow_cpu
@@ -91,7 +91,7 @@ class CUDAValidator:
             "current_device": torch.cuda.current_device(),
         }
 
-    def get_memory_info(self, device_id: int = 0) -> Dict[str, float]:
+    def get_memory_info(self, device_id: int = 0) -> Dict[str, Any]:
         """
         Get GPU memory information
 
@@ -156,7 +156,7 @@ class CUDAValidator:
         # Clamp between reasonable values
         return max(1, min(batch_size, 256))
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """Clear CUDA cache"""
         if self.cuda_available:
             torch.cuda.empty_cache()
@@ -194,7 +194,7 @@ def get_cuda_validator(allow_cpu: bool = False) -> CUDAValidator:
     return CUDAValidator(allow_cpu=allow_cpu)
 
 
-def enforce_cuda(allow_cpu: bool = False):
+def enforce_cuda(allow_cpu: bool = False) -> CUDAValidator:
     """
     Enforce CUDA availability at startup
     Exit if CUDA is not available unless allow_cpu is True

@@ -4,7 +4,7 @@ Provides robust, self-documenting schema validation for all YAML configurations.
 """
 from typing import Any, Dict, List, Literal, Tuple
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, Field, root_validator, validator, ValidationError
 
 # ===========================================================================
 # Pydantic Models for Configuration Sections
@@ -30,14 +30,14 @@ class DataConfig(BaseModel):
     fallback_to_audio: bool = True
 
     @validator("n_fft")
-    def n_fft_must_be_power_of_two(cls, v):
+    def n_fft_must_be_power_of_two(cls, v: int) -> int:
         if not (v > 0 and (v & (v - 1) == 0)):
             # While not strictly required by all libraries, it's a common practice
             pass  # Relaxing this to a warning in the main validator
         return v
 
-    @root_validator
-    def hop_length_less_than_n_fft(cls, values):
+    @root_validator(skip_on_failure=True)
+    def hop_length_less_than_n_fft(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         n_fft, hop_length = values.get("n_fft"), values.get("hop_length")
         if hop_length is not None and n_fft is not None and hop_length >= n_fft:
             raise ValueError(
@@ -62,14 +62,14 @@ class TrainingConfig(BaseModel):
     save_best_only: bool = True
 
     @validator("batch_size")
-    def batch_size_power_of_two(cls, v):
+    def batch_size_power_of_two(cls, v: int) -> int:
         if not (v > 0 and (v & (v - 1) == 0)):
              # Warning only
              pass
         return v
 
     @validator("learning_rate")
-    def learning_rate_range(cls, v):
+    def learning_rate_range(cls, v: float) -> float:
         if v < 1e-6 or v > 1e-1:
              # Warning could be logged here if logger was available, 
              # but for now we just allow it or could raise ValueError if strict.
@@ -110,14 +110,28 @@ class AugmentationConfig(BaseModel):
     n_freq_masks: int = Field(2, ge=0)
     n_time_masks: int = Field(2, ge=0)
 
-    @root_validator
-    def min_less_than_max(cls, values):
-        if values.get("time_stretch_min") >= values.get("time_stretch_max"):
-            raise ValueError("time_stretch_min must be less than time_stretch_max")
-        if values.get("pitch_shift_min") >= values.get("pitch_shift_max"):
-            raise ValueError("pitch_shift_min must be less than pitch_shift_max")
-        if values.get("noise_snr_min") >= values.get("noise_snr_max"):
-            raise ValueError("noise_snr_min must be less than noise_snr_max")
+    @root_validator(skip_on_failure=True)
+    def min_less_than_max(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        # Get values with None checks for comparison operations
+        # Mypy requires explicit None checks when comparing Optional values
+        time_stretch_min = values.get("time_stretch_min")
+        time_stretch_max = values.get("time_stretch_max")
+        if time_stretch_min is not None and time_stretch_max is not None:
+            if time_stretch_min >= time_stretch_max:
+                raise ValueError("time_stretch_min must be less than time_stretch_max")
+        
+        pitch_shift_min = values.get("pitch_shift_min")
+        pitch_shift_max = values.get("pitch_shift_max")
+        if pitch_shift_min is not None and pitch_shift_max is not None:
+            if pitch_shift_min >= pitch_shift_max:
+                raise ValueError("pitch_shift_min must be less than pitch_shift_max")
+        
+        noise_snr_min = values.get("noise_snr_min")
+        noise_snr_max = values.get("noise_snr_max")
+        if noise_snr_min is not None and noise_snr_max is not None:
+            if noise_snr_min >= noise_snr_max:
+                raise ValueError("noise_snr_min must be less than noise_snr_max")
+        
         return values
 
 
@@ -156,15 +170,15 @@ class WakewordPydanticConfig(BaseModel):
 
     config_name: str = "default"
     description: str = "Default wakeword training configuration"
-    data: DataConfig = Field(default_factory=DataConfig)
-    training: TrainingConfig = Field(default_factory=TrainingConfig)
-    model: ModelConfig = Field(default_factory=ModelConfig)
-    augmentation: AugmentationConfig = Field(default_factory=AugmentationConfig)
-    optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
-    loss: LossConfig = Field(default_factory=LossConfig)
+    data: DataConfig = Field(default_factory=lambda: DataConfig())  # type: ignore
+    training: TrainingConfig = Field(default_factory=lambda: TrainingConfig())  # type: ignore
+    model: ModelConfig = Field(default_factory=lambda: ModelConfig())  # type: ignore
+    augmentation: AugmentationConfig = Field(default_factory=lambda: AugmentationConfig())  # type: ignore
+    optimizer: OptimizerConfig = Field(default_factory=lambda: OptimizerConfig())  # type: ignore
+    loss: LossConfig = Field(default_factory=lambda: LossConfig())  # type: ignore
 
-    @root_validator
-    def cross_dependencies(cls, values):
+    @root_validator(skip_on_failure=True)
+    def cross_dependencies(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         training_config = values.get("training")
         optimizer_config = values.get("optimizer")
         if training_config and optimizer_config:
@@ -175,7 +189,7 @@ class WakewordPydanticConfig(BaseModel):
 
 def validate_config_with_pydantic(
     config_dict: Dict[str, Any]
-) -> Tuple[bool, List[Dict[str, Any]]]:
+) -> Tuple[bool, List[Any]]:
     """
     Validate a configuration dictionary using the Pydantic models.
 
@@ -185,12 +199,14 @@ def validate_config_with_pydantic(
     Returns:
         A tuple containing:
         - bool: True if the configuration is valid, False otherwise.
-        - List[Dict[str, Any]]: A list of validation errors.
+        - List[Any]: A list of validation error details from Pydantic.
+                     Each error is a dict-like ErrorDetails object.
     """
     try:
         WakewordPydanticConfig.parse_obj(config_dict)
         return True, []
-    except Exception as e:
+    except ValidationError as e:
+        # e.errors() returns List[ErrorDetails], which is compatible with List[Any]
         return False, e.errors()
 
 

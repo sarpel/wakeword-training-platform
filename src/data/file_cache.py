@@ -16,7 +16,7 @@ logger = structlog.get_logger(__name__)
 class FileCache:
     """Cache for file metadata to avoid redundant validation"""
 
-    def __init__(self, cache_dir: Path = None):
+    def __init__(self, cache_dir: Optional[Path] = None) -> None:
         """
         Initialize file cache
 
@@ -28,13 +28,13 @@ class FileCache:
 
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache = {}
+        self.cache: Dict[str, Any] = {}
         self.cache_file = self.cache_dir / "file_metadata_cache.json"
 
         # Load existing cache
         self._load_cache()
 
-    def _load_cache(self):
+    def _load_cache(self) -> None:
         """Load cache from disk"""
         if self.cache_file.exists():
             try:
@@ -47,7 +47,7 @@ class FileCache:
         else:
             self.cache = {}
 
-    def _save_cache(self):
+    def _save_cache(self) -> None:
         """Save cache to disk"""
         try:
             with open(self.cache_file, "w") as f:
@@ -94,7 +94,8 @@ class FileCache:
             key = self._get_file_key(file_path)
 
             if key in self.cache:
-                cached_data = self.cache[key]
+                # Mypy: Explicitly type the cached data to avoid Any return
+                cached_data: Dict[str, Any] = self.cache[key]
                 logger.debug(f"Cache hit for {file_path.name}")
                 return cached_data
 
@@ -104,7 +105,7 @@ class FileCache:
             logger.debug(f"Cache get error for {file_path}: {e}")
             return None
 
-    def set(self, file_path: Path, metadata: Dict[str, Any]):
+    def set(self, file_path: Path, metadata: Dict[str, Any]) -> None:
         """
         Cache metadata for file
 
@@ -125,17 +126,17 @@ class FileCache:
         except Exception as e:
             logger.debug(f"Cache set error for {file_path}: {e}")
 
-    def save(self):
+    def save(self) -> None:
         """Save cache to disk"""
         self._save_cache()
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all cache"""
         self.cache = {}
         self._save_cache()
         logger.info("Cache cleared")
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics
 

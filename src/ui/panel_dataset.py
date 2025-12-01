@@ -8,7 +8,7 @@ Panel 1: Dataset Management
 import sys
 import traceback
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, cast, Literal
 
 import gradio as gr
 import torch
@@ -310,7 +310,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
         # Event handlers with full implementation
         def scan_datasets_handler(
-            root_path: str, skip_val: bool, move_unqualified: bool, progress=gr.Progress()
+            root_path: str, skip_val: bool, move_unqualified: bool, progress: gr.Progress = gr.Progress()
         ) -> Tuple[dict, str, str]:
             """Scan datasets and return statistics and health report"""
             global _current_scanner, _current_dataset_info
@@ -318,17 +318,17 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             try:
                 if not root_path:
                     return (
-                        {"error": "Please provide dataset root path"},
-                        "❌ No path provided",
-                        "Run dataset scan to see health report...",
+                        {},
+                        "❌ Please select a dataset folder",
+                        "No folder selected",
                     )
 
-                root_path = Path(root_path)
-                if not root_path.exists():
+                root_path_obj = Path(root_path)
+                if not root_path_obj.exists():
                     return (
-                        {"error": f"Path does not exist: {root_path}"},
-                        f"❌ Directory not found: {root_path}",
-                        "Run dataset scan to see health report...",
+                        {},
+                        f"❌ Directory not found: {root_path_obj}",
+                        "Directory not found",
                     )
 
                 logger.info(
@@ -336,19 +336,18 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 )
 
                 # Progress callback for Gradio
-                def update_progress(progress_value, message):
+                def update_progress(progress_value: float, message: str) -> None:
                     progress(progress_value, desc=f"Scanning: {message}")
 
                 # Create scanner with caching and parallel processing
-                use_cache = not skip_val  # Only use cache when validating
-                scanner = DatasetScanner(root_path, use_cache=use_cache)
+                scanner = DatasetScanner(root_path_obj)
+                _current_scanner = scanner
 
-                # Scan datasets with progress
-                progress(0, desc="Initializing scan...")
+                progress(0.1, desc="Scanning dataset structure...")
                 dataset_info = scanner.scan_datasets(
-                    progress_callback=update_progress,
                     skip_validation=skip_val,
                     exclude_unqualified=move_unqualified,
+                    progress_callback=update_progress,
                 )
 
                 # Get statistics
@@ -428,7 +427,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             val: float,
             test: float,
             npy_source: str,  # Added npy_source input
-            progress=gr.Progress(),
+            progress: gr.Progress = gr.Progress(),
         ) -> Tuple[str, str]:
             """Split datasets into train/val/test"""
             global _current_dataset_info
@@ -539,7 +538,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             n_fft: int,
             batch_size: int,
             output_dir: str,
-            progress=gr.Progress(),
+            progress: gr.Progress = gr.Progress(),
         ) -> str:
             """Batch extract features to NPY files"""
             global _current_dataset_info
@@ -593,7 +592,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 logger.info(f"Found {len(all_files)} audio files to process")
 
                 # Progress callback
-                def update_progress(current, total, message):
+                def update_progress(current: int, total: int, message: str) -> None:
                     progress_value = 0.1 + (current / total) * 0.8
                     progress(progress_value, desc=f"{message}")
 
@@ -677,7 +676,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 return f"❌ Error: {str(e)}\n\nStack trace:\n{traceback.format_exc()}"
 
         def analyze_npy_handler(
-            npy_path: str, root_path: str, progress=gr.Progress()
+            npy_path: str, root_path: str, progress: gr.Progress = gr.Progress()
         ) -> str:
             """Analyze existing .npy files"""
             try:
@@ -685,14 +684,14 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 if not npy_path:
                     if not root_path:
                         return "❌ Please provide either .npy folder path or scan datasets first"
-                    npy_path = Path(root_path) / "npy"
+                    npy_path_obj = Path(root_path) / "npy"
                 else:
-                    npy_path = Path(npy_path)
+                    npy_path_obj = Path(npy_path)
 
-                if not npy_path.exists():
-                    return f"❌ Directory not found: {npy_path}"
+                if not npy_path_obj.exists():
+                    return f"❌ Directory not found: {npy_path_obj}"
 
-                logger.info(f"Analyzing .npy files in: {npy_path}")
+                logger.info(f"Analyzing .npy files in: {npy_path_obj}")
 
                 # Create extractor with parallel processing
                 progress(0.05, desc="Initializing analyzer...")
@@ -700,13 +699,13 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
                 # Scan for .npy files
                 progress(0.1, desc="Scanning for .npy files...")
-                npy_files = extractor.scan_npy_files(npy_path, recursive=True)
+                npy_files = extractor.scan_npy_files(npy_path_obj, recursive=True)
 
                 if not npy_files:
-                    return f"ℹ️  No .npy files found in: {npy_path}"
+                    return f"ℹ️  No .npy files found in: {npy_path_obj}"
 
                 # Progress callback for extraction
-                def update_progress(current, total, message):
+                def update_progress(current: int, total: int, message: str) -> None:
                     progress_value = 0.1 + (current / total) * 0.8
                     progress(progress_value, desc=f"Analyzing: {message}")
 
@@ -742,7 +741,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             target_duration: float,
             target_n_mels: int,
             target_hop_length: int,
-            progress=gr.Progress(),
+            progress: gr.Progress = gr.Progress(),
         ) -> str:
             """Validate NPY file shapes"""
             try:
@@ -750,12 +749,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 if not npy_path:
                     if not root_path:
                         return "❌ Please provide either .npy folder path or scan datasets first"
-                    npy_path = Path(root_path) / "npy"
+                    npy_path_obj = Path(root_path) / "npy"
                 else:
-                    npy_path = Path(npy_path)
+                    npy_path_obj = Path(npy_path)
 
-                if not npy_path.exists():
-                    return f"❌ Directory not found: {npy_path}"
+                if not npy_path_obj.exists():
+                    return f"❌ Directory not found: {npy_path_obj}"
 
                 # Get current config to determine expected shape
                 from src.config.defaults import DataConfig
@@ -776,7 +775,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # Helper extractor to calculate shape
                 helper_extractor = FeatureExtractor(
                     sample_rate=config.sample_rate,
-                    feature_type=config.feature_type,
+                    feature_type=cast(Literal["mel", "mfcc"], config.feature_type),
                     n_mels=config.n_mels,
                     n_mfcc=config.n_mfcc,
                     n_fft=config.n_fft,
@@ -786,7 +785,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 expected_shape = helper_extractor.get_output_shape(target_samples)
 
                 logger.info(
-                    f"Validating shapes in {npy_path} against expected: {expected_shape}"
+                    f"Validating shapes in {npy_path_obj} against expected: {expected_shape}"
                 )
 
                 # Initialize NPY extractor
@@ -794,13 +793,13 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
                 # Scan files
                 progress(0.1, desc="Scanning .npy files...")
-                npy_files = extractor.scan_npy_files(npy_path, recursive=True)
+                npy_files = extractor.scan_npy_files(npy_path_obj, recursive=True)
 
                 if not npy_files:
-                    return f"ℹ️ No .npy files found in {npy_path}"
+                    return f"ℹ️ No .npy files found in {npy_path_obj}"
 
                 # Progress callback
-                def update_progress(current, total, message):
+                def update_progress(current: int, total: int, message: str) -> None:
                     progress_value = 0.1 + (current / total) * 0.8
                     progress(progress_value, desc=message)
 
@@ -848,7 +847,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             root_path: str,
             threshold: float,
             min_duration: float,
-            progress=gr.Progress()
+            progress: gr.Progress = gr.Progress()
         ) -> str:
             """Filter dataset using VAD"""
             try:
@@ -932,12 +931,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             wandb_project: str,
             wandb_api_key: str,  # Added API key
             state: gr.State,
-            progress=gr.Progress(),
-        ):
+            progress: gr.Progress = gr.Progress(),
+        ) -> str:
             """Orchestrates the full pipeline: Scan -> Extract -> Split -> Config -> Train"""
             
             logs = []
-            def log(msg):
+            def log(msg: str) -> str:
                 logs.append(msg)
                 logger.info(msg)
                 return "\n".join(logs)

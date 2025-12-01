@@ -6,7 +6,7 @@ import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, cast
 
 import structlog
 import torch
@@ -66,7 +66,7 @@ class CheckpointManager:
         val_loss: float,
         val_metrics: Any,
         improved: bool,
-    ):
+    ) -> None:
         """
         Save checkpoint
 
@@ -235,7 +235,7 @@ class CheckpointManager:
         logger.info(f"  Epoch: {checkpoint['epoch'] + 1}")
         logger.info(f"  Val loss: {checkpoint.get('val_loss', 'N/A')}")
 
-        return checkpoint
+        return cast(Dict[str, Any], checkpoint)
 
     def load_best_model(
         self,
@@ -272,7 +272,7 @@ class CheckpointManager:
 
         return self.load_checkpoint(best_checkpoint.path, model=model, device=device)
 
-    def cleanup_old_checkpoints(self, keep_n: int = 5, keep_best: bool = True):
+    def cleanup_old_checkpoints(self, keep_n: int = 5, keep_best: bool = True) -> None:
         """
         Delete old checkpoints, keeping only N most recent
 
@@ -304,7 +304,7 @@ class CheckpointManager:
             except Exception as e:
                 logger.warning(f"Failed to delete {checkpoint.path}: {e}")
 
-    def export_checkpoint_info(self, output_path: Path):
+    def export_checkpoint_info(self, output_path: Path) -> None:
         """
         Export checkpoint metadata to JSON
 
@@ -339,7 +339,7 @@ class CheckpointManager:
         model: nn.Module,
         snapshot_name: str,
         metadata: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> None:
         """
         Create a standalone model snapshot (weights only, no optimizer)
 
@@ -379,12 +379,12 @@ class CheckpointManager:
         snapshot = torch.load(snapshot_path, map_location=device)
         model.load_state_dict(snapshot["model_state_dict"])
 
-        return snapshot.get("metadata", {})
+        return cast(Dict[str, Any], snapshot.get("metadata", {}))
 
 
 def extract_model_for_inference(
     checkpoint_path: Path, output_path: Path, device: str = "cuda"
-):
+) -> None:
     """
     Extract model weights from checkpoint for inference-only use
 

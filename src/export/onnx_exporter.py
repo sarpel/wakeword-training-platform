@@ -16,11 +16,11 @@ import shutil
 import sys
 
 try:
-    import onnx
-    import onnxruntime as ort
+    import onnx  # type: ignore
+    import onnxruntime as ort  # type: ignore
 except ImportError:
-    onnx = None
-    ort = None
+    onnx: Any = None  # type: ignore[no-redef]
+    ort: Any = None  # type: ignore[no-redef]
 
 logger = structlog.get_logger(__name__)
 
@@ -150,7 +150,7 @@ class ONNXExporter:
             logger.exception(e)
             return {"success": False, "error": str(e)}
 
-    def export_to_tflite(self, onnx_path: Path, output_path: Path, sample_input: torch.Tensor = None) -> Dict[str, Any]:
+    def export_to_tflite(self, onnx_path: Path, output_path: Path, sample_input: Optional[torch.Tensor] = None) -> Dict[str, Any]:
         """
         Export ONNX model to TFLite using onnx2tf
         
@@ -237,7 +237,7 @@ class ONNXExporter:
             Path to quantized model
         """
         try:
-            from onnxruntime.quantization import QuantType, quantize_dynamic
+            from onnxruntime.quantization import QuantType, quantize_dynamic  # type: ignore
 
             output_path = onnx_path.parent / f"{onnx_path.stem}_fp16.onnx"
 
@@ -268,7 +268,7 @@ class ONNXExporter:
             Path to quantized model
         """
         try:
-            from onnxruntime.quantization import QuantType, quantize_dynamic
+            from onnxruntime.quantization import QuantType, quantize_dynamic  # type: ignore
 
             output_path = onnx_path.parent / f"{onnx_path.stem}_int8.onnx"
 
@@ -432,7 +432,7 @@ def validate_onnx_model(
 
     logger.info(f"Validating ONNX model: {onnx_path}")
 
-    results = {"valid": False, "error": None}
+    results: Dict[str, Any] = {"valid": False, "error": None}
 
     try:
         # Load and check ONNX model

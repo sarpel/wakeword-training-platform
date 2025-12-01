@@ -2,7 +2,7 @@
 Exponential Moving Average (EMA) for model parameters
 Maintains shadow copy of model weights for more stable inference
 """
-from typing import Optional
+from typing import Optional, Dict, Any, Tuple
 
 import structlog
 import torch
@@ -37,7 +37,7 @@ class EMA:
         self.device = device if device else next(model.parameters()).device
 
         # Create shadow copy of parameters
-        self.shadow_params = {}
+        self.shadow_params: Dict[str, torch.Tensor] = {}
         self._register_params()
 
         # Step counter
@@ -45,13 +45,15 @@ class EMA:
 
         logger.info(f"EMA initialized with decay={decay}")
 
-    def _register_params(self):
+    def _register_params(self) -> None:
         """Register all model parameters for tracking"""
         for name, param in self.model.named_parameters():
             if param.requires_grad:
-                self.shadow_params[name] = param.data.clone().to(self.device)
+                # Clone parameter and move to device
+                # Mypy: Explicitly cast device to ensure proper .to() overload
+                self.shadow_params[name] = param.data.clone().to(device=self.device)  # type: ignore[arg-type]
 
-    def update(self, decay: Optional[float] = None):
+    def update(self, decay: Optional[float] = None) -> None:
         """
         Update shadow parameters
 
@@ -70,7 +72,7 @@ class EMA:
 
         self.num_updates += 1
 
-    def apply_shadow(self):
+    def apply_shadow(self) -> Dict[str, torch.Tensor]:
         """
         Apply shadow parameters to model (for inference/evaluation)
 
@@ -89,7 +91,7 @@ class EMA:
 
         return original_params
 
-    def restore(self, original_params: dict):
+    def restore(self, original_params: Dict[str, torch.Tensor]) -> None:
         """
         Restore original parameters after evaluation
 
@@ -101,7 +103,7 @@ class EMA:
                 if name in original_params:
                     param.data.copy_(original_params[name])
 
-    def state_dict(self) -> dict:
+    def state_dict(self) -> Dict[str, Any]:
         """Get EMA state dict for checkpointing"""
         return {
             "shadow_params": self.shadow_params,
@@ -109,7 +111,7 @@ class EMA:
             "num_updates": self.num_updates,
         }
 
-    def load_state_dict(self, state_dict: dict):
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load EMA state from checkpoint"""
         self.shadow_params = state_dict["shadow_params"]
         self.decay = state_dict["decay"]
@@ -192,7 +194,7 @@ def create_ema(
     decay: float = 0.999,
     use_scheduler: bool = True,
     total_epochs: Optional[int] = None,
-) -> tuple:
+) -> Tuple[EMA, Optional[EMAScheduler]]:
     """
     Create EMA and optional scheduler
 

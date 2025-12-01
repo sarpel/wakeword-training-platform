@@ -7,13 +7,14 @@ Panel 4: Model Evaluation
 """
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any, Union, Dict
 
 import gradio as gr
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
 
 matplotlib.use("Agg")
 import structlog
@@ -34,26 +35,26 @@ logger = structlog.get_logger(__name__)
 class EvaluationState:
     """Global evaluation state manager"""
 
-    def __init__(self):
-        self.model = None
-        self.model_info = None
+    def __init__(self) -> None:
+        self.model: Optional[torch.nn.Module] = None
+        self.model_info: Optional[Dict[str, Any]] = None
         self.evaluator: Optional[ModelEvaluator] = None
-        self.mic_inference: Optional[MicrophoneInference] = None
+        self.mic_inference: Optional[Union[MicrophoneInference, SimulatedMicrophoneInference]] = None
         self.is_mic_recording = False
 
         # File evaluation results
         self.file_results: List[EvaluationResult] = []
 
         # Test set results
-        self.test_metrics = None
+        self.test_metrics: Optional[MetricResults] = None
         self.test_results: List[EvaluationResult] = []
 
         # Microphone history
-        self.mic_history = []
+        self.mic_history: List[str] = []
 
-        self.waveform_fig = None
-        self.waveform_ax = None
-        self.waveform_line = None
+        self.waveform_fig: Optional[Any] = None
+        self.waveform_ax: Optional[Any] = None
+        self.waveform_line: Optional[Any] = None
         self.waveform_sr = 16000  # modelden set edilecek
         self.window_sec = 1.0  # ekranda gösterilecek süre
 
@@ -157,7 +158,7 @@ def load_model(model_path: str) -> str:
         return error_msg
 
 
-def _ensure_waveform_fig():
+def _ensure_waveform_fig() -> None:
     if (
         eval_state.waveform_fig is None
         or eval_state.waveform_ax is None
@@ -192,7 +193,7 @@ def _ensure_waveform_fig():
         )
 
 
-def _update_waveform_plot(audio: np.ndarray):
+def _update_waveform_plot(audio: np.ndarray) -> Any:
     _ensure_waveform_fig()
     sr = eval_state.waveform_sr
     # Son window_sec kadarını göster
@@ -203,7 +204,8 @@ def _update_waveform_plot(audio: np.ndarray):
     # Kısa gelirse sağa hizala
     y = np.zeros(max_len, dtype=audio.dtype)
     y[-len(audio) :] = audio
-    eval_state.waveform_line.set_data(x, y)
+    if eval_state.waveform_line:
+        eval_state.waveform_line.set_data(x, y)
     # Limitleri sabit tut. redraw için fig’i döndür.
     return eval_state.waveform_fig
 
@@ -334,7 +336,7 @@ def export_results_to_csv() -> str:
         return error_msg
 
 
-def start_microphone():
+def start_microphone() -> Tuple[str, float, Optional[Any], str]:
     """Start microphone inference"""
     if eval_state.evaluator is None:
         return "❌ Please load a model first", 0.0, None, ""
@@ -343,10 +345,18 @@ def start_microphone():
         return "⚠️ Already recording", 0.0, None, ""
 
     try:
+        if eval_state.model_info is None:
+             return "❌ Model info not loaded", 0.0, None, ""
+
         logger.info("Starting microphone inference...")
 
+        if eval_state.model is None:
+            return "❌ Model not loaded", 0.0, None, ""
+
         # Create microphone inference
+        mic_inf: Union[MicrophoneInference, SimulatedMicrophoneInference]
         try:
+
             mic_inf = MicrophoneInference(
                 model=eval_state.model,
                 sample_rate=eval_state.model_info["config"].data.sample_rate,
@@ -392,7 +402,7 @@ def start_microphone():
         return error_msg, 0.0, None, ""
 
 
-def stop_microphone():
+def stop_microphone() -> Tuple[str, float, Optional[Any], str]:
     """Stop microphone inference"""
     if not eval_state.is_mic_recording:
         return "⚠️ Not recording", 0.0, None, ""
@@ -515,7 +525,7 @@ def evaluate_test_set(
     Returns:
         Tuple of (metrics_dict, confusion_matrix_plot, roc_plot, advanced_metrics_dict)
     """
-    if eval_state.evaluator is None:
+    if eval_state.evaluator is None or eval_state.model_info is None:
         return {"status": "❌ Please load a model first"}, None, None, {}
 
     try:
@@ -701,29 +711,32 @@ def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
     return fig
 
 
-def create_roc_curve_plot(test_dataset) -> plt.Figure:
+def create_roc_curve_plot(test_dataset: WakewordDataset) -> plt.Figure:
     """Create ROC curve visualization"""
     try:
+        if eval_state.evaluator is None:
+            return plt.figure()
+
         # Get ROC curve data
         fpr_array, tpr_array, thresholds = eval_state.evaluator.get_roc_curve_data(
             test_dataset, batch_size=32
         )
 
         # Remove duplicate points for cleaner curve
-        unique_fpr = []
-        unique_tpr = []
+        unique_fpr: List[float] = []
+        unique_tpr: List[float] = []
         for fpr, tpr in zip(fpr_array, tpr_array):
             if not unique_fpr or (fpr != unique_fpr[-1] or tpr != unique_tpr[-1]):
                 unique_fpr.append(fpr)
                 unique_tpr.append(tpr)
 
-        unique_fpr = np.array(unique_fpr)
-        unique_tpr = np.array(unique_tpr)
+        unique_fpr_arr = np.array(unique_fpr)
+        unique_tpr_arr = np.array(unique_tpr)
 
         # Calculate AUC
-        if len(unique_fpr) >= 2:
+        if len(unique_fpr_arr) >= 2:
             # Use trapezoidal rule for AUC
-            auc = np.trapz(unique_tpr, unique_fpr)
+            auc = np.trapz(unique_tpr_arr, unique_fpr_arr)
         else:
             # Fallback: estimate AUC based on single point
             # If model predicts perfectly, AUC = 1.0
@@ -998,7 +1011,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         )
 
         # Event handlers
-        def refresh_models_handler():
+        def refresh_models_handler() -> gr.Dropdown:
             models = get_available_models()
             return gr.update(
                 choices=models,

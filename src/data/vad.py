@@ -5,6 +5,7 @@ Implements energy-based VAD for dataset cleaning and preprocessing.
 import torch
 import structlog
 import numpy as np
+from typing import List, Any, Optional
 
 logger = structlog.get_logger(__name__)
 
@@ -72,7 +73,7 @@ class EnergyVAD:
         # We can use convolution for this
         consecutive_frames = 3
         if len(mask) < consecutive_frames:
-            return mask.any().item()
+            return bool(mask.any().item())
             
         kernel = torch.ones(consecutive_frames, device=mask.device)
         # conv1d needs (N, C, L)
@@ -82,11 +83,11 @@ class EnergyVAD:
         convolved = torch.nn.functional.conv1d(mask_float, kernel)
         
         # If any value == consecutive_frames, we have a sequence
-        return (convolved == consecutive_frames).any().item()
+        return bool((convolved == consecutive_frames).any().item())
 
-    def filter_dataset(self, dataset, threshold: float = None) -> list:
+    def filter_dataset(self, dataset: List[Any], threshold: Optional[float] = None) -> List[Any]:
         """
         Filter a dataset (list of files) using VAD.
         Not implemented here as it depends on dataset structure.
         """
-        pass
+        return dataset  # Placeholder implementation

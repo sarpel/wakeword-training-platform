@@ -2,7 +2,7 @@
 Optimizer and Scheduler Factory
 Creates optimizers and learning rate schedulers from configuration
 """
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, List, Dict, cast, TYPE_CHECKING, Union
 
 import structlog
 import torch
@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
     ReduceLROnPlateau,
     StepLR,
+    _LRScheduler,
 )
 
 logger = structlog.get_logger(__name__)
@@ -45,7 +46,7 @@ class WarmupScheduler:
         # Store initial learning rates
         self.base_lrs = [group["lr"] for group in optimizer.param_groups]
 
-    def step(self, epoch: Optional[int] = None, metrics: Optional[float] = None):
+    def step(self, epoch: Optional[int] = None, metrics: Optional[float] = None) -> None:
         """
         Step the scheduler
 
@@ -78,11 +79,11 @@ class WarmupScheduler:
                 else:
                     self.base_scheduler.step()
 
-    def get_last_lr(self):
+    def get_last_lr(self) -> List[float]:
         """Get last learning rate"""
         return [group["lr"] for group in self.optimizer.param_groups]
 
-    def state_dict(self):
+    def state_dict(self) -> Dict[str, Any]:
         """
         Returns the state of the scheduler as a dictionary
 
@@ -99,7 +100,7 @@ class WarmupScheduler:
         }
         return state
 
-    def load_state_dict(self, state_dict):
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """
         Loads the scheduler state
 
@@ -121,7 +122,7 @@ def create_optimizer(
     weight_decay: float = 1e-4,
     momentum: float = 0.9,
     betas: Tuple[float, float] = (0.9, 0.999),
-    **kwargs,
+    **kwargs: Any,
 ) -> optim.Optimizer:
     """
     Create optimizer from configuration
@@ -149,6 +150,8 @@ def create_optimizer(
     logger.info(f"Creating optimizer: {optimizer_name}")
     logger.info(f"  Learning rate: {learning_rate}")
     logger.info(f"  Weight decay: {weight_decay}")
+
+    optimizer: optim.Optimizer
 
     if optimizer_name == "adam":
         optimizer = optim.Adam(
@@ -193,8 +196,8 @@ def create_scheduler(
     patience: int = 5,
     factor: float = 0.5,
     min_lr: float = 1e-6,
-    **kwargs,
-) -> Optional[Any]:
+    **kwargs: Any,
+) -> Optional[Union[WarmupScheduler, CosineAnnealingLR, StepLR, ReduceLROnPlateau]]:
     """
     Create learning rate scheduler from configuration
 
@@ -225,7 +228,7 @@ def create_scheduler(
     logger.info(f"Creating scheduler: {scheduler_name}")
 
     # Create base scheduler
-    base_scheduler = None
+    base_scheduler: Optional[Union[CosineAnnealingLR, StepLR, ReduceLROnPlateau]] = None
 
     if scheduler_name == "cosine":
         # Cosine annealing
@@ -261,6 +264,7 @@ def create_scheduler(
         )
 
     # Wrap with warmup if needed
+    scheduler: Union[WarmupScheduler, CosineAnnealingLR, StepLR, ReduceLROnPlateau]
     if warmup_epochs > 0:
         logger.info(f"  Using warmup: {warmup_epochs} epochs")
         scheduler = WarmupScheduler(
@@ -272,8 +276,10 @@ def create_scheduler(
     return scheduler
 
 
+from src.config.defaults import WakewordConfig
+
 def create_optimizer_and_scheduler(
-    model: nn.Module, config: Any
+    model: nn.Module, config: WakewordConfig
 ) -> Tuple[optim.Optimizer, Optional[Any]]:
     """
     Create optimizer and scheduler from configuration object
@@ -292,7 +298,7 @@ def create_optimizer_and_scheduler(
         learning_rate=config.training.learning_rate,
         weight_decay=config.optimizer.weight_decay,
         momentum=config.optimizer.momentum,
-        betas=config.optimizer.betas,
+        betas=cast(Tuple[float, float], tuple(config.optimizer.betas)),
     )
 
     # Create scheduler
@@ -321,10 +327,10 @@ def get_learning_rate(optimizer: optim.Optimizer) -> float:
     Returns:
         Current learning rate (first param group)
     """
-    return optimizer.param_groups[0]["lr"]
+    return float(optimizer.param_groups[0]["lr"])
 
 
-def adjust_learning_rate(optimizer: optim.Optimizer, scale: float):
+def adjust_learning_rate(optimizer: optim.Optimizer, scale: float) -> None:
     """
     Manually adjust learning rate by scale factor
 
@@ -424,7 +430,9 @@ if __name__ == "__main__":
 
     # Simulate warmup
     for epoch in range(10):
-        scheduler.step(epoch)
+        # Mypy check: scheduler could be None, so we need to verify it exists
+        if scheduler is not None:
+            scheduler.step(epoch)
         lr = get_learning_rate(optimizer)
         if epoch < 5:
             print(f"  Warmup epoch {epoch+1}: LR = {lr:.6f}")
@@ -444,9 +452,12 @@ if __name__ == "__main__":
     for param in model.parameters():
         param.grad = torch.randn_like(param) * 10
 
-    total_norm_before = (
-        sum(p.grad.norm(2).item() ** 2 for p in model.parameters()) ** 0.5
-    )
+    total_norm = 0.0
+    for p in model.parameters():
+        if p.grad is not None:
+            total_norm += p.grad.data.norm(2).item() ** 2
+    total_norm_before = total_norm ** 0.5
+
     total_norm_after = clip_gradients(model, max_norm=1.0)
 
     print(f"  Gradient norm before clipping: {total_norm_before:.4f}")
@@ -466,7 +477,10 @@ if __name__ == "__main__":
     # Simulate plateau (loss not decreasing)
     for epoch in range(10):
         val_loss = 1.0  # Constant loss (plateau)
-        scheduler.step(val_loss)
+        # Mypy check: ReduceLROnPlateau.step() expects metrics (float), not epoch (int)
+        # This is correct usage for plateau scheduler
+        if scheduler is not None:
+            scheduler.step(val_loss)  # type: ignore[arg-type]
 
         if epoch == 3 or epoch == 6 or epoch == 9:
             current_lr = get_learning_rate(optimizer)
@@ -500,7 +514,7 @@ if __name__ == "__main__":
         training = MockTrainingConfig()
 
     config = MockConfig()
-    optimizer, scheduler = create_optimizer_and_scheduler(model, config)
+    optimizer, scheduler = create_optimizer_and_scheduler(model, cast(WakewordConfig, config))
 
     print(f"  Created optimizer: {type(optimizer).__name__}")
     print(f"  Created scheduler: {type(scheduler).__name__}")

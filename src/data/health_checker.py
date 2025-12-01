@@ -2,7 +2,7 @@
 Dataset Health Checker and Briefing System
 Analyzes dataset quality and provides recommendations
 """
-from typing import Dict
+from typing import Dict, List, Any
 
 import structlog
 
@@ -32,9 +32,9 @@ class DatasetHealthChecker:
             dataset_stats: Dataset statistics from scanner
         """
         self.stats = dataset_stats
-        self.issues = []
-        self.warnings = []
-        self.recommendations = []
+        self.issues: List[str] = []
+        self.warnings: List[str] = []
+        self.recommendations: List[str] = []
         self.health_score = 100.0
 
     def analyze(self) -> Dict:
@@ -76,7 +76,7 @@ class DatasetHealthChecker:
             "statistics": self._get_key_statistics(),
         }
 
-    def _check_positive_samples(self):
+    def _check_positive_samples(self) -> None:
         """Check if sufficient positive samples"""
         categories = self.stats.get("categories", {})
         positive_count = categories.get("positive", {}).get("file_count", 0)
@@ -104,7 +104,7 @@ class DatasetHealthChecker:
                 f"• Consider collecting {self.RECOMMENDED_POSITIVE_SAMPLES - positive_count} more positive samples for better accuracy"
             )
 
-    def _check_class_balance(self):
+    def _check_class_balance(self) -> None:
         """Check positive to negative ratio"""
         categories = self.stats.get("categories", {})
         positive_count = categories.get("positive", {}).get("file_count", 0)
@@ -144,7 +144,7 @@ class DatasetHealthChecker:
                 "• Consider reducing negative samples or adding more positives"
             )
 
-    def _check_hard_negatives(self):
+    def _check_hard_negatives(self) -> None:
         """Check hard negative samples"""
         categories = self.stats.get("categories", {})
         negative_count = categories.get("negative", {}).get("file_count", 0)
@@ -176,11 +176,11 @@ class DatasetHealthChecker:
                     f"• Collect approximately {needed} more hard negative samples"
                 )
 
-    def _check_sample_rates(self):
+    def _check_sample_rates(self) -> None:
         """Check sample rate consistency"""
         categories = self.stats.get("categories", {})
 
-        all_sample_rates = []
+        all_sample_rates: List[int] = []
         inconsistent_categories = []
 
         for category, data in categories.items():
@@ -213,7 +213,7 @@ class DatasetHealthChecker:
             )
             self.health_score -= 5
 
-    def _check_durations(self):
+    def _check_durations(self) -> None:
         """Check audio duration consistency"""
         categories = self.stats.get("categories", {})
 
@@ -238,7 +238,7 @@ class DatasetHealthChecker:
                     )
                     self.health_score -= 5
 
-    def _check_diversity(self):
+    def _check_diversity(self) -> None:
         """Check data diversity"""
         categories = self.stats.get("categories", {})
 

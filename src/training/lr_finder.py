@@ -3,7 +3,7 @@ Learning Rate Finder
 Implements LR range test to find optimal learning rate
 """
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -49,8 +49,8 @@ class LRFinder:
         self.optimizer_state = optimizer.state_dict()
 
         # Results
-        self.learning_rates = []
-        self.losses = []
+        self.learning_rates: List[float] = []
+        self.losses: List[float] = []
 
     def range_test(
         self,
@@ -60,7 +60,7 @@ class LRFinder:
         num_iter: int = 200,
         smooth_f: float = 0.05,
         diverge_th: float = 5.0,
-    ) -> Tuple[list, list]:
+    ) -> Tuple[List[float], List[float]]:
         """
         Run LR range test
 
@@ -170,7 +170,7 @@ class LRFinder:
 
     def plot(
         self, skip_start: int = 10, skip_end: int = 5, save_path: Optional[Path] = None
-    ):
+    ) -> None:
         """
         Plot LR vs Loss
 

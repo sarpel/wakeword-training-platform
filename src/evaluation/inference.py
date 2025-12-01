@@ -4,7 +4,7 @@ Streaming audio capture and wakeword detection
 """
 import queue
 import threading
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Any
 
 import numpy as np
 import structlog
@@ -36,7 +36,7 @@ class MicrophoneInference:
         audio_duration: float = 1.5,
         threshold: float = 0.5,
         device: str = "cuda",
-        callback: Optional[Callable] = None,
+        callback: Optional[Callable[[float, bool], None]] = None,
         feature_type: str = "mel",
         n_mels: int = 128,
         n_mfcc: int = 40,
@@ -81,8 +81,9 @@ class MicrophoneInference:
 
         # Audio processor (GPU with CMVN)
         cmvn_path = Path("data/cmvn_stats.json")
+        from src.config.defaults import WakewordConfig
         self.audio_processor = GpuAudioProcessor(
-            config=None, # Use defaults
+            config=WakewordConfig(), # Use defaults
             cmvn_path=cmvn_path if cmvn_path.exists() else None,
             device=device
         )
@@ -97,15 +98,16 @@ class MicrophoneInference:
         self.false_alarm_count = 0
 
         # Thread-safe queues
-        self.audio_queue = queue.Queue()
-        self.result_queue = queue.Queue()
+        # Thread-safe queues
+        self.audio_queue: queue.Queue = queue.Queue()
+        self.result_queue: queue.Queue = queue.Queue()
 
         # Processing thread
-        self.processing_thread = None
+        self.processing_thread: Optional[threading.Thread] = None
 
         logger.info("MicrophoneInference initialized")
 
-    def _audio_callback(self, indata, frames, time_info, status):
+    def _audio_callback(self, indata: np.ndarray, frames: int, time_info: dict, status: Any) -> None:
         """
         Callback for audio stream
 
@@ -122,7 +124,7 @@ class MicrophoneInference:
         audio_chunk = indata[:, 0].copy()  # Get mono channel
         self.audio_queue.put(audio_chunk)
 
-    def _processing_worker(self):
+    def _processing_worker(self) -> None:
         """
         Background thread for audio processing
         """
@@ -215,7 +217,7 @@ class MicrophoneInference:
             logger.error(f"Chunk processing error: {e}")
             return 0.0, False
 
-    def start(self):
+    def start(self) -> None:
         """Start microphone recording and inference"""
         if self.is_recording:
             logger.warning("Already recording")
@@ -259,7 +261,7 @@ class MicrophoneInference:
 
         logger.info("Microphone inference started")
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop microphone recording"""
         if not self.is_recording:
             logger.warning("Not recording")
@@ -289,7 +291,8 @@ class MicrophoneInference:
             Tuple of (confidence, is_positive, audio_chunk) or None
         """
         try:
-            return self.result_queue.get_nowait()
+            from typing import cast
+            return cast(Optional[Tuple[float, bool, np.ndarray]], self.result_queue.get_nowait())
         except queue.Empty:
             return None
 
@@ -321,7 +324,7 @@ class SimulatedMicrophoneInference:
         threshold: float = 0.5,
         device: str = "cuda",
         callback: Optional[Callable] = None,
-    ):
+    ) -> None:
         """Initialize simulated microphone inference"""
         self.model = model
         self.sample_rate = sample_rate
@@ -332,13 +335,13 @@ class SimulatedMicrophoneInference:
 
         logger.info("SimulatedMicrophoneInference initialized (no real audio)")
 
-    def start(self):
+    def start(self) -> None:
         """Start simulated recording"""
         self.is_recording = True
         self.detection_count = 0
         logger.info("Simulated microphone started")
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop simulated recording"""
         self.is_recording = False
         logger.info("Simulated microphone stopped")

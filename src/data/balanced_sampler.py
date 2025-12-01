@@ -2,7 +2,7 @@
 Balanced Batch Sampler for controlling class ratios in batches
 Ensures each batch has specified proportions of positive, negative, and hard negative samples
 """
-from typing import List
+from typing import List, Iterator
 
 import numpy as np
 import structlog
@@ -77,7 +77,7 @@ class BalancedBatchSampler(Sampler):
             f"samples_per_batch=[pos={self.n_pos}, neg={self.n_neg}, hard_neg={self.n_hard_neg}]"
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[List[int]]:
         """Generate balanced batches"""
         # Shuffle indices for each class
         pos_perm = np.random.permutation(self.idx_pos)
@@ -126,7 +126,7 @@ class BalancedBatchSampler(Sampler):
 
             yield batch_indices
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return number of batches"""
         max_batches_pos = (
             len(self.idx_pos) // self.n_pos if self.n_pos > 0 else float("inf")
@@ -143,8 +143,10 @@ class BalancedBatchSampler(Sampler):
         return int(min(max_batches_pos, max_batches_neg, max_batches_hard))
 
 
+from torch.utils.data import Dataset
+
 def create_balanced_sampler_from_dataset(
-    dataset, batch_size: int, ratio: tuple = (1, 1, 1), drop_last: bool = True
+    dataset: Dataset, batch_size: int, ratio: tuple = (1, 1, 1), drop_last: bool = True
 ) -> BalancedBatchSampler:
     """
     Create balanced batch sampler from dataset
@@ -177,7 +179,7 @@ def create_balanced_sampler_from_dataset(
     else:
         # Fallback to iteration
         logger.warning("Dataset does not expose .files, falling back to slow iteration")
-        for i in range(len(dataset)):
+        for i in range(len(dataset)):  # type: ignore[arg-type]
             # Try to get metadata without loading full item if possible
             # But dataset[i] usually loads audio. 
             # We have to rely on dataset[i] returning (audio, label, metadata)

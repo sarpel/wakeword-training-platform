@@ -8,7 +8,7 @@ import shutil
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple, Any, List
 
 import structlog
 import soundfile as sf
@@ -33,8 +33,8 @@ class DatasetScanner:
     }
 
     def __init__(
-        self, dataset_root: Path, use_cache: bool = True, max_workers: int = None
-    ):
+        self, dataset_root: Path, use_cache: bool = True, max_workers: Optional[int] = None
+    ) -> None:
         """
         Initialize dataset scanner
 
@@ -45,8 +45,8 @@ class DatasetScanner:
         """
         self.dataset_root = Path(dataset_root)
         self.validator = AudioValidator()
-        self.dataset_info = {}
-        self.statistics = {}
+        self.dataset_info: Dict[str, Any] = {}
+        self.statistics: Dict[str, Any] = {}
         self.use_cache = use_cache
         self.cache = FileCache() if use_cache else None
 
@@ -60,7 +60,7 @@ class DatasetScanner:
         progress_callback: Optional[Callable] = None,
         skip_validation: bool = False,
         exclude_unqualified: bool = True,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Scan all dataset categories
 
@@ -78,7 +78,7 @@ class DatasetScanner:
         if not self.dataset_root.exists():
             raise FileNotFoundError(f"Dataset root does not exist: {self.dataset_root}")
 
-        results = {
+        results: Dict[str, Any] = {
             "dataset_root": str(self.dataset_root),
             "categories": {},
             "total_files": 0,
@@ -113,7 +113,7 @@ class DatasetScanner:
             # Create category progress callback
             if progress_callback:
 
-                def category_progress(current, total, msg=""):
+                def category_progress(current: int, total: int, msg: str = "") -> None:
                     overall_progress = (current_category / total_categories) + (
                         current / total / total_categories
                     )
@@ -209,7 +209,7 @@ class DatasetScanner:
 
     def _validate_file(
         self, file_path: Path
-    ) -> Tuple[bool, Optional[Dict], Optional[str]]:
+    ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
         Validate a single file (with caching support)
 
@@ -246,7 +246,7 @@ class DatasetScanner:
         progress_callback: Optional[Callable] = None,
         skip_validation: bool = False,
         exclude_unqualified: bool = True,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Scan a single category folder recursively with parallel processing
 
@@ -264,7 +264,7 @@ class DatasetScanner:
 
         logger.info(f"Found {len(audio_files)} audio files in {category_name}")
 
-        result = {
+        result: Dict[str, Any] = {
             "path": str(category_path),
             "total_files": len(audio_files),
             "valid_files": 0,
@@ -309,6 +309,11 @@ class DatasetScanner:
 
                     if is_valid:
                         # Check quality
+                        # Ensure metadata is not None before passing to check_audio_quality
+                        if metadata is None:
+                             # Should not happen if is_valid is True, but for type safety
+                             raise ValueError("Metadata is None for valid file")
+
                         quality = self.validator.check_audio_quality(metadata)
 
                         if quality.get("should_exclude", False) and exclude_unqualified:
@@ -380,7 +385,7 @@ class DatasetScanner:
 
         return result
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> Dict[str, Any]:
         """
         Get dataset statistics
 
@@ -421,7 +426,7 @@ class DatasetScanner:
 
     def get_low_quality_folders(
         self, category: str = "negative", threshold: float = 100.0
-    ) -> list:
+    ) -> List[str]:
         """
         Get list of folders containing low quality files (score < threshold)
 
@@ -594,7 +599,7 @@ class DatasetScanner:
         logger.info(f"Trimmed {processed_count} files.")
         return processed_count
 
-    def save_manifest(self, output_path: Path):
+    def save_manifest(self, output_path: Path) -> None:
         """
         Save dataset manifest to JSON
 
@@ -612,7 +617,7 @@ class DatasetScanner:
 class DatasetSplitter:
     """Splits datasets into train/validation/test sets"""
 
-    def __init__(self, dataset_info: Dict):
+    def __init__(self, dataset_info: Dict[str, Any]) -> None:
         """
         Initialize dataset splitter
 
@@ -620,13 +625,13 @@ class DatasetSplitter:
             dataset_info: Dataset information from scanner
         """
         self.dataset_info = dataset_info
-        self.splits = {}
-        self.npy_index = {} # O(1) lookup index
+        self.splits: Dict[str, Any] = {}
+        self.npy_index: Dict[str, Path] = {} # O(1) lookup index
 
     def _build_npy_index(self, npy_dir: Path) -> Dict[str, Path]:
         """Pre-build index of all .npy files for O(1) lookup"""
         logger.info(f"Indexing .npy files in {npy_dir}")
-        index = {}
+        index: Dict[str, Path] = {}
         if not npy_dir.exists():
             return index
             
@@ -699,7 +704,7 @@ class DatasetSplitter:
         stratify: bool = True,
         npy_source_dir: Path = Path("data") / "raw" / "npy",
         npy_output_dir: Path = Path("data") / "npy",
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Split datasets into train/val/test and organize NPY files
 
@@ -730,7 +735,7 @@ class DatasetSplitter:
             f"Splitting datasets: train={train_ratio}, val={val_ratio}, test={test_ratio}"
         )
 
-        splits = {
+        splits: Dict[str, Any] = {
             "train": {"files": [], "categories": defaultdict(int)},
             "val": {"files": [], "categories": defaultdict(int)},
             "test": {"files": [], "categories": defaultdict(int)},
@@ -830,8 +835,9 @@ class DatasetSplitter:
 
         # Convert defaultdicts to regular dicts
         for split_name in splits:
-            splits[split_name]["categories"] = dict(splits[split_name]["categories"])
-            splits[split_name]["total_files"] = len(splits[split_name]["files"])
+            split_dict: Dict[str, Any] = splits[split_name]
+            split_dict["categories"] = dict(split_dict["categories"])
+            split_dict["total_files"] = len(split_dict["files"])
 
         self.splits = splits
 
@@ -875,7 +881,7 @@ class DatasetSplitter:
 
         return splits
 
-    def save_splits(self, output_dir: Path):
+    def save_splits(self, output_dir: Path) -> None:
         """
         Save split manifests to JSON files
 
@@ -917,7 +923,7 @@ class DatasetSplitter:
 
     def copy_npy_files_to_splits(
         self, output_npy_dir: Path, preserve_structure: bool = True
-    ):
+    ) -> Dict[str, Dict[str, int]]:
         """
         Physically copy NPY files into train/val/test directory structure
 
@@ -1017,7 +1023,7 @@ class DatasetSplitter:
 
         return stats
 
-    def get_split_statistics(self) -> Dict:
+    def get_split_statistics(self) -> Dict[str, Any]:
         """
         Get statistics about the splits
 

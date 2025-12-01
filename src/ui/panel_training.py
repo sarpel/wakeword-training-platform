@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple, List, Any
 
 import gradio as gr
 import matplotlib
@@ -45,7 +45,7 @@ from src.training.wandb_callback import WandbCallback
 class TrainingState:
     """Global training state manager"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.is_training = False
         self.should_stop = False
         self.should_pause = False
@@ -53,12 +53,13 @@ class TrainingState:
 
         self.trainer: Optional[Trainer] = None
         self.config: Optional[WakewordConfig] = None
-        self.model = None
-        self.train_loader = None
-        self.val_loader = None
+        self.model: Optional[torch.nn.Module] = None
+        self.train_loader: Optional[DataLoader] = None
+        self.val_loader: Optional[DataLoader] = None
+        self.training_thread: Optional[threading.Thread] = None
 
         # Metrics history
-        self.history = {
+        self.history: Dict[str, List[float]] = {
             "train_loss": [],
             "train_acc": [],
             "val_loss": [],
@@ -93,9 +94,9 @@ class TrainingState:
         # Training thread
         self.training_thread = None
         self.hpo_thread = None
-        self.log_queue = queue.Queue()
+        self.log_queue: queue.Queue[str] = queue.Queue()
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset state for new training"""
         self.is_training = False
         self.should_stop = False
@@ -105,7 +106,7 @@ class TrainingState:
         self.current_batch = 0
         self.eta_seconds = 0
 
-    def add_log(self, message: str):
+    def add_log(self, message: str) -> None:
         """Add message to log queue"""
         self.log_queue.put(f"[{time.strftime('%H:%M:%S')}] {message}\n")
         print(message)
@@ -269,9 +270,13 @@ def format_time(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
-def training_worker():
+def training_worker() -> None:
     """Background thread for training"""
     try:
+        if training_state.config is None or training_state.trainer is None:
+            training_state.add_log("ERROR: Config or Trainer not initialized")
+            return
+
         training_state.add_log("Starting training...")
         training_state.add_log(f"Configuration: {training_state.config.config_name}")
         training_state.add_log(f"Model: {training_state.config.model.architecture}")
@@ -281,11 +286,14 @@ def training_worker():
         )
         training_state.add_log("-" * 60)
 
+        # Capture trainer locally for type safety
+        trainer = training_state.trainer
+
         # Create custom callback for live updates
         class LiveUpdateCallback:
             def on_epoch_end(
-                self, epoch, train_loss, val_loss, val_metrics: MetricResults
-            ):
+                self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults
+            ) -> None:
                 # Update state
                 training_state.current_epoch = epoch + 1
                 training_state.current_train_loss = train_loss
@@ -314,7 +322,7 @@ def training_worker():
                     training_state.best_val_f1 = val_metrics.f1_score
                     training_state.best_epoch = epoch + 1
                     training_state.best_model_path = str(
-                        training_state.trainer.checkpoint_dir / "best_model.pt"
+                        trainer.checkpoint_dir / "best_model.pt"
                     )
 
                 if val_metrics.accuracy > training_state.best_val_acc:
@@ -328,18 +336,18 @@ def training_worker():
                     f"FPR: {val_metrics.fpr:.2%} - FNR: {val_metrics.fnr:.2%}"
                 )
 
-            def on_batch_end(self, batch_idx, loss, acc, **kwargs):
+            def on_batch_end(self, batch_idx: int, loss: float, acc: float, **kwargs: Any) -> None:
                 training_state.current_batch = batch_idx + 1
                 training_state.current_train_loss = loss
                 training_state.current_train_acc = acc
 
         # Add callback
         callback = LiveUpdateCallback()
-        training_state.trainer.add_callback(callback)
+        trainer.add_callback(callback)
 
         # Train
         start_time = time.time()
-        results = training_state.trainer.train()
+        results = trainer.train()
         elapsed = time.time() - start_time
 
         # Training complete
@@ -381,7 +389,7 @@ def start_training(
     wandb_project: str,
 
     wandb_api_key: str = "",
-    resume_checkpoint: str = None,
+    resume_checkpoint: Optional[str] = None,
 ) -> Tuple:
     """Start training with current configuration and advanced features"""
     if training_state.is_training:
@@ -746,7 +754,8 @@ def start_training(
         training_state.training_thread = threading.Thread(
             target=training_worker, daemon=True
         )
-        training_state.training_thread.start()
+        if training_state.training_thread:
+            training_state.training_thread.start()
 
         return (
             "✅ Training started!",
@@ -845,7 +854,7 @@ def get_training_status() -> Tuple:
     )
 
 
-def hpo_worker(config, n_trials, study_name):
+def hpo_worker(config: WakewordConfig, n_trials: int, study_name: str) -> None:
     """Background worker for HPO"""
     try:
         training_state.add_log(f"Starting HPO study '{study_name}'...")
@@ -926,16 +935,23 @@ def start_hpo(
     if not param_groups:
         return "⚠️ Please select at least one parameter group to optimize", None
 
+    # Capture loaders locally to satisfy mypy
+    train_loader = training_state.train_loader
+    val_loader = training_state.val_loader
+
+    if train_loader is None or val_loader is None:
+        return "⚠️ Datasets not loaded. Please run a short training session first to load data.", None
+
     training_state.reset()
     training_state.is_training = True
     training_state.should_stop = False
 
-    def hpo_thread_func():
+    def hpo_thread_func() -> None:
         try:
             study = run_hpo(
                 config=state["config"],
-                train_loader=training_state.train_loader,
-                val_loader=training_state.val_loader,
+                train_loader=train_loader,
+                val_loader=val_loader,
                 n_trials=int(n_trials),
                 study_name=study_name,
                 param_groups=param_groups,
@@ -952,7 +968,8 @@ def start_hpo(
             training_state.is_training = False
 
     training_state.training_thread = threading.Thread(target=hpo_thread_func)
-    training_state.training_thread.start()
+    if training_state.training_thread:
+        training_state.training_thread.start()
 
     return f"🚀 HPO study '{study_name}' started. Optimizing: {', '.join(param_groups)}", None
 
@@ -1054,7 +1071,7 @@ def load_wandb_key() -> str:
     return ""
 
 
-def save_wandb_key(key: str):
+def save_wandb_key(key: str) -> None:
     """Save WandB API key to file"""
     if not key:
         return
@@ -1393,7 +1410,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
 
         # Event handlers
         # Wrapper for start training to handle resume logic
-        def start_training_wrapper(*args):
+        def start_training_wrapper(*args: Any) -> Any:
             # Last 2 args are resume_training (bool) and checkpoint_dropdown (str)
             resume_checked = args[-2]
             ckpt_path = args[-1]
@@ -1440,7 +1457,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         )
         
         # Refresh Checkpoints Handler
-        def refresh_checkpoints():
+        def refresh_checkpoints() -> gr.Dropdown:
             return gr.Dropdown(choices=list_checkpoints())
             
         refresh_ckpt_btn.click(

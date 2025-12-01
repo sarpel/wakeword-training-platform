@@ -1,6 +1,8 @@
 import time
 from pathlib import Path
-from typing import List
+from typing import List, TYPE_CHECKING
+if TYPE_CHECKING:
+    from src.evaluation.evaluator import ModelEvaluator
 
 import numpy as np
 import structlog
@@ -12,7 +14,7 @@ logger = structlog.get_logger(__name__)
 
 
 def evaluate_file(
-    evaluator, audio_path: Path, threshold: float = 0.5
+    evaluator: "ModelEvaluator", audio_path: Path, threshold: float = 0.5
 ) -> EvaluationResult:
     """
     Evaluate single audio file
@@ -66,7 +68,7 @@ def evaluate_file(
 
 
 def evaluate_files(
-    evaluator, audio_paths: List[Path], threshold: float = 0.5, batch_size: int = 32
+    evaluator: "ModelEvaluator", audio_paths: List[Path], threshold: float = 0.5, batch_size: int = 32
 ) -> List[EvaluationResult]:
     """
     Evaluate multiple audio files in batches

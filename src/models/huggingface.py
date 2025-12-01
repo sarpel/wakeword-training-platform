@@ -4,7 +4,7 @@ HuggingFace Model Wrappers for Wakeword Detection
 import logging
 import torch
 import torch.nn as nn
-from typing import Optional
+from typing import Optional, cast
 
 try:
     from transformers import Wav2Vec2Model, Wav2Vec2Config
@@ -81,4 +81,4 @@ class Wav2VecWakeword(nn.Module):
         # Classification
         logits = self.classifier(pooled_output)
         
-        return logits
+        return cast(torch.Tensor, logits)

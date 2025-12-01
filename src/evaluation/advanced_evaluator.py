@@ -1,4 +1,7 @@
-from typing import Dict
+from typing import Dict, TYPE_CHECKING, Sized, cast, List, Tuple, Any
+if TYPE_CHECKING:
+    from src.evaluation.evaluator import ModelEvaluator
+    from torch.utils.data import Dataset
 
 import structlog
 import torch
@@ -9,8 +12,8 @@ logger = structlog.get_logger(__name__)
 
 
 def evaluate_with_advanced_metrics(
-    evaluator,
-    dataset,
+    evaluator: "ModelEvaluator",
+    dataset: "Dataset",
     total_seconds: float,
     target_fah: float = 1.0,
     batch_size: int = 32,
@@ -29,7 +32,7 @@ def evaluate_with_advanced_metrics(
     """
     from torch.utils.data import DataLoader
 
-    def collate_fn(batch):
+    def collate_fn(batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
         features = torch.stack(features)
@@ -49,7 +52,7 @@ def evaluate_with_advanced_metrics(
     all_logits = []
     all_targets = []
 
-    logger.info(f"Running comprehensive evaluation on {len(dataset)} samples...")
+    logger.info(f"Running comprehensive evaluation on {len(cast(Sized, dataset))} samples...")
 
     # Collect all predictions
     with torch.no_grad():
@@ -73,13 +76,13 @@ def evaluate_with_advanced_metrics(
             all_targets.append(targets.cpu())
 
     # Concatenate all batches
-    all_logits = torch.cat(all_logits, dim=0)
-    all_targets = torch.cat(all_targets, dim=0)
+    all_logits_tensor = torch.cat(all_logits, dim=0)
+    all_targets_tensor = torch.cat(all_targets, dim=0)
 
     # Calculate comprehensive metrics
     metrics = calculate_comprehensive_metrics(
-        logits=all_logits,
-        labels=all_targets,
+        logits=all_logits_tensor,
+        labels=all_targets_tensor,
         total_seconds=total_seconds,
         target_fah=target_fah,
     )

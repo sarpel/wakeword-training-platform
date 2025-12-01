@@ -6,19 +6,21 @@ import torch
 import torch.nn as nn
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 from src.data.feature_extraction import FeatureExtractor
 from src.data.cmvn import CMVN
 
 logger = logging.getLogger(__name__)
 
+from src.config.defaults import WakewordConfig
+
 class AudioProcessor(nn.Module):
     """
     GPU-accelerated Audio Processor.
     Handles feature extraction (Mel/MFCC) and CMVN on GPU.
     """
-    def __init__(self, config, cmvn_path: Optional[Path] = None, device: str = "cuda"):
+    def __init__(self, config: WakewordConfig, cmvn_path: Optional[Path] = None, device: str = "cuda") -> None:
         super().__init__()
         self.config = config
         self.device = device
@@ -26,7 +28,7 @@ class AudioProcessor(nn.Module):
         # Feature Extractor
         self.feature_extractor = FeatureExtractor(
             sample_rate=config.data.sample_rate,
-            feature_type=config.data.feature_type,
+            feature_type=config.data.feature_type,  # type: ignore
             n_mels=config.data.n_mels,
             n_mfcc=config.data.n_mfcc,
             n_fft=config.data.n_fft,
@@ -80,4 +82,4 @@ class AudioProcessor(nn.Module):
             # CMVN expects (B, C, F, T)
             features = self.cmvn.normalize(features)
             
-        return features
+        return cast(torch.Tensor, features)

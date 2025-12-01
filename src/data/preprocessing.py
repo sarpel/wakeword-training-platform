@@ -137,7 +137,7 @@ class VADFilter:
             logger.warning(f"Failed to process {file_path}: {e}")
             return False
 
-def clean_dataset_split(data_root: str, split: str = "train"):
+def clean_dataset_split(data_root: str, split: str = "train") -> None:
     """
     Convenience function to clean a specific split.
     """

@@ -5,7 +5,7 @@ Handles loading, validation, and conversion of .npy feature files
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import structlog
@@ -24,15 +24,15 @@ class NpyExtractor:
         "features_3d": 3,  # Generic 3D features
     }
 
-    def __init__(self, max_workers: int = None):
+    def __init__(self, max_workers: Optional[int] = None) -> None:
         """
         Initialize NPY extractor
 
         Args:
             max_workers: Maximum number of parallel workers (default: CPU count)
         """
-        self.extracted_files = []
-        self.errors = []
+        self.extracted_files: List[Dict[str, Any]] = []
+        self.errors: List[Dict[str, Any]] = []
 
         # Set max workers for parallel processing
         if max_workers is None:
@@ -66,7 +66,7 @@ class NpyExtractor:
 
     def validate_npy_file(
         self, file_path: Path
-    ) -> Tuple[bool, Optional[Dict], Optional[str]]:
+    ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
         Validate .npy file and extract metadata
 
@@ -110,7 +110,7 @@ class NpyExtractor:
             logger.debug(error_msg)
             return False, None, error_msg
 
-    def _infer_feature_type(self, shape: Tuple, ndim: int) -> str:
+    def _infer_feature_type(self, shape: Tuple[int, ...], ndim: int) -> str:
         """
         Infer feature type from shape
 
@@ -143,7 +143,7 @@ class NpyExtractor:
         output_format: str = "audio",
         target_sr: int = 16000,
         progress_callback: Optional[Callable] = None,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Extract and convert .npy files with parallel processing
 
@@ -156,7 +156,7 @@ class NpyExtractor:
         Returns:
             Dictionary with extraction results
         """
-        results = {
+        results: Dict[str, Any] = {
             "total_files": len(npy_files),
             "valid_files": 0,
             "invalid_files": 0,
@@ -214,7 +214,7 @@ class NpyExtractor:
 
         return results
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> Dict[str, Any]:
         """
         Get statistics about extracted .npy files
 
@@ -225,8 +225,8 @@ class NpyExtractor:
             return {"status": "No files extracted yet"}
 
         # Count feature types
-        feature_types = {}
-        dtypes = {}
+        feature_types: Dict[str, int] = {}
+        dtypes: Dict[str, int] = {}
         total_size_mb = 0.0
 
         for file_info in self.extracted_files:
@@ -249,7 +249,7 @@ class NpyExtractor:
 
     def load_npy_batch(
         self, file_path: Path, max_samples: Optional[int] = None
-    ) -> Tuple[np.ndarray, Dict]:
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Load .npy file into memory
 
@@ -320,7 +320,7 @@ class NpyExtractor:
         stats = self.get_statistics()
 
         if stats.get("status"):
-            return stats["status"]
+            return str(stats["status"])
 
         report = []
         report.append("=" * 60)
@@ -364,7 +364,7 @@ class NpyExtractor:
         expected_shape: Tuple[int, int, int],
         delete_invalid: bool = False,
         progress_callback: Optional[Callable] = None,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Validate NPY files against a specific expected shape
 
@@ -377,7 +377,7 @@ class NpyExtractor:
         Returns:
             Dictionary with validation results
         """
-        results = {
+        results: Dict[str, Any] = {
             "total_files": len(npy_files),
             "valid_count": 0,
             "mismatch_count": 0,

@@ -287,7 +287,7 @@ class WakewordConfig:
             distillation=DistillationConfig(**config_dict.get("distillation", {})),
         )
 
-    def save(self, path: Path):
+    def save(self, path: Path) -> None:
         """Save configuration to YAML file"""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)

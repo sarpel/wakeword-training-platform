@@ -4,7 +4,7 @@ Handles audio loading, preprocessing, and augmentation
 """
 import json
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Any, List, cast
 from functools import lru_cache
 
 import numpy as np
@@ -54,7 +54,7 @@ class WakewordDataset(Dataset):
         class_mapping: Optional[Dict[str, int]] = None,
         # NEW: GPU Pipeline support
         return_raw_audio: bool = False,
-    ):
+    ) -> None:
         """
         Initialize wakeword dataset
 
@@ -99,7 +99,7 @@ class WakewordDataset(Dataset):
 
         # CMVN initialization
         self.apply_cmvn = apply_cmvn
-        self.cmvn = None
+        self.cmvn: Optional[CMVN] = None
         if apply_cmvn and cmvn_path and Path(cmvn_path).exists() and not return_raw_audio:
             # Only load CMVN in dataset if we are NOT returning raw audio
             # If returning raw audio, CMVN happens on GPU
@@ -112,8 +112,8 @@ class WakewordDataset(Dataset):
         with open(self.manifest_path, "r") as f:
             manifest = json.load(f)
 
-        self.files = manifest["files"]
-        self.categories = manifest["categories"]
+        self.files: List[Dict[str, Any]] = manifest["files"]
+        self.categories: Dict[str, Any] = manifest["categories"]
 
         # Create label mapping
         self.label_map = self._create_label_map(class_mapping)
@@ -124,21 +124,21 @@ class WakewordDataset(Dataset):
         )
 
         # Cache for loaded audio
-        self.audio_cache = {} if cache_audio else None
+        self.audio_cache: Optional[Dict[int, np.ndarray]] = {} if cache_audio else None
 
         # NEW: Feature cache (separate from audio cache)
-        self.feature_cache = {} if npy_cache_features else None
+        self.feature_cache: Optional[Dict[int, torch.Tensor]] = {} if npy_cache_features else None
 
         # Normalize feature type (handle legacy 'mel_spectrogram')
         if feature_type == "mel_spectrogram":
             feature_type = "mel"
 
         # Initialize feature extractor (Only if not returning raw audio)
-        self.feature_extractor = None
+        self.feature_extractor: Optional[FeatureExtractor] = None
         if not return_raw_audio:
             self.feature_extractor = FeatureExtractor(
                 sample_rate=sample_rate,
-                feature_type=feature_type,
+                feature_type=feature_type,  # type: ignore
                 n_mels=n_mels,
                 n_mfcc=n_mfcc,
                 n_fft=n_fft,
@@ -147,7 +147,7 @@ class WakewordDataset(Dataset):
             )
 
         # Initialize augmentation if enabled (Only if not returning raw audio)
-        self.augmentation = None
+        self.augmentation: Optional[AudioAugmentation] = None
         if augment and not return_raw_audio:
             # Collect background noise and RIR files
             background_files = None
@@ -247,16 +247,23 @@ class WakewordDataset(Dataset):
             features_tensor = torch.from_numpy(np.array(features)).float()
 
             # Validate shape
-            expected_shape = self.feature_extractor.get_output_shape(
-                int(self.audio_duration * self.sample_rate)
-            )
-
-            if features_tensor.shape != expected_shape:
-                logger.warning(
-                    f"Shape mismatch for {npy_path}: "
-                    f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
+            if self.feature_extractor is None:
+                 # If feature extractor is not available, we can't validate shape against it.
+                 # This might happen if return_raw_audio=True but we are somehow loading NPY?
+                 # Or if we just want to skip validation.
+                 pass
+            else:
+                expected_shape = self.feature_extractor.get_output_shape(
+                    int(self.audio_duration * self.sample_rate)
                 )
-                # Trigger fallback
+
+                if features_tensor.shape != expected_shape:
+                    logger.warning(
+                        f"Shape mismatch for {npy_path}: "
+                        f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
+                    )
+                    # Trigger fallback
+                    raise ValueError(f"Shape mismatch: {features_tensor.shape} != {expected_shape}")
                 # BUG FIX: Changed file_path to npy_path (file_path was undefined variable)
                 if not self.fallback_to_audio:
                      raise FileNotFoundError(f"NPY shape mismatch for {npy_path} and fallback_to_audio=False")
@@ -272,7 +279,7 @@ class WakewordDataset(Dataset):
             logger.error(f"Error loading NPY {npy_path}: {e}")
             return None
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, Dict]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, Dict[str, Any]]:
         """
         Get item by index
 
@@ -365,10 +372,13 @@ class WakewordDataset(Dataset):
         audio_tensor = torch.from_numpy(audio).float()
 
         # Extract features (mel-spectrogram or MFCC) on CPU
+        if self.feature_extractor is None:
+            raise ValueError("Feature extractor not initialized")
         features = self.feature_extractor(audio_tensor)
 
         # Apply CMVN if enabled
-        if self.cmvn is not None:
+        # Mypy: Ensure features is not None before passing to normalize
+        if self.cmvn is not None and features is not None:
             features = self.cmvn.normalize(features)
 
         # Metadata
@@ -380,6 +390,10 @@ class WakewordDataset(Dataset):
             "sample_rate": self.sample_rate,
             "duration": self.audio_duration,
         }
+
+        # Mypy: Ensure features is not None before returning
+        if features is None:
+            raise ValueError(f"Failed to extract features for {file_path}")
 
         return features, label, metadata
 
@@ -410,7 +424,7 @@ class WakewordDataset(Dataset):
         # Convert back to numpy (already on CPU)
         augmented = augmented_tensor.squeeze(0).numpy()
 
-        return augmented
+        return cast(np.ndarray, augmented.astype(np.float32))
 
     def get_class_weights(self, min_weight: float = 0.1, max_weight: float = 100.0) -> torch.Tensor:
         """
