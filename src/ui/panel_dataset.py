@@ -9,7 +9,7 @@ Panel 1: Dataset Management
 import sys
 import traceback
 from pathlib import Path
-from typing import Literal, Tuple, cast
+from typing import Literal, Optional, Tuple, cast
 
 import gradio as gr
 import torch
@@ -32,9 +32,13 @@ _current_scanner = None
 _current_dataset_info = None
 
 
-def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
+def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = None) -> gr.Blocks:
     """
     Create Panel 1: Dataset Management
+
+    Args:
+        data_root: Root directory for data
+        state: Global state dictionary for sharing config
 
     Returns:
         Gradio Blocks interface
@@ -526,12 +530,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 logger.info(f"Batch extracting {feature_type} features with batch_size={batch_size}")
 
                 # Import batch extractor
-                from src.config.defaults import DataConfig
+                from src.config.defaults import DataConfig, WakewordConfig
                 from src.data.batch_feature_extractor import BatchFeatureExtractor
 
                 # Create config for feature extraction
                 progress(0.05, desc="Initializing batch extractor...")
-                config = DataConfig(
+                data_config = DataConfig(
                     feature_type=feature_type,
                     sample_rate=int(sample_rate),
                     audio_duration=float(audio_duration),
@@ -539,11 +543,30 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     n_mfcc=40,  # MFCC için varsayılan, feature_type='mfcc' ise kullanılır
                     n_fft=int(n_fft),
                     hop_length=int(hop_length),
+                    use_precomputed_features_for_training=True,
+                    npy_feature_dir=output_dir,
+                    npy_feature_type=feature_type,
                 )
+
+                # Update global state if available
+                if state is not None:
+                    logger.info("Updating global configuration with extraction parameters")
+                    if state.value is None:
+                        state.value = {}
+                    
+                    # Get existing config or create new
+                    current_config = state.value.get("config")
+                    if current_config is None:
+                        current_config = WakewordConfig()
+                    
+                    # Update data config
+                    current_config.data = data_config
+                    state.value["config"] = current_config
+                    logger.info(f"Global config updated: n_mels={n_mels}, feature_type={feature_type}")
 
                 # Initialize extractor
                 device = "cuda" if torch.cuda.is_available() else "cpu"
-                extractor = BatchFeatureExtractor(config=config, device=device)
+                extractor = BatchFeatureExtractor(config=data_config, device=device)
 
                 # Collect all audio files from scanned dataset
                 progress(0.1, desc="Collecting audio files...")

@@ -39,10 +39,21 @@ class InferenceEngine:
         if model_path and os.path.exists(model_path):
             logger.info(f"Loading weights from {model_path}")
             checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
+            
             if "model_state_dict" in checkpoint:
-                model.load_state_dict(checkpoint["model_state_dict"])
+                state_dict = checkpoint["model_state_dict"]
             else:
-                model.load_state_dict(checkpoint)
+                state_dict = checkpoint
+
+            # Filter out QAT keys if loading into a non-QAT model
+            model_keys = set(model.state_dict().keys())
+            unexpected_keys = set(state_dict.keys()) - model_keys
+            if unexpected_keys:
+                logger.warning(f"Filtering {len(unexpected_keys)} unexpected keys (likely QAT artifacts)")
+                for key in unexpected_keys:
+                    del state_dict[key]
+
+            model.load_state_dict(state_dict)
         else:
             logger.error(f"Model path {model_path} not found.")
             raise FileNotFoundError(f"Model not found at {model_path}")

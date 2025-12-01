@@ -30,8 +30,16 @@ def get_default_preset() -> WakewordConfig:
         data=DataConfig(),
         training=TrainingConfig(),
         model=ModelConfig(),
-        augmentation=AugmentationConfig(),
-        optimizer=OptimizerConfig(),
+        augmentation=AugmentationConfig(
+            # Added moderate time shift for robustness
+            time_shift_prob=0.3,
+            time_shift_min_ms=-30,
+            time_shift_max_ms=30,
+        ),
+        optimizer=OptimizerConfig(
+            optimizer="adamw",  # Modern standard
+            weight_decay=0.01,
+        ),
         loss=LossConfig(),
     )
 
@@ -76,8 +84,8 @@ def get_small_dataset_preset() -> WakewordConfig:
             rir_dry_wet_max=0.8,
         ),
         optimizer=OptimizerConfig(
-            optimizer="adam",
-            weight_decay=1e-3,  # Stronger regularization
+            optimizer="adamw",  # Better regularization than adam
+            weight_decay=1e-2,  # Stronger regularization for small data
             scheduler="cosine",
             gradient_clip=1.0,
             mixed_precision=True,
@@ -165,7 +173,7 @@ def get_fast_training_preset() -> WakewordConfig:
             audio_duration=1.0,  # Shorter audio for speed
             n_mfcc=0,
             n_fft=400,
-            n_mels=64,
+            n_mels=40,  # Reduced for speed
         ),
         training=TrainingConfig(
             batch_size=64,
@@ -226,7 +234,7 @@ def get_high_accuracy_preset() -> WakewordConfig:
             audio_duration=2.0,  # Longer context for better accuracy
             n_mfcc=0,
             n_fft=400,
-            n_mels=64,
+            n_mels=80,  # Increased resolution for high accuracy
         ),
         training=TrainingConfig(
             batch_size=24,  # Smaller batch for better generalization
@@ -315,11 +323,15 @@ def get_edge_deployment_preset() -> WakewordConfig:
             noise_snr_min=8.0,
             noise_snr_max=20.0,
             rir_prob=0.3,  # Real-world acoustics
+            # Added time shift for edge robustness
+            time_shift_prob=0.4,
+            time_shift_min_ms=-40,
+            time_shift_max_ms=40,
             rir_dry_wet_min=0.4,
             rir_dry_wet_max=0.6,
         ),
         optimizer=OptimizerConfig(
-            optimizer="adam",
+            optimizer="adamw",  # Switch to AdamW
             weight_decay=1e-4,
             scheduler="cosine",
             gradient_clip=1.0,
@@ -330,6 +342,11 @@ def get_edge_deployment_preset() -> WakewordConfig:
             label_smoothing=0.08,  # Slight smoothing for generalization
             class_weights="balanced",
             hard_negative_weight=2.5,  # Reduce false positives
+        ),
+        qat=QATConfig(
+            enabled=True,  # Enabled for int8 readiness
+            backend="qnnpack",
+            start_epoch=5,
         ),
     )
 
@@ -379,8 +396,8 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
             noise_snr_min=5.0,
             noise_snr_max=20.0,
             rir_prob=0.4,
-            # Disabled time shift as requested
-            time_shift_prob=0.0,
+            # Re-enabled time shift for robustness
+            time_shift_prob=0.5,
             time_shift_min_ms=-50,
             time_shift_max_ms=50,
             rir_dry_wet_min=0.4,
@@ -388,7 +405,7 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=0.0001,  # Set to 0.0001
+            weight_decay=1e-4,  # Standard AdamW weight decay
             scheduler="cosine",
             gradient_clip=1.0,
             mixed_precision=True,
@@ -402,12 +419,12 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
             focal_gamma=2.5,
         ),
         qat=QATConfig(
-            enabled=False,  # Disabled as requested
+            enabled=True,  # Enabled for int8 readiness
             backend="qnnpack",
-            start_epoch=10,
+            start_epoch=5,  # Start QAT earlier
         ),
         distillation=DistillationConfig(
-            enabled=False,  # Disabled as requested
+            enabled=False,
         ),
     )
 

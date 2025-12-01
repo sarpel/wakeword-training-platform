@@ -598,11 +598,14 @@ def evaluate_test_set(
         advanced_metrics_dict = {}
         if use_advanced_metrics:
             logger.info("Computing advanced production metrics...")
-            total_seconds = len(test_dataset) * eval_state.model_info["config"].data.audio_duration
+            # Pass audio_duration (seconds per sample) as total_seconds
+            # The advanced_metrics module uses this to calculate total negative hours:
+            # neg_hours = (neg_count * duration_per_sample) / 3600
+            sample_duration = eval_state.model_info["config"].data.audio_duration
 
             advanced_metrics = eval_state.evaluator.evaluate_with_advanced_metrics(
                 dataset=test_dataset,
-                total_seconds=total_seconds,
+                total_seconds=sample_duration,
                 target_fah=target_fah,
                 batch_size=32,
             )

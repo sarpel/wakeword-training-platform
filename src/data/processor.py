@@ -46,9 +46,24 @@ class AudioProcessor(nn.Module):
         # Or check specific flag if available.
         # Existing code passed cmvn_path, so we assume usage if path exists.
         if cmvn_path:
-            self.cmvn = CMVN(stats_path=cmvn_path)
-            self.cmvn.to(device)
-            logger.info(f"CMVN initialized on {device}")
+            try:
+                temp_cmvn = CMVN(stats_path=cmvn_path)
+                
+                # Verify dimensions match config
+                expected_dim = config.data.n_mfcc if config.data.feature_type == "mfcc" else config.data.n_mels
+                if temp_cmvn.mean.shape[0] != expected_dim:
+                    logger.warning(
+                        f"CMVN stats dimension mismatch! Loaded: {temp_cmvn.mean.shape[0]}, "
+                        f"Expected: {expected_dim}. Disabling CMVN for this run."
+                    )
+                    self.cmvn = None
+                else:
+                    self.cmvn = temp_cmvn
+                    self.cmvn.to(device)
+                    logger.info(f"CMVN initialized on {device}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize CMVN: {e}. Disabling CMVN.")
+                self.cmvn = None
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """

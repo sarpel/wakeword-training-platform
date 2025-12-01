@@ -231,7 +231,26 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
             pretrained=False,
             dropout=config.model.dropout,
         )
-        pytorch_model.load_state_dict(checkpoint["model_state_dict"])
+        
+        # Load weights
+        state_dict = checkpoint["model_state_dict"]
+
+        # Handle QAT checkpoints loaded into FP32 models
+        # Filter out quantization keys that are not in the model
+        model_keys = set(pytorch_model.state_dict().keys())
+        checkpoint_keys = set(state_dict.keys())
+        unexpected_keys = checkpoint_keys - model_keys
+
+        if unexpected_keys:
+            # Check if these are quantization keys
+            quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
+            
+            if quant_keys:
+                logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
+                # Filter the state dict
+                state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
+
+        pytorch_model.load_state_dict(state_dict, strict=True)
         pytorch_model.to("cuda")
         pytorch_model.eval()
 

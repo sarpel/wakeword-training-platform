@@ -476,8 +476,28 @@ def start_training(
         cmvn_path = None
         if use_cmvn:
             cmvn_path = paths.CMVN_STATS
+            
+            # Check if we need to recompute stats (missing or dimension mismatch)
+            should_compute_cmvn = False
+            expected_dim = config.data.n_mels if feature_type == "mel" else config.data.n_mfcc
+            
             if not cmvn_path.exists():
-                training_state.add_log("Computing CMVN statistics (first time only)...")
+                should_compute_cmvn = True
+            else:
+                try:
+                    import json
+                    with open(cmvn_path, "r") as f:
+                        stats = json.load(f)
+                    loaded_dim = len(stats["mean"])
+                    if loaded_dim != expected_dim:
+                        training_state.add_log(f"⚠️ CMVN stats dimension mismatch (Found {loaded_dim}, Expected {expected_dim}). Recomputing...")
+                        should_compute_cmvn = True
+                except Exception as e:
+                    training_state.add_log(f"⚠️ Failed to verify CMVN stats: {e}. Recomputing...")
+                    should_compute_cmvn = True
+
+            if should_compute_cmvn:
+                training_state.add_log("Computing CMVN statistics (this may take a moment)...")
                 # Load datasets temporarily without CMVN to compute stats
                 temp_train_ds, _, _ = load_dataset_splits(
                     data_root=paths.DATA,
@@ -902,19 +922,89 @@ def start_hpo(state: gr.State, n_trials: int, study_name: str, param_groups: Lis
     if not param_groups:
         return "⚠️ Please select at least one parameter group to optimize", None
 
-    # Capture loaders locally to satisfy mypy
-    train_loader = training_state.train_loader
-    val_loader = training_state.val_loader
-
-    if train_loader is None or val_loader is None:
-        return "⚠️ Datasets not loaded. Please run a short training session first to load data.", None
-
     training_state.reset()
     training_state.is_training = True
     training_state.should_stop = False
 
     def hpo_thread_func() -> None:
         try:
+            config = state["config"]
+            train_loader = training_state.train_loader
+            val_loader = training_state.val_loader
+
+            # Load data if needed
+            if train_loader is None or val_loader is None:
+                training_state.add_log("Datasets not loaded. Loading for HPO...")
+
+                # Use centralized paths
+                splits_dir = paths.SPLITS
+                if not splits_dir.exists() or not (splits_dir / "train.json").exists():
+                    training_state.add_log("❌ Dataset splits not found. Please run Panel 1 first.")
+                    return
+
+                # Normalize feature type
+                feature_type = "mel" if config.data.feature_type == "mel_spectrogram" else config.data.feature_type
+
+                # Check CMVN stats (basic check, full check is in start_training)
+                cmvn_path = paths.CMVN_STATS
+                if not cmvn_path.exists():
+                    training_state.add_log("⚠️ CMVN stats missing. Computing...")
+                    temp_train_ds, _, _ = load_dataset_splits(
+                        data_root=paths.DATA,
+                        device="cuda",
+                        feature_type=feature_type,
+                        n_mels=config.data.n_mels,
+                        n_mfcc=config.data.n_mfcc,
+                        n_fft=config.data.n_fft,
+                        hop_length=config.data.hop_length,
+                        use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
+                        fallback_to_audio=True,
+                        apply_cmvn=False,
+                    )
+                    compute_cmvn_from_dataset(temp_train_ds, cmvn_path, max_samples=1000)
+
+                train_ds, val_ds, _ = load_dataset_splits(
+                    data_root=paths.DATA,
+                    sample_rate=config.data.sample_rate,
+                    audio_duration=config.data.audio_duration,
+                    augment_train=True,
+                    augmentation_config=config.augmentation.to_dict(),
+                    device="cuda",
+                    feature_type=feature_type,
+                    n_mels=config.data.n_mels,
+                    n_mfcc=config.data.n_mfcc,
+                    n_fft=config.data.n_fft,
+                    hop_length=config.data.hop_length,
+                    use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
+                    npy_cache_features=config.data.npy_cache_features,
+                    fallback_to_audio=True,
+                    cmvn_path=cmvn_path,
+                    apply_cmvn=True,
+                    return_raw_audio=True,
+                )
+
+                # Create loaders
+                hpo_config = config.copy()
+                hpo_config.training.num_workers = min(hpo_config.training.num_workers, 16)
+                hpo_config.training.pin_memory = True
+
+                train_loader = DataLoader(
+                    train_ds,
+                    batch_size=hpo_config.training.batch_size,
+                    shuffle=True,
+                    num_workers=hpo_config.training.num_workers,
+                    pin_memory=True,
+                )
+                val_loader = DataLoader(
+                    val_ds,
+                    batch_size=hpo_config.training.batch_size,
+                    shuffle=False,
+                    num_workers=hpo_config.training.num_workers,
+                    pin_memory=True,
+                )
+
+                training_state.add_log(f"✅ Loaded {len(train_ds)} training samples for HPO")
+
             study = run_hpo(
                 config=state["config"],
                 train_loader=train_loader,

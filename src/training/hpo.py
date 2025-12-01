@@ -105,9 +105,14 @@ class Objective:
 
         # Group: Data
         if "Data" in self.param_groups:
-            # Be careful with n_mels as it changes input size
-            n_mels = trial.suggest_categorical("n_mels", [40, 64, 80])
-            trial_config.data.n_mels = n_mels
+            # Only optimize n_mels if we are NOT using precomputed features
+            # If using precomputed features, we must stick to the dimension of the files
+            if not self.config.data.use_precomputed_features_for_training:
+                # Be careful with n_mels as it changes input size
+                n_mels = trial.suggest_categorical("n_mels", [40, 64, 80])
+                trial_config.data.n_mels = n_mels
+            else:
+                self._log(f"Skipping n_mels optimization (using precomputed features: {self.config.data.n_mels})")
 
         # Group: Loss
         if "Loss" in self.param_groups:

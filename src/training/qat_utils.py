@@ -35,13 +35,27 @@ def prepare_model_for_qat(
     logger.info(f"Preparing model for QAT (Backend: {config.backend})")
 
     # 1. Set backend
-    if config.backend == "qnnpack":
-        torch.backends.quantized.engine = "qnnpack"
-    elif config.backend == "fbgemm":
-        torch.backends.quantized.engine = "fbgemm"
-    else:
-        logger.warning(f"Unknown QAT backend: {config.backend}. Defaulting to fbgemm.")
-        torch.backends.quantized.engine = "fbgemm"
+    supported_engines = torch.backends.quantized.supported_engines
+    
+    # Determine execution engine
+    execution_engine = "none"
+    if config.backend in supported_engines:
+        execution_engine = config.backend
+    elif "fbgemm" in supported_engines:
+        execution_engine = "fbgemm"
+    elif "x86" in supported_engines:
+        execution_engine = "x86"
+    elif "onednn" in supported_engines:
+        execution_engine = "onednn"
+    
+    if execution_engine != config.backend:
+        logger.warning(
+            f"Requested QAT backend '{config.backend}' is not supported as an execution engine on this machine. "
+            f"Using '{execution_engine}' engine for training, but model will be prepared for '{config.backend}'."
+        )
+    
+    if execution_engine != "none":
+        torch.backends.quantized.engine = execution_engine
 
     # 2. Fuse modules (Optional but recommended for performance/accuracy)
     # Ideally, we would identify the model type and fuse appropriate layers.

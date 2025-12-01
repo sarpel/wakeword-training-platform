@@ -10,7 +10,10 @@ import torch.nn as nn
 
 try:
     from transformers import Wav2Vec2Config, Wav2Vec2Model
-except ImportError:
+    TRANSFORMERS_IMPORT_ERROR = None
+except ImportError as e:
+    logging.getLogger(__name__).warning(f"Failed to import transformers: {e}")
+    TRANSFORMERS_IMPORT_ERROR = str(e)
     Wav2Vec2Model = None
     Wav2Vec2Config = None
 
@@ -34,7 +37,8 @@ class Wav2VecWakeword(nn.Module):
 
         if Wav2Vec2Model is None:
             raise ImportError(
-                "transformers library is required for Wav2VecWakeword. Please install it with `pip install transformers`."
+                f"transformers library is required for Wav2VecWakeword. Please install it with `pip install transformers`.\n"
+                f"Original error: {TRANSFORMERS_IMPORT_ERROR}"
             )
 
         logger.info(f"Initializing Wav2VecWakeword with {model_id}")
@@ -46,7 +50,13 @@ class Wav2VecWakeword(nn.Module):
             self.wav2vec2 = Wav2Vec2Model(config)
 
         if freeze_feature_extractor:
-            self.wav2vec2.feature_extractor._freeze_parameters()
+            if hasattr(self.wav2vec2, "freeze_feature_encoder"):
+                self.wav2vec2.freeze_feature_encoder()
+            elif hasattr(self.wav2vec2.feature_extractor, "_freeze_parameters"):
+                self.wav2vec2.feature_extractor._freeze_parameters()
+            else:
+                logger.warning("Could not freeze feature extractor: No known method found.")
+            
             logger.info("Wav2Vec2 feature extractor frozen")
 
         # Classification head

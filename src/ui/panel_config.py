@@ -276,7 +276,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     with gr.Row():
                         # QAT
                         qat_enabled = gr.Checkbox(label="Enable QAT", value=True)
-                        qat_backend = gr.Dropdown(choices=["fbgemm", "qnnpack"], value="qnnpack", label="QAT Backend")
+                        qat_backend = gr.Dropdown(choices=["fbgemm", "qnnpack"], value="fbgemm", label="QAT Backend")
                         qat_start_epoch = gr.Number(label="QAT Start Epoch", value=10)
 
                     with gr.Row():

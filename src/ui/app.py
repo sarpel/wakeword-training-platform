@@ -161,7 +161,7 @@ def create_app() -> gr.Blocks:
         # Create tabs for 6 panels
         with gr.Tabs():
             with gr.TabItem("📊 1. Dataset Management", id=1):
-                panel_dataset = create_dataset_panel()
+                panel_dataset = create_dataset_panel(state=global_state)
 
             with gr.TabItem("⚙️ 2. Configuration", id=2):
                 panel_config = create_config_panel(global_state)

@@ -89,7 +89,11 @@ class ModelEvaluator:
 
             processor_config = WakewordConfig()
 
-        self.audio_processor = GpuAudioProcessor(config=processor_config, device=device)  # Use passed config
+        self.audio_processor = GpuAudioProcessor(
+            config=processor_config,
+            cmvn_path=cmvn_path if cmvn_path.exists() else None,
+            device=device
+        )
 
         # CPU Audio Processor for file loading
         self.cpu_audio_processor = CpuAudioProcessor(target_sr=sample_rate, target_duration=audio_duration)
@@ -184,7 +188,24 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     )
 
     # Load weights
-    model.load_state_dict(checkpoint["model_state_dict"])
+    state_dict = checkpoint["model_state_dict"]
+
+    # Handle QAT checkpoints loaded into FP32 models
+    # Filter out quantization keys that are not in the model
+    model_keys = set(model.state_dict().keys())
+    checkpoint_keys = set(state_dict.keys())
+    unexpected_keys = checkpoint_keys - model_keys
+
+    if unexpected_keys:
+        # Check if these are quantization keys
+        quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
+        
+        if quant_keys:
+            logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
+            # Filter the state dict
+            state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
+
+    model.load_state_dict(state_dict, strict=True)
 
     # Move to device and set eval mode
     model.to(device)
