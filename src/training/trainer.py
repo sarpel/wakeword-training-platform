@@ -123,6 +123,7 @@ class Trainer:
         )
 
         # Create loss function
+        # Initialize with reduction='none' to support hard negative weighting
         self.criterion = create_loss_function(
             loss_name=config.loss.loss_function,
             num_classes=config.model.num_classes,
@@ -131,6 +132,7 @@ class Trainer:
             focal_gamma=config.loss.focal_gamma,
             class_weights=None,
             device=device,
+            reduction="none",  # Changed from default 'mean'
         ).to(device)
 
         # Create optimizer and scheduler (self.model ile kur)
@@ -389,6 +391,7 @@ class Trainer:
         targets: torch.Tensor,
         inputs: Optional[torch.Tensor] = None,
         processed_inputs: Optional[torch.Tensor] = None,
+        is_hard_negative: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Compute loss. Can be overridden for distillation or custom logic.
@@ -398,6 +401,7 @@ class Trainer:
             targets: Ground truth labels
             inputs: Original raw inputs (optional, for distillation/teacher)
             processed_inputs: Processed inputs/features (optional, for embedding extraction)
+            is_hard_negative: Tensor indicating hard negative samples (1=hard, 0=normal)
 
         Returns:
             Loss tensor
@@ -416,7 +420,24 @@ class Trainer:
                 # This might happen if using a model without embed() method
                 return cast(torch.Tensor, self.criterion(outputs, targets))
 
-        return cast(torch.Tensor, self.criterion(outputs, targets))
+        # Standard loss (CrossEntropy, FocalLoss)
+        # Criterion is initialized with reduction='none', so it returns (B,)
+        loss = self.criterion(outputs, targets)
+
+        # Apply hard negative weighting
+        if is_hard_negative is not None:
+            # Get weight from config (default 1.5 if not set)
+            hn_weight = getattr(self.config.loss, "hard_negative_weight", 1.5)
+
+            # Create weight tensor: 1.0 for normal, hn_weight for hard negatives
+            # is_hard_negative is 1 for hard negatives, 0 otherwise
+            weights = torch.ones_like(loss)
+            weights = weights + (is_hard_negative * (hn_weight - 1.0))
+
+            loss = loss * weights
+
+        # Return mean loss
+        return loss.mean()
 
 
 if __name__ == "__main__":

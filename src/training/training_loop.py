@@ -43,9 +43,15 @@ def _run_epoch(
     with torch.set_grad_enabled(is_training):
         for batch_idx, batch in enumerate(pbar):
             if len(batch) == 3:
-                inputs, targets, _ = batch
+                inputs, targets, metadata = batch
+                # Extract hard negative flags
+                # metadata is a dict of lists/tensors
+                is_hard_negative = metadata.get("is_hard_negative", None)
+                if is_hard_negative is not None:
+                    is_hard_negative = is_hard_negative.to(trainer.device, non_blocking=True)
             else:
                 inputs, targets = batch
+                is_hard_negative = None
 
             # Move to device
             inputs = inputs.to(trainer.device, non_blocking=True)
@@ -77,7 +83,13 @@ def _run_epoch(
             with torch.amp.autocast("cuda", enabled=use_amp):
                 outputs = trainer.model(inputs)
                 # Use compute_loss method to allow overriding (e.g., for distillation)
-                loss = trainer.compute_loss(outputs, targets, raw_inputs, processed_inputs=inputs)
+                loss = trainer.compute_loss(
+                    outputs,
+                    targets,
+                    raw_inputs,
+                    processed_inputs=inputs,
+                    is_hard_negative=is_hard_negative,
+                )
 
             if is_training:
                 if use_amp:

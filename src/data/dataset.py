@@ -90,6 +90,7 @@ class WakewordDataset(Dataset):
         self.cache_audio = cache_audio
         self.device = "cpu"  # Always CPU for dataset operations
         self.return_raw_audio = return_raw_audio
+        self.hop_length = hop_length  # Store for duration calculation in error messages
 
         # NEW: NPY feature parameters
         self.use_precomputed_features_for_training = use_precomputed_features_for_training
@@ -253,9 +254,16 @@ class WakewordDataset(Dataset):
                 expected_shape = self.feature_extractor.get_output_shape(int(self.audio_duration * self.sample_rate))
 
                 if features_tensor.shape != expected_shape:
+                    # Calculate likely duration of the file for better error message
+                    # shape is (1, n_mels, time)
+                    file_frames = features_tensor.shape[-1]
+                    likely_duration = (file_frames - 1) * self.hop_length / self.sample_rate
+
                     logger.warning(
                         f"Shape mismatch for {npy_path}: "
-                        f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
+                        f"expected {expected_shape} (duration={self.audio_duration}s), "
+                        f"got {features_tensor.shape} (likely duration={likely_duration:.1f}s). "
+                        f"Skipping NPY."
                     )
                     # Trigger fallback
                     raise ValueError(f"Shape mismatch: {features_tensor.shape} != {expected_shape}")
@@ -311,6 +319,7 @@ class WakewordDataset(Dataset):
                 "source": "raw_audio",
                 "sample_rate": self.sample_rate,
                 "duration": self.audio_duration,
+                "is_hard_negative": 1 if category == "hard_negative" else 0,
             }
             return audio_tensor, label, metadata
 
@@ -332,6 +341,7 @@ class WakewordDataset(Dataset):
                         "source": "npy",  # NEW: Track data source
                         "sample_rate": self.sample_rate,
                         "duration": self.audio_duration,
+                        "is_hard_negative": 1 if category == "hard_negative" else 0,
                     }
                     return features, label, metadata
 
@@ -382,6 +392,7 @@ class WakewordDataset(Dataset):
             "source": "audio",  # NEW: Track data source
             "sample_rate": self.sample_rate,
             "duration": self.audio_duration,
+            "is_hard_negative": 1 if category == "hard_negative" else 0,
         }
 
         # Mypy: Ensure features is not None before returning

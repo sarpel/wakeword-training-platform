@@ -180,11 +180,24 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     # Create model
     from src.models.architectures import create_model
 
+    # Calculate input size for model
+    input_samples = int(config.data.sample_rate * config.data.audio_duration)
+    time_steps = input_samples // config.data.hop_length + 1
+    
+    feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
+    
+    if config.model.architecture == "cd_dnn":
+        input_size = feature_dim * time_steps
+    else:
+        input_size = feature_dim
+
     model = create_model(
         architecture=config.model.architecture,
         num_classes=config.model.num_classes,
         pretrained=False,
         dropout=config.model.dropout,
+        input_size=input_size,
+        input_channels=1,
     )
 
     # Load weights

@@ -159,11 +159,20 @@ class Objective:
             checkpoint_manager = CheckpointManager(checkpoint_dir)
 
             # Determine input size based on feature type
-            input_size = 64  # Default
+            feature_dim = 64  # Default
             if trial_config.data.feature_type == "mfcc":
-                input_size = trial_config.data.n_mfcc
+                feature_dim = trial_config.data.n_mfcc
             else:
-                input_size = trial_config.data.n_mels
+                feature_dim = trial_config.data.n_mels
+
+            # Calculate time steps for CD-DNN
+            input_samples = int(trial_config.data.sample_rate * trial_config.data.audio_duration)
+            time_steps = input_samples // trial_config.data.hop_length + 1
+
+            if trial_config.model.architecture == "cd_dnn":
+                input_size = feature_dim * time_steps
+            else:
+                input_size = feature_dim
 
             # Create a new model for this trial
             model = create_model(

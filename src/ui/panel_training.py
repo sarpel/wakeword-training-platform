@@ -31,6 +31,7 @@ from src.config.paths import paths  # NEW: Centralized paths
 from src.data.balanced_sampler import create_balanced_sampler_from_dataset
 from src.data.cmvn import compute_cmvn_from_dataset
 from src.data.dataset import WakewordDataset, load_dataset_splits
+from src.data.processor import AudioProcessor
 from src.exceptions import WakewordException
 from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
@@ -635,15 +636,32 @@ def start_training(
 
         training_state.add_log("Creating model...")
 
+        # Calculate input size for model
+        # This is critical to avoid shape mismatches when changing n_mels or audio_duration
+        input_samples = int(config.data.sample_rate * config.data.audio_duration)
+        time_steps = input_samples // config.data.hop_length + 1
+        
+        feature_dim = config.data.n_mels if feature_type == "mel" else config.data.n_mfcc
+        
+        # Determine input_size based on architecture
+        if config.model.architecture == "cd_dnn":
+            # CD-DNN expects flattened input (features * time)
+            input_size = feature_dim * time_steps
+        else:
+            # RNNs/TCNs expect feature dimension
+            input_size = feature_dim
+
         # Create model
         training_state.model = create_model(
             architecture=config.model.architecture,
             num_classes=config.model.num_classes,
             pretrained=config.model.pretrained,
             dropout=config.model.dropout,
+            input_size=input_size,  # Pass calculated input size
+            input_channels=1,       # Always 1 for spectrograms
         )
 
-        training_state.add_log(f"Model created: {config.model.architecture}")
+        training_state.add_log(f"Model created: {config.model.architecture} (Input Size: {input_size})")
 
         # Prepare for QAT if enabled
         if config.qat.enabled:
@@ -662,7 +680,20 @@ def start_training(
             try:
                 optimizer = torch.optim.AdamW(training_state.model.parameters(), lr=config.training.learning_rate)
                 criterion = torch.nn.CrossEntropyLoss()
-                lr_finder = LRFinder(training_state.model, optimizer, criterion, device="cuda")
+                
+                # Wrap model with AudioProcessor if dataset returns raw audio
+                model_for_lr = training_state.model
+                if getattr(train_ds, "return_raw_audio", False):
+                    training_state.add_log("Initializing AudioProcessor for LR Finder...")
+                    processor = AudioProcessor(config, cmvn_path=cmvn_path, device="cuda")
+                    # Ensure processor is in training mode if needed (though it mostly does stateless ops)
+                    processor.train()
+                    model_for_lr = torch.nn.Sequential(processor, training_state.model)
+                
+                # Ensure model is on the correct device
+                model_for_lr = model_for_lr.to("cuda")
+                
+                lr_finder = LRFinder(model_for_lr, optimizer, criterion, device="cuda")
 
                 lrs, losses = lr_finder.range_test(
                     training_state.train_loader,

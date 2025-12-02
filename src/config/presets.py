@@ -82,6 +82,10 @@ def get_small_dataset_preset() -> WakewordConfig:
             rir_prob=0.5,  # Higher RIR usage for acoustic variety
             rir_dry_wet_min=0.2,  # More aggressive reverb range
             rir_dry_wet_max=0.8,
+            # Added time shift for robustness
+            time_shift_prob=0.6,
+            time_shift_min_ms=-60,
+            time_shift_max_ms=60,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",  # Better regularization than adam
@@ -137,10 +141,14 @@ def get_large_dataset_preset() -> WakewordConfig:
             rir_prob=0.25,
             rir_dry_wet_min=0.4,  # Lighter reverb
             rir_dry_wet_max=0.6,
+            # Added moderate time shift
+            time_shift_prob=0.3,
+            time_shift_min_ms=-30,
+            time_shift_max_ms=30,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=1e-4,
+            weight_decay=0.01,  # Standard AdamW weight decay (was 1e-4)
             scheduler="cosine",
             warmup_epochs=3,
             gradient_clip=1.0,
@@ -181,6 +189,7 @@ def get_fast_training_preset() -> WakewordConfig:
             learning_rate=0.003,  # Higher LR for faster convergence
             early_stopping_patience=5,
             num_workers=6,
+            use_ema=False,  # Disable EMA for faster training
         ),
         model=ModelConfig(
             architecture="mobilenetv3",  # Fast, lightweight architecture
@@ -199,9 +208,13 @@ def get_fast_training_preset() -> WakewordConfig:
             rir_prob=0.1,  # Minimal RIR usage
             rir_dry_wet_min=0.5,  # Light reverb only
             rir_dry_wet_max=0.7,
+            # Added minimal time shift
+            time_shift_prob=0.1,
+            time_shift_min_ms=-20,
+            time_shift_max_ms=20,
         ),
         optimizer=OptimizerConfig(
-            optimizer="adam",
+            optimizer="adamw",
             weight_decay=1e-4,
             scheduler="step",
             gradient_clip=1.0,
@@ -260,10 +273,14 @@ def get_high_accuracy_preset() -> WakewordConfig:
             rir_prob=0.4,  # High RIR for acoustic variety
             rir_dry_wet_min=0.2,  # Wide reverb range
             rir_dry_wet_max=0.8,
+            # Added comprehensive time shift
+            time_shift_prob=0.5,
+            time_shift_min_ms=-50,
+            time_shift_max_ms=50,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=5e-4,  # Strong regularization
+            weight_decay=0.01,  # Standard AdamW weight decay (was 5e-4)
             scheduler="cosine",
             warmup_epochs=10,
             gradient_clip=0.5,  # Stricter clipping for stability
@@ -296,7 +313,7 @@ def get_edge_deployment_preset() -> WakewordConfig:
         description="Optimized for edge devices (mobile/IoT) with small model size",
         data=DataConfig(
             sample_rate=16000,
-            audio_duration=1.0,  # "Hey Katya" fits in 1s, optimal for ESP32 RAM
+            audio_duration=1.5,  # Increased to 1.5s for better wakeword coverage
             n_mfcc=0,
             n_fft=400,
             n_mels=40,  # Reduced for MCU efficiency
@@ -332,7 +349,7 @@ def get_edge_deployment_preset() -> WakewordConfig:
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",  # Switch to AdamW
-            weight_decay=1e-4,
+            weight_decay=0.01,  # Standard AdamW weight decay (was 1e-4)
             scheduler="cosine",
             gradient_clip=1.0,
             mixed_precision=True,  # Critical for edge deployment
@@ -402,10 +419,13 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
             time_shift_max_ms=50,
             rir_dry_wet_min=0.4,
             rir_dry_wet_max=0.6,
+            # Reduced SpecAugment for tiny model
+            freq_mask_param=10,
+            time_mask_param=20,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=1e-4,  # Standard AdamW weight decay
+            weight_decay=0.01,  # Standard AdamW weight decay (was 1e-4)
             scheduler="cosine",
             gradient_clip=1.0,
             mixed_precision=True,

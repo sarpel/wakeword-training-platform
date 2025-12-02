@@ -263,6 +263,7 @@ def create_loss_function(
     triplet_margin: float = 1.0,
     class_weights: Optional[torch.Tensor] = None,
     device: str = "cuda",
+    reduction: str = "mean",
 ) -> nn.Module:
     """
     Factory function to create loss functions
@@ -276,6 +277,7 @@ def create_loss_function(
         triplet_margin: Margin for triplet loss
         class_weights: Optional class weights tensor
         device: Device to place loss on
+        reduction: Reduction method ('none', 'mean', 'sum')
 
     Returns:
         Loss function module
@@ -291,12 +293,12 @@ def create_loss_function(
 
     if loss_name == "cross_entropy":
         if label_smoothing > 0:
-            return LabelSmoothingCrossEntropy(smoothing=label_smoothing, weight=class_weights, reduction="mean")
+            return LabelSmoothingCrossEntropy(smoothing=label_smoothing, weight=class_weights, reduction=reduction)
         else:
-            return nn.CrossEntropyLoss(weight=class_weights, reduction="mean")
+            return nn.CrossEntropyLoss(weight=class_weights, reduction=reduction)
 
     elif loss_name == "focal_loss" or loss_name == "focal":
-        return FocalLoss(alpha=focal_alpha, gamma=focal_gamma, weight=class_weights, reduction="mean")
+        return FocalLoss(alpha=focal_alpha, gamma=focal_gamma, weight=class_weights, reduction=reduction)
 
     elif loss_name == "triplet_loss":
         return TripletLoss(margin=triplet_margin)
