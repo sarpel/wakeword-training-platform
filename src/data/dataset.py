@@ -2,10 +2,11 @@
 PyTorch Dataset for Wakeword Training
 Handles audio loading, preprocessing, and augmentation
 """
+
 import json
-from pathlib import Path
-from typing import Dict, Optional, Tuple
 from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import structlog
@@ -54,7 +55,7 @@ class WakewordDataset(Dataset):
         class_mapping: Optional[Dict[str, int]] = None,
         # NEW: GPU Pipeline support
         return_raw_audio: bool = False,
-    ):
+    ) -> None:
         """
         Initialize wakeword dataset
 
@@ -89,56 +90,53 @@ class WakewordDataset(Dataset):
         self.cache_audio = cache_audio
         self.device = "cpu"  # Always CPU for dataset operations
         self.return_raw_audio = return_raw_audio
+        self.hop_length = hop_length  # Store for duration calculation in error messages
 
         # NEW: NPY feature parameters
-        self.use_precomputed_features_for_training = (
-            use_precomputed_features_for_training
-        )
+        self.use_precomputed_features_for_training = use_precomputed_features_for_training
         self.npy_cache_features = npy_cache_features
         self.fallback_to_audio = fallback_to_audio
 
         # CMVN initialization
         self.apply_cmvn = apply_cmvn
-        self.cmvn = None
+        self.cmvn: Optional[CMVN] = None
         if apply_cmvn and cmvn_path and Path(cmvn_path).exists() and not return_raw_audio:
             # Only load CMVN in dataset if we are NOT returning raw audio
             # If returning raw audio, CMVN happens on GPU
             self.cmvn = CMVN(stats_path=cmvn_path)
             logger.info(f"CMVN loaded from {cmvn_path}")
         elif apply_cmvn and return_raw_audio:
-             logger.info("CMVN enabled but deferred to GPU pipeline (return_raw_audio=True)")
+            logger.info("CMVN enabled but deferred to GPU pipeline (return_raw_audio=True)")
 
         # Load manifest
         with open(self.manifest_path, "r") as f:
             manifest = json.load(f)
 
-        self.files = manifest["files"]
-        self.categories = manifest["categories"]
+        self.files: List[Dict[str, Any]] = manifest["files"]
+        self.categories: Dict[str, Any] = manifest["categories"]
 
         # Create label mapping
         self.label_map = self._create_label_map(class_mapping)
 
         # Audio processor
-        self.audio_processor = AudioProcessor(
-            target_sr=sample_rate, target_duration=audio_duration
-        )
+        self.audio_processor = AudioProcessor(target_sr=sample_rate, target_duration=audio_duration)
 
         # Cache for loaded audio
-        self.audio_cache = {} if cache_audio else None
+        self.audio_cache: Optional[Dict[int, np.ndarray]] = {} if cache_audio else None
 
         # NEW: Feature cache (separate from audio cache)
-        self.feature_cache = {} if npy_cache_features else None
+        self.feature_cache: Optional[Dict[int, torch.Tensor]] = {} if npy_cache_features else None
 
         # Normalize feature type (handle legacy 'mel_spectrogram')
         if feature_type == "mel_spectrogram":
             feature_type = "mel"
 
         # Initialize feature extractor (Only if not returning raw audio)
-        self.feature_extractor = None
+        self.feature_extractor: Optional[FeatureExtractor] = None
         if not return_raw_audio:
             self.feature_extractor = FeatureExtractor(
                 sample_rate=sample_rate,
-                feature_type=feature_type,
+                feature_type=feature_type,  # type: ignore
                 n_mels=n_mels,
                 n_mfcc=n_mfcc,
                 n_fft=n_fft,
@@ -147,16 +145,16 @@ class WakewordDataset(Dataset):
             )
 
         # Initialize augmentation if enabled (Only if not returning raw audio)
-        self.augmentation = None
+        self.augmentation: Optional[AudioAugmentation] = None
         if augment and not return_raw_audio:
             # Collect background noise and RIR files
             background_files = None
             rir_files = None
 
             if background_noise_dir and Path(background_noise_dir).exists():
-                background_files = list(
-                    Path(background_noise_dir).rglob("*.wav")
-                ) + list(Path(background_noise_dir).rglob("*.mp3"))
+                background_files = list(Path(background_noise_dir).rglob("*.wav")) + list(
+                    Path(background_noise_dir).rglob("*.mp3")
+                )
                 logger.info(f"Found {len(background_files)} background noise files")
 
             if rir_dir and Path(rir_dir).exists():
@@ -204,7 +202,7 @@ class WakewordDataset(Dataset):
         """
         if class_mapping is not None:
             return class_mapping
-            
+
         # Binary classification: positive (1) vs everything else (0)
         # Note: background and rirs are NOT training samples - they're augmentation sources
         label_map = {"positive": 1, "negative": 0, "hard_negative": 0}
@@ -218,20 +216,20 @@ class WakewordDataset(Dataset):
     def _load_from_npy(self, file_info_json: str, idx: int) -> Optional[torch.Tensor]:
         """
         Load precomputed features from .npy file
-        
+
         Args:
             file_info_json: JSON string of file metadata
             idx: Index of the item in the dataset
-            
+
         Returns:
             Feature tensor or None if not found
         """
         # Check cache first
         if self.feature_cache is not None and idx in self.feature_cache:
             return self.feature_cache[idx]
-        
+
         file_info = json.loads(file_info_json)
-        
+
         # Get NPY path from manifest
         npy_path = file_info.get("npy_path")
 
@@ -247,20 +245,32 @@ class WakewordDataset(Dataset):
             features_tensor = torch.from_numpy(np.array(features)).float()
 
             # Validate shape
-            expected_shape = self.feature_extractor.get_output_shape(
-                int(self.audio_duration * self.sample_rate)
-            )
+            if self.feature_extractor is None:
+                # If feature extractor is not available, we can't validate shape against it.
+                # This might happen if return_raw_audio=True but we are somehow loading NPY?
+                # Or if we just want to skip validation.
+                pass
+            else:
+                expected_shape = self.feature_extractor.get_output_shape(int(self.audio_duration * self.sample_rate))
 
-            if features_tensor.shape != expected_shape:
-                logger.warning(
-                    f"Shape mismatch for {npy_path}: "
-                    f"expected {expected_shape}, got {features_tensor.shape}. Skipping NPY."
-                )
-                # Trigger fallback
+                if features_tensor.shape != expected_shape:
+                    # Calculate likely duration of the file for better error message
+                    # shape is (1, n_mels, time)
+                    file_frames = features_tensor.shape[-1]
+                    likely_duration = (file_frames - 1) * self.hop_length / self.sample_rate
+
+                    logger.warning(
+                        f"Shape mismatch for {npy_path}: "
+                        f"expected {expected_shape} (duration={self.audio_duration}s), "
+                        f"got {features_tensor.shape} (likely duration={likely_duration:.1f}s). "
+                        f"Skipping NPY."
+                    )
+                    # Trigger fallback
+                    raise ValueError(f"Shape mismatch: {features_tensor.shape} != {expected_shape}")
                 # BUG FIX: Changed file_path to npy_path (file_path was undefined variable)
                 if not self.fallback_to_audio:
-                     raise FileNotFoundError(f"NPY shape mismatch for {npy_path} and fallback_to_audio=False")
-                return None # Return None to trigger fallback
+                    raise FileNotFoundError(f"NPY shape mismatch for {npy_path} and fallback_to_audio=False")
+                return None  # Return None to trigger fallback
 
             # Cache if enabled
             if self.feature_cache is not None:
@@ -272,7 +282,7 @@ class WakewordDataset(Dataset):
             logger.error(f"Error loading NPY {npy_path}: {e}")
             return None
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, Dict]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, Dict[str, Any]]:
         """
         Get item by index
 
@@ -285,7 +295,7 @@ class WakewordDataset(Dataset):
         file_info = self.files[idx]
         file_path = Path(file_info["path"])
         category = file_info["category"]
-        label = self.label_map.get(category, 0) # Default to 0 if unknown
+        label = self.label_map.get(category, 0)  # Default to 0 if unknown
 
         # NEW: GPU Pipeline Support - Return raw audio immediately
         if self.return_raw_audio:
@@ -296,12 +306,12 @@ class WakewordDataset(Dataset):
                 audio = self.audio_processor.process_audio(file_path)
                 if self.audio_cache is not None:
                     self.audio_cache[idx] = audio
-            
+
             # Convert to tensor (1, Samples)
             audio_tensor = torch.from_numpy(audio).float()
             if audio_tensor.ndim == 1:
                 audio_tensor = audio_tensor.unsqueeze(0)
-                
+
             metadata = {
                 "path": str(file_path),
                 "category": category,
@@ -309,6 +319,7 @@ class WakewordDataset(Dataset):
                 "source": "raw_audio",
                 "sample_rate": self.sample_rate,
                 "duration": self.audio_duration,
+                "is_hard_negative": 1 if category == "hard_negative" else 0,
             }
             return audio_tensor, label, metadata
 
@@ -330,14 +341,13 @@ class WakewordDataset(Dataset):
                         "source": "npy",  # NEW: Track data source
                         "sample_rate": self.sample_rate,
                         "duration": self.audio_duration,
+                        "is_hard_negative": 1 if category == "hard_negative" else 0,
                     }
                     return features, label, metadata
 
                 elif not self.fallback_to_audio:
                     # Strict fallback logic: raise error if NPY missing
-                    raise FileNotFoundError(
-                        f"NPY features missing for {file_path} and fallback_to_audio=False"
-                    )
+                    raise FileNotFoundError(f"NPY features missing for {file_path} and fallback_to_audio=False")
 
             except Exception as e:
                 if not self.fallback_to_audio:
@@ -365,10 +375,13 @@ class WakewordDataset(Dataset):
         audio_tensor = torch.from_numpy(audio).float()
 
         # Extract features (mel-spectrogram or MFCC) on CPU
+        if self.feature_extractor is None:
+            raise ValueError("Feature extractor not initialized")
         features = self.feature_extractor(audio_tensor)
 
         # Apply CMVN if enabled
-        if self.cmvn is not None:
+        # Mypy: Ensure features is not None before passing to normalize
+        if self.cmvn is not None and features is not None:
             features = self.cmvn.normalize(features)
 
         # Metadata
@@ -379,7 +392,12 @@ class WakewordDataset(Dataset):
             "source": "audio",  # NEW: Track data source
             "sample_rate": self.sample_rate,
             "duration": self.audio_duration,
+            "is_hard_negative": 1 if category == "hard_negative" else 0,
         }
+
+        # Mypy: Ensure features is not None before returning
+        if features is None:
+            raise ValueError(f"Failed to extract features for {file_path}")
 
         return features, label, metadata
 
@@ -410,7 +428,7 @@ class WakewordDataset(Dataset):
         # Convert back to numpy (already on CPU)
         augmented = augmented_tensor.squeeze(0).numpy()
 
-        return augmented
+        return cast(np.ndarray, augmented.astype(np.float32))
 
     def get_class_weights(self, min_weight: float = 0.1, max_weight: float = 100.0) -> torch.Tensor:
         """
@@ -430,9 +448,7 @@ class WakewordDataset(Dataset):
 
         # Guard: Check if any class has zero samples
         if np.any(label_counts == 0):
-            logger.warning(
-                "Zero samples in one or more classes, returning equal weights"
-            )
+            logger.warning("Zero samples in one or more classes, returning equal weights")
             return torch.ones(len(label_counts))
 
         # Guard: Check if only one class exists
@@ -580,10 +596,7 @@ def load_dataset_splits(
         return_raw_audio=return_raw_audio,
     )
 
-    logger.info(
-        f"Datasets loaded: train={len(train_dataset)}, "
-        f"val={len(val_dataset)}, test={len(test_dataset)}"
-    )
+    logger.info(f"Datasets loaded: train={len(train_dataset)}, " f"val={len(val_dataset)}, test={len(test_dataset)}")
 
     return train_dataset, val_dataset, test_dataset
 

@@ -2,7 +2,8 @@
 Balanced Batch Sampler for controlling class ratios in batches
 Ensures each batch has specified proportions of positive, negative, and hard negative samples
 """
-from typing import List
+
+from typing import Iterator, List
 
 import numpy as np
 import structlog
@@ -55,14 +56,12 @@ class BalancedBatchSampler(Sampler):
         # Verify we have enough samples
         if len(self.idx_pos) < self.n_pos:
             logger.warning(
-                f"Not enough positive samples ({len(self.idx_pos)}) "
-                f"for batch requirement ({self.n_pos})"
+                f"Not enough positive samples ({len(self.idx_pos)}) " f"for batch requirement ({self.n_pos})"
             )
 
         if len(self.idx_neg) < self.n_neg:
             logger.warning(
-                f"Not enough negative samples ({len(self.idx_neg)}) "
-                f"for batch requirement ({self.n_neg})"
+                f"Not enough negative samples ({len(self.idx_neg)}) " f"for batch requirement ({self.n_neg})"
             )
 
         if len(self.idx_hard_neg) < self.n_hard_neg:
@@ -77,7 +76,7 @@ class BalancedBatchSampler(Sampler):
             f"samples_per_batch=[pos={self.n_pos}, neg={self.n_neg}, hard_neg={self.n_hard_neg}]"
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[List[int]]:
         """Generate balanced batches"""
         # Shuffle indices for each class
         pos_perm = np.random.permutation(self.idx_pos)
@@ -85,17 +84,9 @@ class BalancedBatchSampler(Sampler):
         hard_neg_perm = np.random.permutation(self.idx_hard_neg)
 
         # Determine number of batches
-        max_batches_pos = (
-            len(pos_perm) // self.n_pos if self.n_pos > 0 else float("inf")
-        )
-        max_batches_neg = (
-            len(neg_perm) // self.n_neg if self.n_neg > 0 else float("inf")
-        )
-        max_batches_hard = (
-            len(hard_neg_perm) // self.n_hard_neg
-            if self.n_hard_neg > 0
-            else float("inf")
-        )
+        max_batches_pos = len(pos_perm) // self.n_pos if self.n_pos > 0 else float("inf")
+        max_batches_neg = len(neg_perm) // self.n_neg if self.n_neg > 0 else float("inf")
+        max_batches_hard = len(hard_neg_perm) // self.n_hard_neg if self.n_hard_neg > 0 else float("inf")
 
         num_batches = int(min(max_batches_pos, max_batches_neg, max_batches_hard))
 
@@ -126,25 +117,20 @@ class BalancedBatchSampler(Sampler):
 
             yield batch_indices
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return number of batches"""
-        max_batches_pos = (
-            len(self.idx_pos) // self.n_pos if self.n_pos > 0 else float("inf")
-        )
-        max_batches_neg = (
-            len(self.idx_neg) // self.n_neg if self.n_neg > 0 else float("inf")
-        )
-        max_batches_hard = (
-            len(self.idx_hard_neg) // self.n_hard_neg
-            if self.n_hard_neg > 0
-            else float("inf")
-        )
+        max_batches_pos = len(self.idx_pos) // self.n_pos if self.n_pos > 0 else float("inf")
+        max_batches_neg = len(self.idx_neg) // self.n_neg if self.n_neg > 0 else float("inf")
+        max_batches_hard = len(self.idx_hard_neg) // self.n_hard_neg if self.n_hard_neg > 0 else float("inf")
 
         return int(min(max_batches_pos, max_batches_neg, max_batches_hard))
 
 
+from torch.utils.data import Dataset
+
+
 def create_balanced_sampler_from_dataset(
-    dataset, batch_size: int, ratio: tuple = (1, 1, 1), drop_last: bool = True
+    dataset: Dataset, batch_size: int, ratio: tuple = (1, 1, 1), drop_last: bool = True
 ) -> BalancedBatchSampler:
     """
     Create balanced batch sampler from dataset
@@ -167,7 +153,7 @@ def create_balanced_sampler_from_dataset(
     if hasattr(dataset, "files"):
         for i, file_info in enumerate(dataset.files):
             category = file_info.get("category", "")
-            
+
             if category == "positive":
                 idx_pos.append(i)
             elif category == "negative":
@@ -177,14 +163,14 @@ def create_balanced_sampler_from_dataset(
     else:
         # Fallback to iteration
         logger.warning("Dataset does not expose .files, falling back to slow iteration")
-        for i in range(len(dataset)):
+        for i in range(len(dataset)):  # type: ignore[arg-type]
             # Try to get metadata without loading full item if possible
-            # But dataset[i] usually loads audio. 
+            # But dataset[i] usually loads audio.
             # We have to rely on dataset[i] returning (audio, label, metadata)
             try:
                 _, _, metadata = dataset[i]
                 category = metadata.get("category", "")
-                
+
                 if category == "positive":
                     idx_pos.append(i)
                 elif category == "negative":
@@ -194,10 +180,7 @@ def create_balanced_sampler_from_dataset(
             except Exception as e:
                 logger.warning(f"Failed to get metadata for index {i}: {e}")
 
-    logger.info(
-        f"Collected indices: pos={len(idx_pos)}, "
-        f"neg={len(idx_neg)}, hard_neg={len(idx_hard_neg)}"
-    )
+    logger.info(f"Collected indices: pos={len(idx_pos)}, " f"neg={len(idx_neg)}, hard_neg={len(idx_hard_neg)}")
 
     return BalancedBatchSampler(
         idx_pos=idx_pos,
@@ -237,9 +220,7 @@ if __name__ == "__main__":
     print(f"\nSampler created:")
     print(f"  Batch size: {batch_size}")
     print(f"  Ratio: (1, 1, 1)")
-    print(
-        f"  Samples per batch: pos={sampler.n_pos}, neg={sampler.n_neg}, hard_neg={sampler.n_hard_neg}"
-    )
+    print(f"  Samples per batch: pos={sampler.n_pos}, neg={sampler.n_neg}, hard_neg={sampler.n_hard_neg}")
     print(f"  Total batches: {len(sampler)}")
 
     # Generate a few batches
@@ -253,9 +234,7 @@ if __name__ == "__main__":
         n_neg = sum(1 for idx in batch_idx if 100 <= idx < 300)
         n_hard = sum(1 for idx in batch_idx if idx >= 300)
 
-        print(
-            f"  Batch {i+1}: size={len(batch_idx)}, pos={n_pos}, neg={n_neg}, hard_neg={n_hard}"
-        )
+        print(f"  Batch {i+1}: size={len(batch_idx)}, pos={n_pos}, neg={n_neg}, hard_neg={n_hard}")
 
     # Test with different ratio (1:2:1)
     print(f"\nTesting with ratio (1:2:1):")
@@ -267,9 +246,7 @@ if __name__ == "__main__":
         ratio=(1, 2, 1),
     )
 
-    print(
-        f"  Samples per batch: pos={sampler2.n_pos}, neg={sampler2.n_neg}, hard_neg={sampler2.n_hard_neg}"
-    )
+    print(f"  Samples per batch: pos={sampler2.n_pos}, neg={sampler2.n_neg}, hard_neg={sampler2.n_hard_neg}")
     print(f"  Total batches: {len(sampler2)}")
 
     for i, batch_idx in enumerate(sampler2):
@@ -280,8 +257,6 @@ if __name__ == "__main__":
         n_neg = sum(1 for idx in batch_idx if 100 <= idx < 300)
         n_hard = sum(1 for idx in batch_idx if idx >= 300)
 
-        print(
-            f"  Batch {i+1}: size={len(batch_idx)}, pos={n_pos}, neg={n_neg}, hard_neg={n_hard}"
-        )
+        print(f"  Batch {i+1}: size={len(batch_idx)}, pos={n_pos}, neg={n_neg}, hard_neg={n_hard}")
 
     print("\n✅ BalancedBatchSampler test complete")

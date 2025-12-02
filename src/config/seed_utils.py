@@ -2,7 +2,9 @@
 Seed Setting and Determinism Utilities
 Ensures reproducibility across runs
 """
+
 import random
+from typing import Any, Dict
 
 import numpy as np
 import structlog
@@ -12,7 +14,7 @@ import torch.backends.cudnn as cudnn
 logger = structlog.get_logger(__name__)
 
 
-def set_seed(seed: int = 42, deterministic: bool = True):
+def set_seed(seed: int = 42, deterministic: bool = True) -> None:
     """
     Set random seed for reproducibility
 
@@ -42,14 +44,12 @@ def set_seed(seed: int = 42, deterministic: bool = True):
         # Benchmark mode: faster but non-deterministic
         cudnn.benchmark = True
         cudnn.deterministic = False
-        logger.info(
-            f"Seed set to {seed} with benchmark mode enabled (non-deterministic)"
-        )
+        logger.info(f"Seed set to {seed} with benchmark mode enabled (non-deterministic)")
 
     logger.info(f"Random seed: {seed}")
 
 
-def get_rng_state():
+def get_rng_state() -> Dict[str, Any]:
     """
     Get current random number generator state
 
@@ -60,13 +60,11 @@ def get_rng_state():
         "python": random.getstate(),
         "numpy": np.random.get_state(),
         "torch": torch.get_rng_state(),
-        "torch_cuda": torch.cuda.get_rng_state_all()
-        if torch.cuda.is_available()
-        else None,
+        "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
     }
 
 
-def set_rng_state(state: dict):
+def set_rng_state(state: Dict[str, Any]) -> None:
     """
     Restore random number generator state
 

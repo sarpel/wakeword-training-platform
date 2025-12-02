@@ -5,28 +5,27 @@ Panel 4: Model Evaluation
 - Test set evaluation with comprehensive metrics
 - Confusion matrix and ROC curve visualization
 """
+
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import gradio as gr
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
 
 matplotlib.use("Agg")
 import structlog
 
-from src.evaluation.evaluator import (
-    ModelEvaluator,
-    load_model_for_evaluation,
-)
-from src.evaluation.types import EvaluationResult
-from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
 from src.data.dataset import WakewordDataset
-from src.training.metrics import MetricResults
+from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
+from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
+from src.evaluation.types import EvaluationResult
 from src.exceptions import WakewordException
+from src.training.metrics import MetricResults
 
 logger = structlog.get_logger(__name__)
 
@@ -34,26 +33,26 @@ logger = structlog.get_logger(__name__)
 class EvaluationState:
     """Global evaluation state manager"""
 
-    def __init__(self):
-        self.model = None
-        self.model_info = None
+    def __init__(self) -> None:
+        self.model: Optional[torch.nn.Module] = None
+        self.model_info: Optional[Dict[str, Any]] = None
         self.evaluator: Optional[ModelEvaluator] = None
-        self.mic_inference: Optional[MicrophoneInference] = None
+        self.mic_inference: Optional[Union[MicrophoneInference, SimulatedMicrophoneInference]] = None
         self.is_mic_recording = False
 
         # File evaluation results
         self.file_results: List[EvaluationResult] = []
 
         # Test set results
-        self.test_metrics = None
+        self.test_metrics: Optional[MetricResults] = None
         self.test_results: List[EvaluationResult] = []
 
         # Microphone history
-        self.mic_history = []
+        self.mic_history: List[str] = []
 
-        self.waveform_fig = None
-        self.waveform_ax = None
-        self.waveform_line = None
+        self.waveform_fig: Optional[Any] = None
+        self.waveform_ax: Optional[Any] = None
+        self.waveform_line: Optional[Any] = None
         self.waveform_sr = 16000  # modelden set edilecek
         self.window_sec = 1.0  # ekranda gösterilecek süre
 
@@ -157,12 +156,8 @@ def load_model(model_path: str) -> str:
         return error_msg
 
 
-def _ensure_waveform_fig():
-    if (
-        eval_state.waveform_fig is None
-        or eval_state.waveform_ax is None
-        or eval_state.waveform_line is None
-    ):
+def _ensure_waveform_fig() -> None:
+    if eval_state.waveform_fig is None or eval_state.waveform_ax is None or eval_state.waveform_line is None:
         # Eski fig varsa kapat
         if eval_state.waveform_fig is not None:
             try:
@@ -192,7 +187,7 @@ def _ensure_waveform_fig():
         )
 
 
-def _update_waveform_plot(audio: np.ndarray):
+def _update_waveform_plot(audio: np.ndarray) -> Any:
     _ensure_waveform_fig()
     sr = eval_state.waveform_sr
     # Son window_sec kadarını göster
@@ -203,7 +198,8 @@ def _update_waveform_plot(audio: np.ndarray):
     # Kısa gelirse sağa hizala
     y = np.zeros(max_len, dtype=audio.dtype)
     y[-len(audio) :] = audio
-    eval_state.waveform_line.set_data(x, y)
+    if eval_state.waveform_line:
+        eval_state.waveform_line.set_data(x, y)
     # Limitleri sabit tut. redraw için fig’i döndür.
     return eval_state.waveform_fig
 
@@ -232,9 +228,7 @@ def evaluate_uploaded_files(files: List, threshold: float) -> Tuple[pd.DataFrame
         file_paths = [Path(f.name) for f in files]
 
         # Evaluate
-        results = eval_state.evaluator.evaluate_files(
-            file_paths, threshold=threshold, batch_size=32
-        )
+        results = eval_state.evaluator.evaluate_files(file_paths, threshold=threshold, batch_size=32)
 
         # Store results
         eval_state.file_results = results
@@ -334,7 +328,7 @@ def export_results_to_csv() -> str:
         return error_msg
 
 
-def start_microphone():
+def start_microphone() -> Tuple[str, float, Optional[Any], str]:
     """Start microphone inference"""
     if eval_state.evaluator is None:
         return "❌ Please load a model first", 0.0, None, ""
@@ -343,10 +337,18 @@ def start_microphone():
         return "⚠️ Already recording", 0.0, None, ""
 
     try:
+        if eval_state.model_info is None:
+            return "❌ Model info not loaded", 0.0, None, ""
+
         logger.info("Starting microphone inference...")
 
+        if eval_state.model is None:
+            return "❌ Model not loaded", 0.0, None, ""
+
         # Create microphone inference
+        mic_inf: Union[MicrophoneInference, SimulatedMicrophoneInference]
         try:
+
             mic_inf = MicrophoneInference(
                 model=eval_state.model,
                 sample_rate=eval_state.model_info["config"].data.sample_rate,
@@ -392,7 +394,7 @@ def start_microphone():
         return error_msg, 0.0, None, ""
 
 
-def stop_microphone():
+def stop_microphone() -> Tuple[str, float, Optional[Any], str]:
     """Stop microphone inference"""
     if not eval_state.is_mic_recording:
         return "⚠️ Not recording", 0.0, None, ""
@@ -515,7 +517,7 @@ def evaluate_test_set(
     Returns:
         Tuple of (metrics_dict, confusion_matrix_plot, roc_plot, advanced_metrics_dict)
     """
-    if eval_state.evaluator is None:
+    if eval_state.evaluator is None or eval_state.model_info is None:
         return {"status": "❌ Please load a model first"}, None, None, {}
 
     try:
@@ -540,7 +542,7 @@ def evaluate_test_set(
         # Determine dataset root based on provided path to splits/test.json -> ../../
         # If test_path is "data/splits/test.json", dataset root is "data"
         dataset_root_inferred = test_path.parent.parent
-        
+
         test_dataset = WakewordDataset(
             manifest_path=test_path,
             sample_rate=eval_state.model_info["config"].data.sample_rate,
@@ -552,9 +554,11 @@ def evaluate_test_set(
             n_mfcc=eval_state.model_info["config"].data.n_mfcc,
             n_fft=eval_state.model_info["config"].data.n_fft,
             hop_length=eval_state.model_info["config"].data.hop_length,
-            use_precomputed_features_for_training=eval_state.model_info["config"].data.use_precomputed_features_for_training,
+            use_precomputed_features_for_training=eval_state.model_info[
+                "config"
+            ].data.use_precomputed_features_for_training,
             npy_cache_features=eval_state.model_info["config"].data.npy_cache_features,
-            fallback_to_audio=True, # Enable fallback to prevent crashes
+            fallback_to_audio=True,  # Enable fallback to prevent crashes
             # CMVN not typically applied during evaluation unless consistent with training pipeline.
             # Assuming evaluator handles normalization or model includes it.
             # If model was trained with CMVN, dataset should apply it?
@@ -562,15 +566,13 @@ def evaluate_test_set(
             # Let's check if CMVN path exists
             cmvn_path=dataset_root_inferred / "cmvn_stats.json",
             apply_cmvn=True if (dataset_root_inferred / "cmvn_stats.json").exists() else False,
-            return_raw_audio=True, # IMPORTANT: Use GPU pipeline for consistency with training
+            return_raw_audio=True,  # IMPORTANT: Use GPU pipeline for consistency with training
         )
 
         logger.info(f"Loaded {len(test_dataset)} test samples")
 
         # Evaluate with basic metrics
-        metrics, results = eval_state.evaluator.evaluate_dataset(
-            test_dataset, threshold=threshold, batch_size=32
-        )
+        metrics, results = eval_state.evaluator.evaluate_dataset(test_dataset, threshold=threshold, batch_size=32)
 
         # Store results
         eval_state.test_metrics = metrics
@@ -596,13 +598,14 @@ def evaluate_test_set(
         advanced_metrics_dict = {}
         if use_advanced_metrics:
             logger.info("Computing advanced production metrics...")
-            total_seconds = (
-                len(test_dataset) * eval_state.model_info["config"].data.audio_duration
-            )
+            # Pass audio_duration (seconds per sample) as total_seconds
+            # The advanced_metrics module uses this to calculate total negative hours:
+            # neg_hours = (neg_count * duration_per_sample) / 3600
+            sample_duration = eval_state.model_info["config"].data.audio_duration
 
             advanced_metrics = eval_state.evaluator.evaluate_with_advanced_metrics(
                 dataset=test_dataset,
-                total_seconds=total_seconds,
+                total_seconds=sample_duration,
                 target_fah=target_fah,
                 batch_size=32,
             )
@@ -701,29 +704,30 @@ def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
     return fig
 
 
-def create_roc_curve_plot(test_dataset) -> plt.Figure:
+def create_roc_curve_plot(test_dataset: WakewordDataset) -> plt.Figure:
     """Create ROC curve visualization"""
     try:
+        if eval_state.evaluator is None:
+            return plt.figure()
+
         # Get ROC curve data
-        fpr_array, tpr_array, thresholds = eval_state.evaluator.get_roc_curve_data(
-            test_dataset, batch_size=32
-        )
+        fpr_array, tpr_array, thresholds = eval_state.evaluator.get_roc_curve_data(test_dataset, batch_size=32)
 
         # Remove duplicate points for cleaner curve
-        unique_fpr = []
-        unique_tpr = []
+        unique_fpr: List[float] = []
+        unique_tpr: List[float] = []
         for fpr, tpr in zip(fpr_array, tpr_array):
             if not unique_fpr or (fpr != unique_fpr[-1] or tpr != unique_tpr[-1]):
                 unique_fpr.append(fpr)
                 unique_tpr.append(tpr)
 
-        unique_fpr = np.array(unique_fpr)
-        unique_tpr = np.array(unique_tpr)
+        unique_fpr_arr = np.array(unique_fpr)
+        unique_tpr_arr = np.array(unique_tpr)
 
         # Calculate AUC
-        if len(unique_fpr) >= 2:
+        if len(unique_fpr_arr) >= 2:
             # Use trapezoidal rule for AUC
-            auc = np.trapz(unique_tpr, unique_fpr)
+            auc = np.trapz(unique_tpr_arr, unique_fpr_arr)
         else:
             # Fallback: estimate AUC based on single point
             # If model predicts perfectly, AUC = 1.0
@@ -803,18 +807,14 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 🎯 Model Evaluation")
-        gr.Markdown(
-            "Test your trained model with audio files, live microphone, or test dataset."
-        )
+        gr.Markdown("Test your trained model with audio files, live microphone, or test dataset.")
 
         with gr.Row():
             model_selector = gr.Dropdown(
                 choices=get_available_models(),
                 label="Select Trained Model",
                 info="Choose a checkpoint to evaluate",
-                value=get_available_models()[0]
-                if get_available_models()[0] != "No models available"
-                else None,
+                value=get_available_models()[0] if get_available_models()[0] != "No models available" else None,
             )
             refresh_models_btn = gr.Button("🔄 Refresh", scale=0)
             load_model_btn = gr.Button("📥 Load Model", variant="primary", scale=1)
@@ -851,9 +851,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         )
 
                         with gr.Row():
-                            evaluate_files_btn = gr.Button(
-                                "🔍 Evaluate Files", variant="primary", scale=2
-                            )
+                            evaluate_files_btn = gr.Button("🔍 Evaluate Files", variant="primary", scale=2)
                             export_results_btn = gr.Button("💾 Export CSV", scale=1)
 
                     with gr.Column():
@@ -880,9 +878,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             # Microphone testing
             with gr.TabItem("🎤 Live Microphone Test"):
                 gr.Markdown("### Real-Time Wakeword Detection")
-                gr.Markdown(
-                    "**Note**: Requires microphone access and `sounddevice` package."
-                )
+                gr.Markdown("**Note**: Requires microphone access and `sounddevice` package.")
 
                 with gr.Row():
                     with gr.Column():
@@ -896,12 +892,8 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         )
 
                         with gr.Row():
-                            start_mic_btn = gr.Button(
-                                "🎙️ Start Recording", variant="primary", scale=2
-                            )
-                            stop_mic_btn = gr.Button(
-                                "⏹️ Stop Recording", variant="stop", scale=1
-                            )
+                            start_mic_btn = gr.Button("🎙️ Start Recording", variant="primary", scale=2)
+                            stop_mic_btn = gr.Button("⏹️ Stop Recording", variant="stop", scale=1)
 
                     with gr.Column():
                         gr.Markdown("### Detection Status")
@@ -913,9 +905,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             interactive=False,
                         )
 
-                        confidence_display = gr.Number(
-                            label="Confidence (%)", value=0.0, interactive=False
-                        )
+                        confidence_display = gr.Number(label="Confidence (%)", value=0.0, interactive=False)
 
                         waveform_plot = gr.Plot(label="Live Waveform")
 
@@ -966,9 +956,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             info="Desired false alarm rate for production threshold",
                         )
 
-                evaluate_testset_btn = gr.Button(
-                    "📈 Run Test Evaluation", variant="primary"
-                )
+                evaluate_testset_btn = gr.Button("📈 Run Test Evaluation", variant="primary")
 
                 with gr.Row():
                     with gr.Column():
@@ -983,22 +971,18 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         confusion_matrix = gr.Plot(label="Confusion Matrix")
 
                 with gr.Row():
-                    roc_curve = gr.Plot(
-                        label="ROC Curve (Receiver Operating Characteristic)"
-                    )
+                    roc_curve = gr.Plot(label="ROC Curve (Receiver Operating Characteristic)")
 
                 with gr.Row():
                     with gr.Column():
                         gr.Markdown("### 🎯 Advanced Production Metrics")
                         advanced_metrics = gr.JSON(
                             label="Production Metrics (FAH, EER, pAUC)",
-                            value={
-                                "status": "Enable advanced metrics and run evaluation"
-                            },
+                            value={"status": "Enable advanced metrics and run evaluation"},
                         )
 
         # Event handlers
-        def refresh_models_handler():
+        def refresh_models_handler() -> gr.Dropdown:
             models = get_available_models()
             return gr.update(
                 choices=models,
@@ -1007,9 +991,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
         refresh_models_btn.click(fn=refresh_models_handler, outputs=[model_selector])
 
-        load_model_btn.click(
-            fn=load_model, inputs=[model_selector], outputs=[model_status]
-        )
+        load_model_btn.click(fn=load_model, inputs=[model_selector], outputs=[model_status])
 
         evaluate_files_btn.click(
             fn=evaluate_uploaded_files,
@@ -1054,9 +1036,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
         evaluate_testset_btn.click(
             fn=lambda test_split_path, threshold, target_fah, use_advanced_metrics, config_state: evaluate_test_set(
-                config_state.get("config").data.data_root
-                if config_state.get("config")
-                else "data",
+                config_state.get("config").data.data_root if config_state.get("config") else "data",
                 test_split_path,
                 threshold,
                 target_fah,

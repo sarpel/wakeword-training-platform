@@ -5,20 +5,17 @@ Panel 5: ONNX Export
 - Model validation and benchmarking
 - Performance comparison
 """
+
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import gradio as gr
 import pandas as pd
 import structlog
 import torch
 
-from src.export.onnx_exporter import (
-    export_model_to_onnx,
-    validate_onnx_model,
-    benchmark_onnx_model,
-)
+from src.export.onnx_exporter import benchmark_onnx_model, export_model_to_onnx, validate_onnx_model
 
 logger = structlog.get_logger(__name__)
 
@@ -26,7 +23,7 @@ logger = structlog.get_logger(__name__)
 class ExportState:
     """Global export state manager"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.last_export_path: Optional[Path] = None
         self.last_checkpoint: Optional[Path] = None
         self.export_results: Dict = {}
@@ -96,10 +93,10 @@ def export_to_onnx(
         return "❌ Please provide an output filename", ""
 
     try:
-        checkpoint_path = Path(checkpoint_path)
+        checkpoint_path_obj = Path(checkpoint_path)
 
-        if not checkpoint_path.exists():
-            return f"❌ Checkpoint not found: {checkpoint_path}", ""
+        if not checkpoint_path_obj.exists():
+            return f"❌ Checkpoint not found: {checkpoint_path_obj}", ""
 
         # Create output path
         export_dir = Path("models/exports")
@@ -107,11 +104,11 @@ def export_to_onnx(
 
         output_path = export_dir / output_filename
 
-        logger.info(f"Exporting {checkpoint_path} to {output_path}")
+        logger.info(f"Exporting {checkpoint_path_obj} to {output_path}")
 
         # Build log message
         log = f"[{time.strftime('%H:%M:%S')}] Starting ONNX export...\n"
-        log += f"Checkpoint: {checkpoint_path.name}\n"
+        log += f"Checkpoint: {checkpoint_path_obj.name}\n"
         log += f"Output: {output_filename}\n"
         log += f"Opset version: {opset_version}\n"
         log += f"Dynamic batch: {dynamic_batch}\n"
@@ -122,7 +119,7 @@ def export_to_onnx(
 
         # Export
         results = export_model_to_onnx(
-            checkpoint_path=checkpoint_path,
+            checkpoint_path=checkpoint_path_obj,
             output_path=output_path,
             opset_version=opset_version,
             dynamic_batch=dynamic_batch,
@@ -139,7 +136,7 @@ def export_to_onnx(
 
         # Update state
         export_state.last_export_path = output_path
-        export_state.last_checkpoint = checkpoint_path
+        export_state.last_checkpoint = checkpoint_path_obj
         export_state.export_results = results
 
         # Build success message
@@ -207,7 +204,7 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
     Returns:
         Tuple of (model_info_dict, performance_dataframe)
     """
-    if not export_state.last_export_path:
+    if not export_state.last_export_path or not export_state.last_checkpoint:
         return {"status": "❌ No model exported yet. Export a model first."}, None
 
     try:
@@ -228,13 +225,45 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
 
         from src.models.architectures import create_model
 
+        # Calculate input size for model
+        input_samples = int(config.data.sample_rate * config.data.audio_duration)
+        time_steps = input_samples // config.data.hop_length + 1
+        
+        feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
+        
+        if config.model.architecture == "cd_dnn":
+            input_size = feature_dim * time_steps
+        else:
+            input_size = feature_dim
+
         pytorch_model = create_model(
             architecture=config.model.architecture,
             num_classes=config.model.num_classes,
             pretrained=False,
             dropout=config.model.dropout,
+            input_size=input_size,
+            input_channels=1,
         )
-        pytorch_model.load_state_dict(checkpoint["model_state_dict"])
+        
+        # Load weights
+        state_dict = checkpoint["model_state_dict"]
+
+        # Handle QAT checkpoints loaded into FP32 models
+        # Filter out quantization keys that are not in the model
+        model_keys = set(pytorch_model.state_dict().keys())
+        checkpoint_keys = set(state_dict.keys())
+        unexpected_keys = checkpoint_keys - model_keys
+
+        if unexpected_keys:
+            # Check if these are quantization keys
+            quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
+            
+            if quant_keys:
+                logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
+                # Filter the state dict
+                state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
+
+        pytorch_model.load_state_dict(state_dict, strict=True)
         pytorch_model.to("cuda")
         pytorch_model.eval()
 
@@ -272,13 +301,9 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
             model_info["Inference"] = "✅ Success"
 
         if validation_results.get("numerically_equivalent", False):
-            model_info[
-                "Numerical Match"
-            ] = f"✅ Max diff: {validation_results['max_difference']:.6f}"
+            model_info["Numerical Match"] = f"✅ Max diff: {validation_results['max_difference']:.6f}"
         elif "max_difference" in validation_results:
-            model_info[
-                "Numerical Match"
-            ] = f"⚠️ Max diff: {validation_results['max_difference']:.6f}"
+            model_info["Numerical Match"] = f"⚠️ Max diff: {validation_results['max_difference']:.6f}"
 
         # Benchmark if validation successful
         if validation_results.get("valid", False):
@@ -330,7 +355,7 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         return {"status": error_msg}, None
 
 
-def download_onnx_model() -> Tuple[str, Optional[str]]:
+def download_onnx_model() -> Tuple[Optional[str], str]:
     """
     Prepare ONNX model for download
 
@@ -360,9 +385,7 @@ def create_export_panel() -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 📦 ONNX Export")
-        gr.Markdown(
-            "Convert trained PyTorch models to ONNX format for deployment with quantization options."
-        )
+        gr.Markdown("Convert trained PyTorch models to ONNX format for deployment with quantization options.")
 
         gr.Markdown("### Select Model Checkpoint")
 
@@ -371,9 +394,11 @@ def create_export_panel() -> gr.Blocks:
                 choices=get_available_checkpoints(),
                 label="Model Checkpoint",
                 info="Select a trained model to export",
-                value=get_available_checkpoints()[0]
-                if get_available_checkpoints()[0] != "No checkpoints available"
-                else None,
+                value=(
+                    get_available_checkpoints()[0]
+                    if get_available_checkpoints()[0] != "No checkpoints available"
+                    else None
+                ),
             )
             refresh_checkpoints_btn = gr.Button("🔄 Refresh", scale=0)
 
@@ -419,16 +444,14 @@ def create_export_panel() -> gr.Blocks:
                     value=False,
                     info="8-bit: ~75% smaller, slight accuracy loss",
                 )
-                
+
                 export_tflite = gr.Checkbox(
                     label="Export to TFLite (via onnx2tf)",
                     value=False,
                     info="Convert ONNX to TFLite for embedded devices",
                 )
 
-                gr.Markdown(
-                    "**Note**: Quantization reduces model size and improves inference speed"
-                )
+                gr.Markdown("**Note**: Quantization reduces model size and improves inference speed")
 
         with gr.Row():
             export_btn = gr.Button("🚀 Export to ONNX", variant="primary", scale=2)
@@ -480,18 +503,14 @@ def create_export_panel() -> gr.Blocks:
             download_btn = gr.Button("⬇️ Download ONNX Model", variant="primary")
 
         # Event handlers
-        def refresh_checkpoints_handler():
+        def refresh_checkpoints_handler() -> Any:
             checkpoints = get_available_checkpoints()
             return gr.update(
                 choices=checkpoints,
-                value=checkpoints[0]
-                if checkpoints[0] != "No checkpoints available"
-                else None,
+                value=checkpoints[0] if checkpoints[0] != "No checkpoints available" else None,
             )
 
-        refresh_checkpoints_btn.click(
-            fn=refresh_checkpoints_handler, outputs=[checkpoint_selector]
-        )
+        refresh_checkpoints_btn.click(fn=refresh_checkpoints_handler, outputs=[checkpoint_selector])
 
         export_btn.click(
             fn=export_to_onnx,
@@ -513,16 +532,14 @@ def create_export_panel() -> gr.Blocks:
             outputs=[model_info, performance_comparison],
         )
 
-        def download_handler():
+        def download_handler() -> Tuple[Optional[str], str, Dict[str, Any]]:
             file_path, status = download_onnx_model()
             if file_path:
                 return file_path, status, gr.update(visible=True, value=file_path)
             else:
                 return None, status, gr.update(visible=False)
 
-        download_btn.click(
-            fn=download_handler, outputs=[download_file, export_status, download_file]
-        )
+        download_btn.click(fn=download_handler, outputs=[download_file, export_status, download_file])
 
     return panel
 

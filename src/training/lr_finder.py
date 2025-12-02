@@ -2,8 +2,9 @@
 Learning Rate Finder
 Implements LR range test to find optimal learning rate
 """
+
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -49,8 +50,8 @@ class LRFinder:
         self.optimizer_state = optimizer.state_dict()
 
         # Results
-        self.learning_rates = []
-        self.losses = []
+        self.learning_rates: List[float] = []
+        self.losses: List[float] = []
 
     def range_test(
         self,
@@ -60,7 +61,7 @@ class LRFinder:
         num_iter: int = 200,
         smooth_f: float = 0.05,
         diverge_th: float = 5.0,
-    ) -> Tuple[list, list]:
+    ) -> Tuple[List[float], List[float]]:
         """
         Run LR range test
 
@@ -75,11 +76,7 @@ class LRFinder:
         Returns:
             Tuple of (learning_rates, losses)
         """
-        logger.info(
-            f"Running LR finder: "
-            f"start_lr={start_lr:.2e}, end_lr={end_lr:.2e}, "
-            f"num_iter={num_iter}"
-        )
+        logger.info(f"Running LR finder: " f"start_lr={start_lr:.2e}, end_lr={end_lr:.2e}, " f"num_iter={num_iter}")
 
         # Reset to initial state
         self.model.load_state_dict(self.model_state)
@@ -152,9 +149,7 @@ class LRFinder:
             self.losses.append(smoothed_loss)
 
             # Update progress bar
-            pbar.set_postfix(
-                {"lr": f"{current_lr:.2e}", "loss": f"{smoothed_loss:.4f}"}
-            )
+            pbar.set_postfix({"lr": f"{current_lr:.2e}", "loss": f"{smoothed_loss:.4f}"})
 
             # Increase LR
             for param_group in self.optimizer.param_groups:
@@ -168,9 +163,7 @@ class LRFinder:
 
         return self.learning_rates, self.losses
 
-    def plot(
-        self, skip_start: int = 10, skip_end: int = 5, save_path: Optional[Path] = None
-    ):
+    def plot(self, skip_start: int = 10, skip_end: int = 5, save_path: Optional[Path] = None) -> None:
         """
         Plot LR vs Loss
 
@@ -184,9 +177,7 @@ class LRFinder:
             return
 
         # Prepare data
-        lrs = np.array(
-            self.learning_rates[skip_start : -skip_end if skip_end > 0 else None]
-        )
+        lrs = np.array(self.learning_rates[skip_start : -skip_end if skip_end > 0 else None])
         losses = np.array(self.losses[skip_start : -skip_end if skip_end > 0 else None])
 
         # Create plot
@@ -239,9 +230,7 @@ class LRFinder:
             return 0.001
 
         # Prepare data
-        lrs = np.array(
-            self.learning_rates[skip_start : -skip_end if skip_end > 0 else None]
-        )
+        lrs = np.array(self.learning_rates[skip_start : -skip_end if skip_end > 0 else None])
         losses = np.array(self.losses[skip_start : -skip_end if skip_end > 0 else None])
 
         # Find steepest descent
@@ -283,9 +272,7 @@ def find_lr(
     """
     lr_finder = LRFinder(model, optimizer, criterion, device)
 
-    lr_finder.range_test(
-        train_loader, start_lr=start_lr, end_lr=end_lr, num_iter=num_iter
-    )
+    lr_finder.range_test(train_loader, start_lr=start_lr, end_lr=end_lr, num_iter=num_iter)
 
     suggested_lr = lr_finder.suggest_lr()
 
@@ -325,9 +312,7 @@ if __name__ == "__main__":
 
     lr_finder = LRFinder(model, optimizer, criterion, device)
 
-    lrs, losses = lr_finder.range_test(
-        train_loader, start_lr=1e-6, end_lr=1e-2, num_iter=100
-    )
+    lrs, losses = lr_finder.range_test(train_loader, start_lr=1e-6, end_lr=1e-2, num_iter=100)
 
     print(f"\nResults:")
     print(f"  LR range: [{min(lrs):.2e}, {max(lrs):.2e}]")

@@ -7,7 +7,7 @@ name = "wakeword-training-platform"
 version = "2.0.0"
 description = "Production-ready GPU-accelerated wakeword training platform with Gradio UI"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Sarpel", email = "contact@sarpel.net"}
 ]
@@ -33,7 +33,7 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
-    "License :: OSI Approved :: MIT License",
+
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -68,6 +68,7 @@ dependencies = [
     "psutil>=5.9.0",
     "colorama>=0.4.0",
     "structlog>=23.2.0",
+    "transformers>=4.30.0",
 ]
 
 [project.optional-dependencies]
@@ -82,6 +83,7 @@ dev = [
     "isort>=5.12.0",
     "mypy>=1.6.1",
     "pre-commit>=3.5.0",
+    "types-PyYAML>=6.0.0",
 ]
 docs = [
     "sphinx>=7.0.0",

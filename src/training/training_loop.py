@@ -43,9 +43,15 @@ def _run_epoch(
     with torch.set_grad_enabled(is_training):
         for batch_idx, batch in enumerate(pbar):
             if len(batch) == 3:
-                inputs, targets, _ = batch
+                inputs, targets, metadata = batch
+                # Extract hard negative flags
+                # metadata is a dict of lists/tensors
+                is_hard_negative = metadata.get("is_hard_negative", None)
+                if is_hard_negative is not None:
+                    is_hard_negative = is_hard_negative.to(trainer.device, non_blocking=True)
             else:
                 inputs, targets = batch
+                is_hard_negative = None
 
             # Move to device
             inputs = inputs.to(trainer.device, non_blocking=True)
@@ -69,18 +75,36 @@ def _run_epoch(
             if is_training:
                 trainer.optimizer.zero_grad(set_to_none=True)
 
-            with torch.amp.autocast("cuda", enabled=trainer.use_mixed_precision):
+            # Disable AMP if QAT is enabled to avoid type mismatch (Float vs Half) in observers
+            use_amp = trainer.use_mixed_precision
+            if hasattr(trainer.config, "qat") and trainer.config.qat.enabled:
+                use_amp = False
+
+            with torch.amp.autocast("cuda", enabled=use_amp):
                 outputs = trainer.model(inputs)
                 # Use compute_loss method to allow overriding (e.g., for distillation)
-                loss = trainer.compute_loss(outputs, targets, raw_inputs, processed_inputs=inputs)
+                loss = trainer.compute_loss(
+                    outputs,
+                    targets,
+                    raw_inputs,
+                    processed_inputs=inputs,
+                    is_hard_negative=is_hard_negative,
+                )
 
             if is_training:
-                trainer.scaler.scale(loss).backward()
-                if trainer.gradient_clip > 0:
-                    trainer.scaler.unscale_(trainer.optimizer)
-                    clip_gradients(trainer.model, trainer.gradient_clip)
-                trainer.scaler.step(trainer.optimizer)
-                trainer.scaler.update()
+                if use_amp:
+                    trainer.scaler.scale(loss).backward()
+                    if trainer.gradient_clip > 0:
+                        trainer.scaler.unscale_(trainer.optimizer)
+                        clip_gradients(trainer.model, trainer.gradient_clip)
+                    trainer.scaler.step(trainer.optimizer)
+                    trainer.scaler.update()
+                else:
+                    loss.backward()
+                    if trainer.gradient_clip > 0:
+                        clip_gradients(trainer.model, trainer.gradient_clip)
+                    trainer.optimizer.step()
+                
                 if trainer.ema is not None:
                     trainer.ema.update()
 

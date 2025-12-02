@@ -2,8 +2,12 @@
 Model Evaluator for File-Based and Test Set Evaluation
 GPU-accelerated batch evaluation with comprehensive metrics
 """
+
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union, cast
+
+if TYPE_CHECKING:
+    from src.config.defaults import WakewordConfig
 
 import numpy as np
 import structlog
@@ -11,14 +15,14 @@ import torch
 import torch.nn as nn
 
 from src.config.cuda_utils import enforce_cuda
-from src.data.audio_utils import AudioProcessor as CpuAudioProcessor # Renamed for clarity
-from src.data.processor import AudioProcessor as GpuAudioProcessor # This is the one we want
+from src.data.audio_utils import AudioProcessor as CpuAudioProcessor  # Renamed for clarity
 from src.data.feature_extraction import FeatureExtractor
-from src.training.metrics import MetricsCalculator, MetricResults
-from src.evaluation.file_evaluator import evaluate_file, evaluate_files
-from src.evaluation.dataset_evaluator import evaluate_dataset, get_roc_curve_data
+from src.data.processor import AudioProcessor as GpuAudioProcessor  # This is the one we want
 from src.evaluation.advanced_evaluator import evaluate_with_advanced_metrics
+from src.evaluation.dataset_evaluator import evaluate_dataset, get_roc_curve_data
+from src.evaluation.file_evaluator import evaluate_file, evaluate_files
 from src.evaluation.types import EvaluationResult
+from src.training.metrics import MetricResults, MetricsCalculator
 
 logger = structlog.get_logger(__name__)
 
@@ -39,7 +43,7 @@ class ModelEvaluator:
         n_mfcc: int = 0,
         n_fft: int = 400,
         hop_length: int = 160,
-        config: Dict = None,
+        config: Optional[Union[Dict[str, Any], "WakewordConfig"]] = None,
     ):
         """
         Initialize model evaluator
@@ -70,16 +74,29 @@ class ModelEvaluator:
         # Audio processor
         # Create CMVN path
         cmvn_path = Path("data/cmvn_stats.json")
+
+        processor_config: Optional["WakewordConfig"] = None
+        if config is not None:
+            from src.config.defaults import WakewordConfig
+
+            if isinstance(config, dict):
+                processor_config = WakewordConfig.from_dict(config)
+            else:
+                processor_config = config
+
+        if processor_config is None:
+            from src.config.defaults import WakewordConfig
+
+            processor_config = WakewordConfig()
+
         self.audio_processor = GpuAudioProcessor(
-            config=config, # Use passed config
+            config=processor_config,
+            cmvn_path=cmvn_path if cmvn_path.exists() else None,
             device=device
         )
 
         # CPU Audio Processor for file loading
-        self.cpu_audio_processor = CpuAudioProcessor(
-            target_sr=sample_rate,
-            target_duration=audio_duration
-        )
+        self.cpu_audio_processor = CpuAudioProcessor(target_sr=sample_rate, target_duration=audio_duration)
 
         # Normalize feature type (handle legacy 'mel_spectrogram')
         if feature_type == "mel_spectrogram":
@@ -88,7 +105,7 @@ class ModelEvaluator:
         # Feature extractor
         self.feature_extractor = FeatureExtractor(
             sample_rate=sample_rate,
-            feature_type=feature_type,
+            feature_type=cast(Literal["mel", "mfcc"], feature_type),
             n_mels=n_mels,
             n_mfcc=n_mfcc,
             n_fft=n_fft,
@@ -101,9 +118,7 @@ class ModelEvaluator:
 
         logger.info(f"ModelEvaluator initialized on {device}")
 
-    def evaluate_file(
-        self, audio_path: Path, threshold: float = 0.5
-    ) -> EvaluationResult:
+    def evaluate_file(self, audio_path: Path, threshold: float = 0.5) -> EvaluationResult:
         return evaluate_file(self, audio_path, threshold)
 
     def evaluate_files(
@@ -112,30 +127,24 @@ class ModelEvaluator:
         return evaluate_files(self, audio_paths, threshold, batch_size)
 
     def evaluate_dataset(
-        self, dataset, threshold: float = 0.5, batch_size: int = 32
+        self, dataset: Any, threshold: float = 0.5, batch_size: int = 32
     ) -> Tuple[MetricResults, List[EvaluationResult]]:
         return evaluate_dataset(self, dataset, threshold, batch_size)
 
-    def get_roc_curve_data(
-        self, dataset, batch_size: int = 32
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def get_roc_curve_data(self, dataset: Any, batch_size: int = 32) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return get_roc_curve_data(self, dataset, batch_size)
 
     def evaluate_with_advanced_metrics(
         self,
-        dataset,
+        dataset: Any,
         total_seconds: float,
         target_fah: float = 1.0,
         batch_size: int = 32,
     ) -> Dict:
-        return evaluate_with_advanced_metrics(
-            self, dataset, total_seconds, target_fah, batch_size
-        )
+        return evaluate_with_advanced_metrics(self, dataset, total_seconds, target_fah, batch_size)
 
 
-def load_model_for_evaluation(
-    checkpoint_path: Path, device: str = "cuda"
-) -> Tuple[nn.Module, Dict]:
+def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tuple[nn.Module, Dict]:
     """
     Load trained model from checkpoint
 
@@ -171,15 +180,45 @@ def load_model_for_evaluation(
     # Create model
     from src.models.architectures import create_model
 
+    # Calculate input size for model
+    input_samples = int(config.data.sample_rate * config.data.audio_duration)
+    time_steps = input_samples // config.data.hop_length + 1
+    
+    feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
+    
+    if config.model.architecture == "cd_dnn":
+        input_size = feature_dim * time_steps
+    else:
+        input_size = feature_dim
+
     model = create_model(
         architecture=config.model.architecture,
         num_classes=config.model.num_classes,
         pretrained=False,
         dropout=config.model.dropout,
+        input_size=input_size,
+        input_channels=1,
     )
 
     # Load weights
-    model.load_state_dict(checkpoint["model_state_dict"])
+    state_dict = checkpoint["model_state_dict"]
+
+    # Handle QAT checkpoints loaded into FP32 models
+    # Filter out quantization keys that are not in the model
+    model_keys = set(model.state_dict().keys())
+    checkpoint_keys = set(state_dict.keys())
+    unexpected_keys = checkpoint_keys - model_keys
+
+    if unexpected_keys:
+        # Check if these are quantization keys
+        quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
+        
+        if quant_keys:
+            logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
+            # Filter the state dict
+            state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
+
+    model.load_state_dict(state_dict, strict=True)
 
     # Move to device and set eval mode
     model.to(device)

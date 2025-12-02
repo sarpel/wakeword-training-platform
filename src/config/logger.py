@@ -1,15 +1,33 @@
 """
 Logging Infrastructure for Wakeword Training Platform using structlog
 """
+
 import logging
 import sys
+from typing import List
 
 import structlog
 
 
 def setup_logging(log_level: str = "INFO") -> None:
     """Set up structlog logging for the entire application."""
-    logging.basicConfig(level=log_level, stream=sys.stdout, format="%(message)s")
+    # Create logs directory
+    from datetime import datetime
+    from pathlib import Path
+
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    # Use timestamp for unique log files
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"wakeword_training_{timestamp}.log"
+
+    handlers: List[logging.Handler] = [
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(str(log_file), encoding="utf-8"),
+    ]
+
+    logging.basicConfig(level=log_level, format="%(message)s", handlers=handlers, force=True)
 
     structlog.configure(
         processors=[
@@ -39,7 +57,7 @@ def get_data_logger(name: str = "data") -> structlog.stdlib.BoundLogger:
     Returns:
         A structlog logger instance.
     """
-    return structlog.get_logger(name)
+    return structlog.get_logger(name)  # type: ignore
 
 
 get_logger = structlog.get_logger

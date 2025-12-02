@@ -2,11 +2,12 @@
 Advanced Metrics for Wakeword Detection
 Includes: FAH, threshold selection, EER, pAUC, DET curves
 """
+
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -22,15 +23,13 @@ except Exception:
 # ------------------------------- helpers ------------------------------------ #
 
 
-def _to_numpy(x) -> np.ndarray:
+def _to_numpy(x: torch.Tensor | np.ndarray | float | int) -> np.ndarray:
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
     return np.asarray(x)
 
 
-def _probs_from_logits(
-    logits: torch.Tensor | np.ndarray, positive_index: int = 1
-) -> np.ndarray:
+def _probs_from_logits(logits: torch.Tensor | np.ndarray, positive_index: int = 1) -> np.ndarray:
     """
     Accepts (N,2) logits or (N,) probs. Returns (N,) positive-class probs.
     """
@@ -41,15 +40,15 @@ def _probs_from_logits(
         z = logits - logits.max(axis=1, keepdims=True)  # stable softmax
         ex = np.exp(z)
         p = ex / ex.sum(axis=1, keepdims=True)
-        return p[:, positive_index]
+        # Mypy: Explicitly annotate to avoid Any return
+        result: np.ndarray = p[:, positive_index]
+        return result
     if logits.ndim == 1:
         return logits
     raise ValueError(f"Expected (N,2) logits or (N,) probs, got shape {logits.shape}")
 
 
-def _confusion_counts(
-    y_true: np.ndarray, y_pred: np.ndarray
-) -> Tuple[int, int, int, int]:
+def _confusion_counts(y_true: np.ndarray, y_pred: np.ndarray) -> Tuple[int, int, int, int]:
     tp = int(((y_true == 1) & (y_pred == 1)).sum())
     tn = int(((y_true == 0) & (y_pred == 0)).sum())
     fp = int(((y_true == 0) & (y_pred == 1)).sum())
@@ -98,11 +97,7 @@ def _metrics_from_probs_at_threshold(
     fnr = _safe_div(fn, tp + fn)  # false negative rate
     precision = _safe_div(tp, tp + fp)
     recall = tpr
-    f1 = (
-        _safe_div(2 * precision * recall, precision + recall)
-        if (precision + recall)
-        else 0.0
-    )
+    f1 = _safe_div(2 * precision * recall, precision + recall) if (precision + recall) else 0.0
     accuracy = _safe_div(tp + tn, tp + tn + fp + fn)
 
     fah = None
@@ -138,9 +133,7 @@ def calculate_metrics_at_threshold(
 ) -> ThresholdMetrics:
     y = _to_numpy(labels).astype(np.int64)
     probs = _probs_from_logits(logits, positive_index)
-    return _metrics_from_probs_at_threshold(
-        y, probs, threshold, total_seconds=total_seconds
-    )
+    return _metrics_from_probs_at_threshold(y, probs, threshold, total_seconds=total_seconds)
 
 
 def calculate_fah(
@@ -179,21 +172,15 @@ def find_threshold_for_target_fah(
     best_any_fah = math.inf
 
     for th in grid:
-        m = _metrics_from_probs_at_threshold(
-            y, probs, float(th), total_seconds=total_seconds
-        )
+        m = _metrics_from_probs_at_threshold(y, probs, float(th), total_seconds=total_seconds)
         if m.fah is not None and m.fah < best_any_fah:
             best_any_fah = m.fah
             best_any = m
         if m.fah is not None and m.fah <= target_fah:
-            if (
-                best_ok is None
-                or (m.tpr > best_ok.tpr)
-                or (m.tpr == best_ok.tpr and m.threshold > best_ok.threshold)
-            ):
+            if best_ok is None or (m.tpr > best_ok.tpr) or (m.tpr == best_ok.tpr and m.threshold > best_ok.threshold):
                 best_ok = m
 
-    return best_ok if best_ok is not None else best_any
+    return best_ok if best_ok is not None else best_any  # type: ignore[return-value]
 
 
 def calculate_eer(
@@ -240,14 +227,14 @@ def calculate_pauc(
         raw = auc(fpr_c, tpr_c)
         return float(raw / fpr_max) if fpr_max > 0 else 0.0
 
-    thr = np.unique(np.concatenate(([0.0, 1.0], probs)))
-    roc = []
+    thr: np.ndarray = np.unique(np.concatenate(([0.0, 1.0], probs)))
+    roc_list: list[tuple[float, float]] = []
     for t in thr:
         m = _metrics_from_probs_at_threshold(y, probs, float(t))
-        roc.append((m.fpr, m.tpr))
-    roc = np.array(sorted(roc))
+        roc_list.append((m.fpr, m.tpr))
+    roc: np.ndarray = np.array(sorted(roc_list))
     grid = np.linspace(0.0, fpr_max, num=200)
-    tprs = np.interp(grid, roc[:, 0], roc[:, 1], left=0.0, right=1.0)
+    tprs: np.ndarray = np.interp(grid, roc[:, 0], roc[:, 1], left=0.0, right=1.0)
     raw = np.trapz(tprs, grid)
     return float(raw / fpr_max) if fpr_max > 0 else 0.0
 
@@ -268,11 +255,11 @@ def calculate_roc_auc(
         except Exception:
             return None
     thr = np.linspace(0, 1, 501)
-    roc = []
+    roc_list: list[tuple[float, float]] = []
     for t in thr:
         m = _metrics_from_probs_at_threshold(y, probs, float(t))
-        roc.append((m.fpr, m.tpr))
-    roc = np.array(sorted(roc))
+        roc_list.append((m.fpr, m.tpr))
+    roc: np.ndarray = np.array(sorted(roc_list))
     return float(np.trapz(roc[:, 1], roc[:, 0]))
 
 
@@ -323,13 +310,11 @@ def grid_search_threshold(
         else:
             raise ValueError(f"Unknown objective: {objective}")
 
-        if score > best_score or (
-            score == best_score and th > (best.threshold if best else -1)
-        ):
+        if score > best_score or (score == best_score and th > (best.threshold if best else -1)):
             best_score = score
             best = m
 
-    return best
+    return best  # type: ignore[return-value]
 
 
 # ------------------- back-compat convenience aggregators -------------------- #
@@ -378,7 +363,7 @@ def calculate_comprehensive_metrics(
     total_seconds: float = 1.0,
     fpr_max: float = 0.1,
     search_points: int = 2001,
-) -> Dict[str, object]:
+) -> Dict[str, Any]:
     """
     One-shot summary used by panels. Returns scalar metrics and operating point.
     """
@@ -390,9 +375,7 @@ def calculate_comprehensive_metrics(
     pauc = calculate_pauc(probs, y, positive_index=1, fpr_max=fpr_max)
 
     if threshold is not None:
-        op = _metrics_from_probs_at_threshold(
-            y, probs, float(threshold), total_seconds=total_seconds
-        )
+        op = _metrics_from_probs_at_threshold(y, probs, float(threshold), total_seconds=total_seconds)
     else:
         op = find_operating_point(
             probs,
@@ -431,9 +414,7 @@ def calculate_comprehensive_metrics(
 # ------------------------------- sanity check -------------------------------- #
 
 
-def sanity_check_positive_index(
-    logits: torch.Tensor | np.ndarray, positive_index: int = 1
-) -> bool:
+def sanity_check_positive_index(logits: torch.Tensor | np.ndarray, positive_index: int = 1) -> bool:
     """
     Logits must be (N,2) or probs (N,). Average prob must lie in (0,1).
     """
