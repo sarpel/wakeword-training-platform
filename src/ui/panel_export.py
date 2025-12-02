@@ -16,7 +16,7 @@ import structlog
 import torch
 
 from src.export.onnx_exporter import benchmark_onnx_model, export_model_to_onnx, validate_onnx_model
-from src.security import validate_path
+from src.security import sanitize_filename, validate_path
 
 logger = structlog.get_logger(__name__)
 
@@ -98,8 +98,6 @@ def export_to_onnx(
         checkpoint_path_obj = validate_path(checkpoint_path, must_exist=True, must_be_file=True)
 
         # Create output path with sanitized filename
-        from src.security import sanitize_filename
-
         safe_filename = sanitize_filename(output_filename)
         export_dir = Path("models/exports")
         export_dir.mkdir(parents=True, exist_ok=True)

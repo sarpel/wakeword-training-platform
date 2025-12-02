@@ -165,7 +165,14 @@ class DatasetScanner:
                 continue
 
             for file_info in excluded_files:
-                src_path = Path(file_info["path"]).resolve()
+                file_path_str = file_info["path"]
+                
+                # Skip paths with potential traversal patterns
+                if ".." in file_path_str:
+                    logger.warning(f"Skipping file with suspicious path: {file_path_str}")
+                    continue
+                    
+                src_path = Path(file_path_str).resolve()
 
                 # Validate source path is within expected dataset structure
                 try:

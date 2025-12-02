@@ -65,6 +65,12 @@ def validate_path(
     # Get current working directory
     cwd = Path.cwd().resolve()
 
+    # Strict check for path traversal attempts in original path string
+    original_path_str = str(path)
+    if ".." in original_path_str:
+        # Reject any path containing ".." to prevent traversal attacks
+        raise ValueError(f"Path traversal detected (contains '..'): {path}")
+
     # Check if path is within allowed directories
     is_allowed = False
 
@@ -75,22 +81,10 @@ def validate_path(
     except ValueError:
         # Path is outside cwd, check if absolute paths are allowed
         if allow_absolute:
-            # For absolute paths, verify no path traversal attempts
-            path_str = str(path)
-            if ".." in path_str:
-                raise ValueError(f"Path traversal detected: {path}")
             is_allowed = True
 
     if not is_allowed:
         raise ValueError(f"Path outside allowed directories: {path}")
-
-    # Check for path traversal attempts in the original path string
-    original_path_str = str(path)
-    if ".." in original_path_str:
-        # Double check by comparing resolved path
-        # If original contains ".." but resolved doesn't escape, it's still suspicious
-        logger.warning(f"Path contains '..' sequences: {path}")
-        # Still allow if resolved path is safe, but log it
 
     # Additional validation
     if must_exist and not resolved_path.exists():
@@ -124,8 +118,12 @@ def safe_path_join(base_dir: Union[str, Path], *parts: str) -> Path:
     # Filter out dangerous path components
     safe_parts = []
     for part in parts:
-        # Remove any path traversal attempts
-        clean_part = part.replace("..", "").strip("/").strip("\\")
+        # Reject any path component containing '..' to prevent bypass attempts
+        if ".." in part:
+            logger.warning(f"Rejected path component containing '..': {part}")
+            continue
+        # Strip path separators
+        clean_part = part.strip("/").strip("\\")
         if clean_part:
             safe_parts.append(clean_part)
 
