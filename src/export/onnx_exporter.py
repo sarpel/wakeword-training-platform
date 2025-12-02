@@ -16,6 +16,8 @@ import structlog
 import torch
 import torch.nn as nn
 
+from src.security import validate_path, validate_subprocess_args
+
 try:
     import onnx  # type: ignore
     import onnxruntime as ort  # type: ignore
@@ -167,12 +169,19 @@ class ONNXExporter:
         logger.info(f"Exporting to TFLite: {output_path}")
 
         try:
+            # Validate paths to prevent path traversal
+            validated_onnx_path = validate_path(onnx_path, must_exist=True, must_be_file=True)
+            validated_output_path = validate_path(output_path)
+
             # Using onnx2tf via subprocess
             # onnx2tf -i input.onnx -o output_folder
 
-            output_folder = output_path.parent / "tflite_export"
+            output_folder = validated_output_path.parent / "tflite_export"
             output_folder.mkdir(parents=True, exist_ok=True)
 
+            # Validate input_shape contains only integers (safe for subprocess)
+            if not all(isinstance(x, int) for x in self.sample_input_shape):
+                raise ValueError("Input shape must contain only integers")
             input_shape_str = ",".join(map(str, self.sample_input_shape))
 
             # Use python -m onnx2tf for better compatibility
@@ -181,13 +190,16 @@ class ONNXExporter:
                 "-m",
                 "onnx2tf",
                 "-i",
-                str(onnx_path),
+                str(validated_onnx_path),
                 "-o",
                 str(output_folder),
                 "-ois",
                 f"input:{input_shape_str}",
                 "-v",  # verbose
             ]
+
+            # Validate command arguments for safety
+            validate_subprocess_args(cmd)
 
             logger.info(f"Running command: {' '.join(cmd)}")
 
@@ -311,10 +323,15 @@ def export_model_to_onnx(
     Returns:
         Dictionary with export results
     """
-    logger.info(f"Loading checkpoint: {checkpoint_path}")
+    # Validate checkpoint path
+    validated_checkpoint_path = validate_path(checkpoint_path, must_exist=True, must_be_file=True)
+    validated_output_path = validate_path(output_path)
 
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    logger.info(f"Loading checkpoint: {validated_checkpoint_path}")
+
+    # Load checkpoint with weights_only=True for security
+    # This prevents arbitrary code execution during deserialization
+    checkpoint = torch.load(str(validated_checkpoint_path), map_location=device, weights_only=True)
 
     if "config" not in checkpoint:
         raise ValueError("Checkpoint does not contain configuration")
@@ -458,13 +475,16 @@ def validate_onnx_model(
     if onnx is None or ort is None:
         raise ImportError("ONNX and ONNXRuntime required")
 
-    logger.info(f"Validating ONNX model: {onnx_path}")
+    # Validate path
+    validated_onnx_path = validate_path(onnx_path, must_exist=True, must_be_file=True)
+
+    logger.info(f"Validating ONNX model: {validated_onnx_path}")
 
     results: Dict[str, Any] = {"valid": False, "error": None}
 
     try:
         # Load and check ONNX model
-        onnx_model = onnx.load(str(onnx_path))
+        onnx_model = onnx.load(str(validated_onnx_path))
         onnx.checker.check_model(onnx_model)
 
         results["valid"] = True
@@ -477,7 +497,7 @@ def validate_onnx_model(
         ]
 
         # Get model size
-        file_size_mb = onnx_path.stat().st_size / (1024 * 1024)
+        file_size_mb = validated_onnx_path.stat().st_size / (1024 * 1024)
         results["file_size_mb"] = file_size_mb
 
         # Test inference if sample input provided

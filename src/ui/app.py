@@ -100,7 +100,9 @@ def find_available_port(start_port: int = 7860, end_port: int = 7870) -> int:
     for port in range(start_port, end_port + 1):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(("", port))
+                # Bind to localhost (127.0.0.1) instead of all interfaces ("")
+                # This prevents exposure to the network while still allowing local access
+                s.bind(("127.0.0.1", port))
                 return port
         except OSError:
             continue

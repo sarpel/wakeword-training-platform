@@ -17,6 +17,7 @@ from src.data.audio_utils import AudioProcessor
 from src.data.augmentation import AudioAugmentation
 from src.data.cmvn import CMVN
 from src.data.feature_extraction import FeatureExtractor
+from src.security import validate_path
 
 logger = structlog.get_logger(__name__)
 
@@ -83,7 +84,8 @@ class WakewordDataset(Dataset):
             return_raw_audio: If True, returns raw audio waveform (Tensor) instead of features.
                              Used for GPU-based processing pipelines.
         """
-        self.manifest_path = Path(manifest_path)
+        # Validate manifest path
+        self.manifest_path = validate_path(manifest_path, must_exist=True, must_be_file=True)
         self.sample_rate = sample_rate
         self.audio_duration = audio_duration
         self.augment = augment

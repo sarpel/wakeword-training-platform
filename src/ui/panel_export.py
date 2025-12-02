@@ -16,6 +16,7 @@ import structlog
 import torch
 
 from src.export.onnx_exporter import benchmark_onnx_model, export_model_to_onnx, validate_onnx_model
+from src.security import validate_path
 
 logger = structlog.get_logger(__name__)
 
@@ -93,16 +94,17 @@ def export_to_onnx(
         return "❌ Please provide an output filename", ""
 
     try:
-        checkpoint_path_obj = Path(checkpoint_path)
+        # Validate and sanitize paths
+        checkpoint_path_obj = validate_path(checkpoint_path, must_exist=True, must_be_file=True)
 
-        if not checkpoint_path_obj.exists():
-            return f"❌ Checkpoint not found: {checkpoint_path_obj}", ""
+        # Create output path with sanitized filename
+        from src.security import sanitize_filename
 
-        # Create output path
+        safe_filename = sanitize_filename(output_filename)
         export_dir = Path("models/exports")
         export_dir.mkdir(parents=True, exist_ok=True)
 
-        output_path = export_dir / output_filename
+        output_path = export_dir / safe_filename
 
         logger.info(f"Exporting {checkpoint_path_obj} to {output_path}")
 
@@ -210,8 +212,13 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
     try:
         logger.info(f"Validating ONNX model: {export_state.last_export_path}")
 
-        # Load PyTorch model for comparison
-        checkpoint = torch.load(export_state.last_checkpoint, map_location="cuda")
+        # Validate checkpoint path
+        validated_checkpoint_path = validate_path(
+            export_state.last_checkpoint, must_exist=True, must_be_file=True
+        )
+
+        # Load PyTorch model for comparison with weights_only=True for security
+        checkpoint = torch.load(str(validated_checkpoint_path), map_location="cuda", weights_only=True)
         config_data = checkpoint["config"]
 
         # Convert config dict to WakewordConfig object if needed

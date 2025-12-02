@@ -25,6 +25,7 @@ from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
 from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
 from src.evaluation.types import EvaluationResult
 from src.exceptions import WakewordException
+from src.security import validate_path
 from src.training.metrics import MetricResults
 
 logger = structlog.get_logger(__name__)
@@ -525,15 +526,8 @@ def evaluate_test_set(
         if not test_split_path or test_split_path.strip() == "":
             test_split_path = str(Path(data_root) / "splits" / "test.json")
 
-        test_path = Path(test_split_path)
-
-        if not test_path.exists():
-            return (
-                {"status": f"❌ Test split not found: {test_split_path}"},
-                None,
-                None,
-                {},
-            )
+        # Validate test split path
+        test_path = validate_path(test_split_path, must_exist=True, must_be_file=True)
 
         logger.info(f"Evaluating test set: {test_path}")
 
@@ -542,6 +536,10 @@ def evaluate_test_set(
         # Determine dataset root based on provided path to splits/test.json -> ../../
         # If test_path is "data/splits/test.json", dataset root is "data"
         dataset_root_inferred = test_path.parent.parent
+
+        # Validate CMVN path
+        cmvn_stats_path = dataset_root_inferred / "cmvn_stats.json"
+        cmvn_exists = cmvn_stats_path.exists()
 
         test_dataset = WakewordDataset(
             manifest_path=test_path,
@@ -564,8 +562,8 @@ def evaluate_test_set(
             # If model was trained with CMVN, dataset should apply it?
             # BUT wait, evaluator.py handles evaluation logic.
             # Let's check if CMVN path exists
-            cmvn_path=dataset_root_inferred / "cmvn_stats.json",
-            apply_cmvn=True if (dataset_root_inferred / "cmvn_stats.json").exists() else False,
+            cmvn_path=cmvn_stats_path if cmvn_exists else None,
+            apply_cmvn=cmvn_exists,
             return_raw_audio=True,  # IMPORTANT: Use GPU pipeline for consistency with training
         )
 

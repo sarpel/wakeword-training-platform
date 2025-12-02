@@ -22,6 +22,7 @@ from src.evaluation.advanced_evaluator import evaluate_with_advanced_metrics
 from src.evaluation.dataset_evaluator import evaluate_dataset, get_roc_curve_data
 from src.evaluation.file_evaluator import evaluate_file, evaluate_files
 from src.evaluation.types import EvaluationResult
+from src.security import validate_path
 from src.training.metrics import MetricResults, MetricsCalculator
 
 logger = structlog.get_logger(__name__)
@@ -155,10 +156,14 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     Returns:
         Tuple of (model, config_dict)
     """
-    logger.info(f"Loading model from: {checkpoint_path}")
+    # Validate checkpoint path
+    validated_checkpoint_path = validate_path(checkpoint_path, must_exist=True, must_be_file=True)
 
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    logger.info(f"Loading model from: {validated_checkpoint_path}")
+
+    # Load checkpoint with weights_only=True for security
+    # This prevents arbitrary code execution during deserialization
+    checkpoint = torch.load(str(validated_checkpoint_path), map_location=device, weights_only=True)
 
     # Get config
     if "config" not in checkpoint:

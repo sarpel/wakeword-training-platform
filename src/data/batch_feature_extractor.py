@@ -14,6 +14,7 @@ from tqdm import tqdm
 from src.config.defaults import DataConfig
 from src.data.audio_utils import AudioProcessor
 from src.data.feature_extraction import FeatureExtractor
+from src.security import validate_path, safe_path_join
 
 logger = structlog.get_logger(__name__)
 
@@ -71,7 +72,8 @@ class BatchFeatureExtractor:
         Returns:
             Dictionary with extraction results
         """
-        output_dir = Path(output_dir)
+        # Validate output directory path
+        output_dir = validate_path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         results: Dict[str, Any] = {
@@ -137,15 +139,16 @@ class BatchFeatureExtractor:
                             # Example: data/raw/positive/hey_cut/en/file.wav
                             #       -> data/raw/npy/positive/hey_cut/en/file.npy
                             relative_parts = parts[category_idx:]  # positive/hey_cut/en/file.wav
-                            output_path = output_dir.joinpath(*relative_parts).with_suffix(".npy")
+                            # Use safe_path_join to prevent path traversal
+                            output_path = safe_path_join(output_dir, *relative_parts).with_suffix(".npy")
                         else:
                             # Fallback: just use filename
-                            output_path = output_dir / (audio_file.stem + ".npy")
+                            output_path = safe_path_join(output_dir, audio_file.stem + ".npy")
                     except Exception as e:
                         logger.warning(f"Path extraction failed for {audio_file}: {e}")
-                        output_path = output_dir / (audio_file.stem + ".npy")
+                        output_path = safe_path_join(output_dir, audio_file.stem + ".npy")
                 else:
-                    output_path = output_dir / (audio_file.stem + ".npy")
+                    output_path = safe_path_join(output_dir, audio_file.stem + ".npy")
 
                 # Create parent directory
                 output_path.parent.mkdir(parents=True, exist_ok=True)

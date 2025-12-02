@@ -18,6 +18,7 @@ from tqdm import tqdm
 
 from src.data.audio_utils import AudioValidator, scan_audio_files
 from src.data.file_cache import FileCache
+from src.security import validate_path, safe_path_join
 
 logger = structlog.get_logger(__name__)
 
@@ -149,7 +150,8 @@ class DatasetScanner:
             logger.warning("No scan results found. Run scan_datasets() first.")
             return 0
 
-        excluded_root = Path(excluded_root)
+        # Validate and resolve excluded_root path
+        excluded_root = Path(excluded_root).resolve()
         excluded_root.mkdir(parents=True, exist_ok=True)
         logger.info(f"Moving excluded files to: {excluded_root}")
 
@@ -163,7 +165,14 @@ class DatasetScanner:
                 continue
 
             for file_info in excluded_files:
-                src_path = Path(file_info["path"])
+                src_path = Path(file_info["path"]).resolve()
+
+                # Validate source path is within expected dataset structure
+                try:
+                    src_path.relative_to(self.dataset_root.resolve())
+                except ValueError:
+                    logger.warning(f"File path outside dataset root, skipping: {src_path}")
+                    continue
 
                 if not src_path.exists():
                     logger.warning(f"File not found for moving: {src_path}")
@@ -171,7 +180,8 @@ class DatasetScanner:
 
                 # Create destination path preserving category structure
                 # e.g. unqualified_datasets/positive/sample.wav
-                dest_dir = excluded_root / category
+                # Use safe_path_join to prevent path traversal
+                dest_dir = safe_path_join(excluded_root, category)
                 dest_dir.mkdir(parents=True, exist_ok=True)
 
                 dest_path = dest_dir / src_path.name
@@ -896,7 +906,8 @@ class DatasetSplitter:
         if not self.splits:
             raise ValueError("No splits created yet. Call split_datasets() first.")
 
-        output_npy_dir = Path(output_npy_dir)
+        # Validate and resolve output directory path
+        output_npy_dir = Path(output_npy_dir).resolve()
         logger.info(f"Copying NPY files to split directories in: {output_npy_dir}")
 
         # Categories that have NPY features extracted
@@ -909,7 +920,8 @@ class DatasetSplitter:
         }
 
         for split_name, split_data in self.splits.items():
-            split_dir = output_npy_dir / split_name
+            # Use safe_path_join to prevent path traversal
+            split_dir = safe_path_join(output_npy_dir, split_name)
 
             # Filter files to only include categories that have NPY files
             files_with_npy = [f for f in split_data["files"] if f.get("category") in npy_categories]
@@ -921,20 +933,20 @@ class DatasetSplitter:
                     stats[split_name]["missing"] += 1
                     continue
 
-                npy_source = Path(npy_path)
+                npy_source = Path(npy_path).resolve()
                 if not npy_source.exists():
                     logger.warning(f"NPY file not found: {npy_source}")
                     stats[split_name]["missing"] += 1
                     continue
 
-                # Determine destination path
+                # Determine destination path using safe_path_join
                 if preserve_structure:
                     # Preserve category subdirectories
                     category = file_info.get("category", "unknown")
-                    npy_dest = split_dir / category / npy_source.name
+                    npy_dest = safe_path_join(split_dir, category, npy_source.name)
                 else:
                     # Flat structure
-                    npy_dest = split_dir / npy_source.name
+                    npy_dest = safe_path_join(split_dir, npy_source.name)
 
                 # Create parent directory
                 npy_dest.parent.mkdir(parents=True, exist_ok=True)
