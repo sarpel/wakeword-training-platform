@@ -43,7 +43,7 @@ class DatasetScanner:
             use_cache: Use file cache to speed up scanning
             max_workers: Maximum number of parallel workers (default: CPU count)
         """
-        self.dataset_root = Path(dataset_root)
+        self.dataset_root = validate_path(dataset_root, must_exist=True, must_be_dir=True)
         self.validator = AudioValidator()
         self.dataset_info: Dict[str, Any] = {}
         self.statistics: Dict[str, Any] = {}
@@ -151,7 +151,7 @@ class DatasetScanner:
             return 0
 
         # Validate and resolve excluded_root path
-        excluded_root = Path(excluded_root).resolve()
+        excluded_root = validate_path(excluded_root)
         excluded_root.mkdir(parents=True, exist_ok=True)
         logger.info(f"Moving excluded files to: {excluded_root}")
 
@@ -527,7 +527,7 @@ class DatasetScanner:
         elif output_dir is None:
             output_dir = self.dataset_root.parent / "trimmed_dataset"
 
-        output_dir = Path(output_dir)
+        output_dir = validate_path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Trimming silence (top_db={top_db}) -> {output_dir}")
         logger.info(f"Skipping categories: {exclude_categories}")
@@ -914,7 +914,7 @@ class DatasetSplitter:
             raise ValueError("No splits created yet. Call split_datasets() first.")
 
         # Validate and resolve output directory path
-        output_npy_dir = Path(output_npy_dir).resolve()
+        output_npy_dir = validate_path(output_npy_dir)
         logger.info(f"Copying NPY files to split directories in: {output_npy_dir}")
 
         # Categories that have NPY features extracted

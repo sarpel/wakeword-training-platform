@@ -506,7 +506,7 @@ def validate_onnx_model(
 
             # ONNX Runtime session
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            sess = ort.InferenceSession(str(onnx_path), providers=providers)
+            sess = ort.InferenceSession(str(validated_onnx_path), providers=providers)
 
             # Get input name
             input_name = sess.get_inputs()[0].name
@@ -570,6 +570,9 @@ def benchmark_onnx_model(
     if ort is None:
         raise ImportError("ONNXRuntime required")
 
+    # Validate path
+    validated_onnx_path = validate_path(onnx_path, must_exist=True, must_be_file=True)
+
     logger.info(f"Benchmarking ONNX model (n={num_runs})...")
 
     results = {}
@@ -598,7 +601,7 @@ def benchmark_onnx_model(
 
     # Benchmark ONNX
     providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-    sess = ort.InferenceSession(str(onnx_path), providers=providers)
+    sess = ort.InferenceSession(str(validated_onnx_path), providers=providers)
 
     input_name = sess.get_inputs()[0].name
     onnx_input = {input_name: sample_input.cpu().numpy()}

@@ -24,7 +24,7 @@ from src.data.npy_extractor import NpyExtractor
 from src.data.preprocessing import VADFilter  # Import VADFilter
 from src.data.splitter import DatasetScanner, DatasetSplitter
 from src.exceptions import WakewordException
-from src.security import validate_path, sanitize_filename
+from src.security import validate_path
 
 logger = structlog.get_logger(__name__)
 
@@ -519,6 +519,14 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
             global _current_dataset_info
 
             try:
+                # Validate inputs
+                if not root_path:
+                    return "❌ Please select a dataset folder"
+
+                # Validate paths
+                validate_path(root_path, must_exist=True, must_be_dir=True)
+                validate_path(output_dir, must_exist=False)
+
                 # Validate dataset scanned
                 if _current_dataset_info is None:
                     return "❌ Please scan datasets first (Step 1)"

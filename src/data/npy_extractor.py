@@ -79,6 +79,9 @@ class NpyExtractor:
             Tuple of (is_valid, metadata, error_message)
         """
         try:
+            # Validate path
+            file_path = validate_path(file_path, must_exist=True, must_be_file=True)
+
             # Load array (memory-mapped for efficiency)
             data = np.load(str(file_path), mmap_mode="r")
 

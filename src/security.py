@@ -74,14 +74,31 @@ def validate_path(
     # Check if path is within allowed directories
     is_allowed = False
 
-    # Check if the resolved path is under current working directory
-    try:
-        resolved_path.relative_to(cwd)
-        is_allowed = True
-    except ValueError:
-        # Path is outside cwd, check if absolute paths are allowed
-        if allow_absolute:
+    # Check if the resolved path is within any of the allowed base directories
+    for base_dir in allowed_base_dirs:
+        # Resolve the base directory relative to CWD
+        base_path = (cwd / base_dir).resolve()
+        try:
+            resolved_path.relative_to(base_path)
             is_allowed = True
+            break
+        except ValueError:
+            continue
+
+    # If not in allowed base dirs, check if it's generally under CWD (if allowed_base_dirs was empty/default)
+    if not is_allowed:
+        try:
+            resolved_path.relative_to(cwd)
+            # If we are here, it's in CWD but not in specific allowed_base_dirs
+            # If allowed_base_dirs was provided (and not empty), we should probably enforce it.
+            # But for backward compatibility with "allow_absolute", let's check that next.
+            pass
+        except ValueError:
+            pass
+
+    # If still not allowed, check if absolute paths are explicitly allowed
+    if not is_allowed and allow_absolute:
+        is_allowed = True
 
     if not is_allowed:
         raise ValueError(f"Path outside allowed directories: {path}")
@@ -134,7 +151,7 @@ def safe_path_join(base_dir: Union[str, Path], *parts: str) -> Path:
     try:
         result.relative_to(base)
     except ValueError:
-        raise ValueError(f"Path traversal attempt detected: {parts}")
+        raise ValueError(f"Path traversal attempt detected: {parts}") from None
 
     return result
 
@@ -156,12 +173,19 @@ def sanitize_filename(filename: str) -> str:
     # Remove null bytes and other dangerous characters
     sanitized = sanitized.replace("\x00", "")
 
+    # Remove control characters (non-printable)
+    sanitized = "".join(c for c in sanitized if c.isprintable())
+
     # Limit length
     max_length = 255
     if len(sanitized) > max_length:
         # Preserve extension
         ext = Path(sanitized).suffix
         sanitized = sanitized[: max_length - len(ext)] + ext
+
+    # Ensure filename is not empty
+    if not sanitized:
+        return "default_filename"
 
     return sanitized
 

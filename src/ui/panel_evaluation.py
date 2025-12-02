@@ -541,6 +541,9 @@ def evaluate_test_set(
         cmvn_stats_path = dataset_root_inferred / "cmvn_stats.json"
         cmvn_exists = cmvn_stats_path.exists()
 
+        if cmvn_exists:
+            cmvn_stats_path = validate_path(cmvn_stats_path, must_exist=True, must_be_file=True)
+
         test_dataset = WakewordDataset(
             manifest_path=test_path,
             sample_rate=eval_state.model_info["config"].data.sample_rate,
