@@ -11,6 +11,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import structlog
 
+from src.security import validate_path
+
 logger = structlog.get_logger(__name__)
 
 
@@ -51,7 +53,8 @@ class NpyExtractor:
         Returns:
             List of .npy file paths
         """
-        directory = Path(directory)
+        # Validate directory path
+        directory = validate_path(directory)
 
         if not directory.exists():
             logger.warning(f"Directory does not exist: {directory}")
@@ -76,6 +79,9 @@ class NpyExtractor:
             Tuple of (is_valid, metadata, error_message)
         """
         try:
+            # Validate path
+            file_path = validate_path(file_path, must_exist=True, must_be_file=True)
+
             # Load array (memory-mapped for efficiency)
             data = np.load(str(file_path), mmap_mode="r")
 

@@ -17,1181 +17,355 @@ def create_docs_panel() -> gr.Blocks:
     with gr.Blocks() as panel:
         gr.Markdown("# 📚 Documentation & Knowledge Base")
         gr.Markdown(
-            "Complete guide to wakeword training, best practices, and troubleshooting."
+            "The complete, definitive guide to the Wakeword Training Platform. This documentation is designed to take you from a beginner to an expert in training production-grade voice models."
         )
 
         with gr.Tabs():
-            # Introduction
+            # -------------------------------------------------------------------------
+            # 1. Introduction & Architecture
+            # -------------------------------------------------------------------------
             with gr.TabItem("🏠 Introduction"):
                 gr.Markdown(
                     """
-# Welcome to Wakeword Training Platform
+# Welcome to the Wakeword Training Platform
 
-## What is a Wakeword?
+## What is this Platform?
+This is not just a training script; it is a **production-ready ecosystem** for creating custom wakeword detection models (like "Hey Siri", "Alexa", or "Okay Google"). It is built to solve the specific challenges of deploying voice AI in the real world, such as battery life constraints, noisy environments, and the need for extremely low false alarm rates.
 
-A **wakeword** (or wake word) is a specific word or phrase that activates a voice-controlled device.
-Examples include "Hey Siri", "Alexa", "OK Google". When detected, the device starts listening for commands.
+## The "Google-Tier" Distributed Cascade Architecture
+This platform supports a sophisticated 3-stage architecture designed to balance accuracy and power consumption:
 
-## Use Cases
+1.  **Stage 1: The Sentry (Edge Device)**
+    *   **Role**: Always-on listening.
+    *   **Model**: Ultra-lightweight (e.g., `tiny_conv` or `mobilenetv3`).
+    *   **Goal**: Wake up only when it thinks it hears the keyword. It is allowed to have some false alarms to ensure it never misses a real command.
+    *   **Deployment**: Runs on microcontrollers like ESP32 or DSPs.
 
-- **Smart Home Devices**: Voice assistants, smart speakers
-- **Mobile Applications**: Voice-activated apps
-- **Automotive**: Hands-free car systems
-- **Accessibility**: Voice control for users with disabilities
-- **IoT Devices**: Voice-controlled appliances
+2.  **Stage 2: The Judge (Local Server/Hub)**
+    *   **Role**: Verification.
+    *   **Model**: Heavy and accurate (e.g., `resnet18` or `wav2vec2`).
+    *   **Goal**: Analyze the audio clip triggered by the Sentry and decide if it was a real wakeword or just a similar sound (e.g., "Alexa" vs. "Election").
+    *   **Deployment**: Runs on a Raspberry Pi, Home Assistant server, or local PC.
 
-## How This Platform Works
+3.  **Stage 3: The Teacher (Training Cluster)**
+    *   **Role**: Knowledge Distillation.
+    *   **Model**: Massive pre-trained models.
+    *   **Goal**: Teach the smaller models how to behave by transferring knowledge, improving their accuracy beyond what they could learn on their own.
 
-This platform provides a complete pipeline for training custom wakeword detection models:
+## Core Capabilities
+- **GPU Acceleration**: Fully utilizes NVIDIA GPUs with CUDA for rapid training.
+- **Mixed Precision (AMP)**: Uses FP16 precision to double training speed and halve memory usage without losing accuracy.
+- **Smart Data Pipeline**: Automatically balances your dataset, normalizes audio volume, and applies "On-the-fly" augmentation to create infinite variations of your data.
+- **Production Metrics**: We don't just show "Accuracy". We track **False Alarms per Hour (FAH)** and **Equal Error Rate (EER)**, which are the industry standards for shipping voice products.
 
-1. **Dataset Management** - Organize and validate your audio datasets
-2. **Configuration** - Set training parameters with industry-standard defaults
-3. **Training** - Train models with GPU acceleration and live monitoring
-4. **Evaluation** - Test models with files or live microphone
-5. **Export** - Convert models to ONNX for deployment
-6. **Documentation** - Learn best practices (you are here!)
-
-## System Requirements
-
-### Mandatory
-- **NVIDIA GPU** with CUDA support (Compute Capability 6.0+)
-- **CUDA Toolkit** 11.8 or 12.x
-- **cuDNN** 8.x
-- **Python** 3.8-3.11
-
-### Recommended
-- **GPU Memory**: 8GB+ (10GB+ for large datasets)
-- **RAM**: 16GB+
-- **Storage**: 100GB+ for datasets
-- **CPU**: Multi-core for data loading
-
-## Quick Start
-
-1. Prepare your datasets (positive, negative, background, etc.)
-2. Load datasets in Panel 1 and split them
-3. Configure training parameters in Panel 2
-4. Start training in Panel 3
-5. Evaluate your model in Panel 4
-6. Export to ONNX in Panel 5
-
-Let's get started! 🚀
-                """
-                )
-
-            # Dataset Preparation
-            with gr.TabItem("📊 Dataset Preparation"):
-                gr.Markdown(
+---
+*Use the tabs above to navigate through the detailed guides.*
                     """
-# Dataset Preparation Guide
-
-## Dataset Types
-
-### 1. Positive Samples ✅
-- **What**: Actual wakeword utterances
-- **Examples**: "Hey Assistant", "Wake Up", your custom phrase
-- **Requirements**:
-  - Minimum: 1,000 samples (5,000+ recommended)
-  - Multiple speakers: 50+ unique voices
-  - Varied environments: quiet, noisy, reverberant
-  - Natural variations: speed, pitch, accent
-
-### 2. Negative Samples ❌
-- **What**: Non-wakeword speech
-- **Examples**: General conversation, random phrases
-- **Requirements**:
-  - 8-10x more than positive samples
-  - Diverse vocabulary and speakers
-  - Similar acoustic characteristics to positive
-
-### 3. Hard Negative Samples ⚠️
-- **What**: Phrases that sound similar to wakeword
-- **Examples**: If wakeword is "Hey Assistant"
-  - "Hey system"
-  - "Hey assistance"
-  - "A assistant"
-- **Requirements**:
-  - 20-30% of total negative samples
-  - Critical for reducing false positives
-
-### 4. Background Noise 🔊
-- **What**: Environmental sounds without speech
-- **Examples**:
-  - White noise, pink noise
-  - Traffic, wind, rain
-  - TV, music, crowd noise
-- **Usage**: Mixed with positive/negative at 30-50% probability
-
-### 5. Room Impulse Responses (RIRs) 🏠
-- **What**: Acoustic characteristics of rooms
-- **Usage**: Convolved with audio at 20-30% probability
-- **Effect**: Adds realistic reverberation
-
-### 6. .npy Files 💾
-- **What**: Pre-computed features (MFCC, spectrograms)
-- **Format**: NumPy arrays
-- **Supported shapes**:
-  - Raw audio: (N, samples)
-  - Spectrograms: (N, freq_bins, time_steps)
-  - MFCC: (N, n_mfcc, time_steps)
-
-## Audio Format Requirements
-
-- **Sample Rate**: 16kHz (recommended, 8-48kHz supported)
-- **Bit Depth**: 16-bit
-- **Channels**: Mono (stereo will be converted)
-- **Duration**: 1.5-2 seconds typical
-- **Format**: WAV, MP3, FLAC, OGG
-
-## Dataset Organization
-
-```
-dataset_root/
-├── positive/
-│   ├── speaker1/
-│   │   ├── sample_001.wav
-│   │   └── sample_002.wav
-│   └── speaker2/
-│       └── sample_001.wav
-├── negative/
-│   ├── conversation/
-│   └── commands/
-├── hard_negative/
-│   └── similar_phrases/
-├── background/
-│   ├── noise/
-│   └── music/
-└── rirs/
-    ├── room1.wav
-    └── room2.wav
-```
-
-**Note**: Subfolders are automatically scanned!
-
-## Recording Best Practices
-
-### For Positive Samples
-1. **Multiple Speakers**: Aim for age, gender, accent diversity
-2. **Natural Delivery**: Not robotic, include hesitations
-3. **Varied Speed**: Slow, normal, fast delivery
-4. **Varied Volume**: Whisper to normal speaking
-5. **Varied Distance**: Near (30cm) to far (3m) from mic
-
-### For Negative Samples
-1. **Phonetically Rich**: Cover diverse speech sounds
-2. **Conversational**: Natural speech patterns
-3. **Varied Topics**: General conversation, news, etc.
-
-### General Guidelines
-- Use good quality microphone
-- Record in quiet environment (add noise via augmentation)
-- Avoid clipping (peak below -3dB)
-- Remove silence padding
-- Label files consistently
-
-## Data Quality Checklist
-
-✅ No corrupted files
-✅ Consistent sample rate
-✅ Appropriate duration (1-3 seconds)
-✅ No excessive silence
-✅ Balanced speaker distribution
-✅ Clear audio (SNR > 20dB for clean samples)
-✅ Proper labeling
-
-## Industry Standards
-
-| Metric | Minimum | Recommended | Excellent |
-|--------|---------|-------------|-----------|
-| Positive Samples | 1,000 | 5,000 | 20,000+ |
-| Negative Samples | 8,000 | 40,000 | 200,000+ |
-| Unique Speakers | 20 | 50 | 200+ |
-| Recording Hours | 2h | 10h | 50h+ |
-| Pos:Neg Ratio | 1:5 | 1:8 | 1:10 |
-                """
                 )
 
-            # Training Configuration
-            with gr.TabItem("⚙️ Configuration Guide"):
-                gr.Markdown(
-                    """
-# Training Configuration Guide
-
-## Basic Parameters
-
-### Data Parameters
-
-#### Sample Rate
-- **Default**: 16,000 Hz
-- **Why**: Balance between quality and computational cost
-- **Options**: 8kHz (low quality, fast), 16kHz (recommended), 22kHz/44kHz (high quality, slower)
-
-#### Audio Duration
-- **Default**: 1.5 seconds
-- **Why**: Typical wakeword length with padding
-- **Consideration**: Longer = more context, more memory
-
-#### MFCC Coefficients
-- **Default**: 40
-- **Range**: 13-80
-- **Why**: Captures important frequency characteristics
-- **Trade-off**: More = richer features but more computation
-
-#### FFT Size
-- **Default**: 512
-- **Options**: 256, 512, 1024, 2048
-- **Why**: Frequency resolution vs time resolution
-- **Rule**: Should be < hop_length * sample_rate / 1000
-
-### Training Parameters
-
-#### Batch Size
-- **Default**: 32
-- **Range**: 8-256
-- **Factors**: GPU memory, dataset size
-- **Rule**: Larger = faster training, more memory
-- **Tip**: Use automatic batch size finder if OOM errors
-
-#### Epochs
-- **Default**: 50
-- **Range**: 10-200
-- **Why**: Sufficient for convergence with early stopping
-- **Note**: Early stopping prevents overfitting
-
-#### Learning Rate
-- **Default**: 0.001 (1e-3)
-- **Range**: 1e-5 to 1e-2
-- **Why**: Balanced learning speed
-- **Scheduling**: Cosine annealing recommended
-
-#### Early Stopping Patience
-- **Default**: 10 epochs
-- **Why**: Stops training when validation loss plateaus
-- **Trade-off**: Higher = more chances to improve, longer training
-
-### Model Parameters
-
-#### Architecture Comparison
-
-| Architecture | Accuracy | Speed | Size | Use Case |
-|--------------|----------|-------|------|----------|
-| ResNet-18 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | 44MB | Best accuracy |
-| MobileNetV3 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | 5MB | Edge deployment |
-| LSTM | ⭐⭐⭐ | ⭐⭐ | 20MB | Sequential data |
-| GRU | ⭐⭐⭐ | ⭐⭐⭐ | 15MB | Faster LSTM |
-| TCN | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 25MB | Modern choice |
-
-**Recommendation**: Start with ResNet-18 for best results
-
-## Advanced Parameters
-
-### Augmentation
-
-#### Time Stretch (0.8-1.2x)
-- Simulates faster/slower speech
-- Preserves pitch
-
-#### Pitch Shift (±2 semitones)
-- Simulates different voice pitches
-- Important for speaker variation
-
-#### Background Noise (30-50% probability)
-- SNR: 5-20 dB
-- Adds realism
-- Reduces overfitting to clean audio
-
-#### RIR Convolution (20-30% probability)
-- Adds room reverberation
-- Critical for real-world performance
-
-### Optimizer & Scheduler
-
-#### Optimizers
-- **Adam** (recommended): Adaptive learning, works well with default settings
-- **SGD**: Classic, requires careful tuning
-- **AdamW**: Adam with weight decay decoupling
-
-#### Schedulers
-- **Cosine**: Smooth decay, no tuning needed (recommended)
-- **Step**: Drops LR at milestones
-- **Plateau**: Reduces LR when metric plateaus
-- **None**: Constant learning rate
-
-#### Weight Decay
-- **Default**: 1e-4
-- **Purpose**: L2 regularization, prevents overfitting
-
-#### Gradient Clipping
-- **Default**: 1.0
-- **Purpose**: Prevents exploding gradients
-- **Rare Issue**: Usually not triggered
-
-### Loss & Sampling
-
-#### Loss Functions
-- **Cross Entropy**: Standard for classification (recommended)
-- **Focal Loss**: Better for imbalanced datasets
-  - Alpha: 0.25 (class weight)
-  - Gamma: 2.0 (focus on hard examples)
-
-#### Label Smoothing
-- **Default**: 0.1
-- **Effect**: Softens targets (0.9/0.1 instead of 1.0/0.0)
-- **Benefit**: Better generalization
-
-#### Class Weights
-- **Balanced**: Automatic weight calculation
-- **None**: No weighting
-- **Custom**: Manual weight specification
-
-#### Hard Negative Weight
-- **Default**: 2.0
-- **Effect**: Give more importance to hard negatives
-- **Critical**: Reduces false positives
-
-### Checkpointing
-
-#### Frequency Options
-- **Best Only**: Save only when validation improves (recommended)
-- **Every Epoch**: All checkpoints (for analysis)
-- **Every N Epochs**: Periodic saving
-- **Trade-off**: Storage vs flexibility
-
-## Presets
-
-### Small Dataset (<10k samples)
-- Aggressive augmentation
-- Smaller model (MobileNet)
-- More regularization
-- Lower batch size
-
-### Large Dataset (>100k samples)
-- Moderate augmentation
-- Larger model (ResNet)
-- Higher batch size
-- Faster convergence
-
-### Fast Training
-- Minimal augmentation
-- Larger batch size
-- Fewer epochs
-- Quick iteration
-
-### High Accuracy
-- Aggressive augmentation
-- ResNet-18
-- More epochs
-- Patience for convergence
-
-### Edge Deployment
-- MobileNetV3
-- Optimized for size
-- Quantization-aware training
-                """
-                )
-
-            # Training Process
-            with gr.TabItem("🚀 Training Process"):
-                gr.Markdown(
-                    """
-# Training Process Guide
-
-## Metrics Explained
-
-### Loss
-- **What**: Error measurement (lower is better)
-- **Train Loss**: Error on training data
-- **Val Loss**: Error on validation data
-- **Healthy Pattern**: Both decreasing, val_loss slightly higher
-- **Warning Signs**:
-  - Val_loss increasing while train_loss decreasing = **Overfitting**
-  - Both very high = **Underfitting**
-
-### Accuracy
-- **What**: Percentage of correct predictions
-- **Target**: >95% on test set
-- **Note**: Can be misleading with imbalanced data
-
-### False Positive Rate (FPR) 🚨
-- **What**: % of negatives incorrectly classified as positive
-- **Impact**: False alarms, user frustration
-- **Target**: <5% (ideally <2%)
-- **Critical Metric**: Most important for user experience
-
-### False Negative Rate (FNR)
-- **What**: % of positives incorrectly classified as negative
-- **Impact**: Missed activations
-- **Target**: <5%
-- **Note**: Less critical than FPR (user will repeat)
-
-### Precision & Recall
-- **Precision**: When model says "wakeword", how often is it right?
-- **Recall**: Of all actual wakewords, how many did we catch?
-- **F1-Score**: Harmonic mean of precision and recall
-
-### Training Speed
-- **Samples/sec**: Throughput (higher is better)
-- **Target**: >1000 samples/sec on modern GPU
-- **Factors**: Batch size, augmentation, model architecture
-
-## Training Stages
-
-### Stage 1: Initial (Epochs 1-5)
-- **Behavior**: Rapid loss decrease
-- **Metrics**: Accuracy quickly rises from 50% to 80%+
-- **Normal**: High variability
-
-### Stage 2: Learning (Epochs 5-30)
-- **Behavior**: Steady improvement
-- **Metrics**: Reaching 90%+ accuracy
-- **Monitoring**: Watch for overfitting signs
-
-### Stage 3: Convergence (Epochs 30-50)
-- **Behavior**: Slow improvements
-- **Metrics**: Fine-tuning to 95%+
-- **Decision**: Early stopping may trigger
-
-### Stage 4: Plateau (After convergence)
-- **Behavior**: No improvement
-- **Metrics**: Oscillating around best values
-- **Action**: Early stopping terminates training
-
-## Common Training Patterns
-
-### 🟢 Healthy Training
-```
-Epoch | Train Loss | Val Loss | Train Acc | Val Acc
-------|------------|----------|-----------|--------
-1     | 0.6500     | 0.6700   | 65%       | 63%
-10    | 0.2000     | 0.2300   | 92%       | 90%
-20    | 0.0800     | 0.1200   | 97%       | 95%
-30    | 0.0400     | 0.0900   | 98%       | 96%
-```
-✅ Both losses decreasing
-✅ Val_loss close to train_loss
-✅ High accuracy on both sets
-
-### 🟡 Overfitting
-```
-Epoch | Train Loss | Val Loss | Train Acc | Val Acc
-------|------------|----------|-----------|--------
-1     | 0.6500     | 0.6700   | 65%       | 63%
-10    | 0.2000     | 0.2500   | 92%       | 88%
-20    | 0.0500     | 0.3000   | 98%       | 87%
-30    | 0.0100     | 0.4000   | 99%       | 85%
-```
-❌ Train_loss decreasing, val_loss increasing
-❌ High train_acc, lower val_acc
-**Solution**: More regularization, augmentation, early stopping
-
-### 🔴 Underfitting
-```
-Epoch | Train Loss | Val Loss | Train Acc | Val Acc
-------|------------|----------|-----------|--------
-1     | 0.6900     | 0.6900   | 52%       | 51%
-10    | 0.6500     | 0.6600   | 60%       | 59%
-20    | 0.6200     | 0.6300   | 65%       | 64%
-30    | 0.6000     | 0.6100   | 68%       | 67%
-```
-❌ Both losses high and barely decreasing
-❌ Low accuracy on both sets
-**Solution**: Larger model, more epochs, lower regularization
-
-## Troubleshooting
-
-### Problem: Training is Slow
-- **Check GPU Utilization**: Should be >80%
-- **Solutions**:
-  - Increase batch size
-  - Reduce num_workers if CPU bottleneck
-  - Enable mixed precision (FP16)
-  - Check data loading speed
-
-### Problem: GPU Out of Memory
-- **Solutions**:
-  - Reduce batch size
-  - Shorter audio duration
-  - Smaller model
-  - Enable gradient accumulation
-  - Clear CUDA cache
-
-### Problem: Loss is NaN
-- **Causes**: Exploding gradients, too high learning rate
-- **Solutions**:
-  - Lower learning rate (try 1e-4)
-  - Enable gradient clipping
-  - Check for corrupted data
-  - Use mixed precision carefully
-
-### Problem: Poor Validation Performance
-- **If Overfitting**:
-  - More augmentation
-  - More regularization (weight decay, label smoothing)
-  - Smaller model
-  - More diverse data
-
-- **If Underfitting**:
-  - Larger model
-  - Less regularization
-  - More epochs
-  - Better features
-
-### Problem: High False Positive Rate
-- **Solutions**:
-  - Add more hard negatives
-  - Increase hard_negative_weight
-  - Lower detection threshold
-  - More diverse negative samples
-  - Check for data leakage
-
-### Problem: High False Negative Rate
-- **Solutions**:
-  - Add more positive samples
-  - More augmentation on positives
-  - Higher detection threshold
-  - Check for very hard cases in data
-
-## Best Practices
-
-1. **Start Simple**: Use default configuration first
-2. **Monitor Closely**: Watch metrics every few epochs
-3. **Save Checkpoints**: Enable frequent checkpointing during experimentation
-4. **Validate Often**: Check validation metrics, not just loss
-5. **Test Thoroughly**: Final test on unseen test set
-6. **Real-World Testing**: Test with actual use cases
-7. **Iterate**: Training is iterative, expect multiple runs
-                """
-                )
-
-            # Evaluation & Deployment
-            with gr.TabItem("🎯 Evaluation Guide"):
-                gr.Markdown(
-                    """
-# Evaluation & Deployment Guide
-
-## Evaluation Strategies
-
-### 1. Test Set Evaluation
-- **When**: After training completes
-- **Purpose**: Unbiased performance estimate
-- **Metrics**: Accuracy, FPR, FNR, F1
-- **Requirement**: Test set never used during training
-
-### 2. File-Based Testing
-- **When**: Testing specific scenarios
-- **Purpose**: Controlled evaluation
-- **Use Cases**:
-  - Different accents
-  - Various noise conditions
-  - Edge cases
-
-### 3. Live Microphone Testing
-- **When**: Final validation
-- **Purpose**: Real-world performance
-- **Critical**: Tests actual deployment scenario
-
-## Threshold Selection
-
-### Understanding Threshold
-- Model outputs confidence (0.0-1.0)
-- Threshold determines positive classification
-- **High threshold** (0.7-0.9): Fewer false positives, more false negatives
-- **Low threshold** (0.3-0.5): More false positives, fewer false negatives
-
-### Finding Optimal Threshold
-
-1. **Plot ROC Curve**: Trade-off visualization
-2. **Calculate Metrics**: At different thresholds
-3. **Business Decision**:
-   - Voice assistant: Prioritize low FPR (fewer false alarms)
-   - Accessibility: Prioritize low FNR (don't miss activations)
-
-### Recommended Thresholds
-
-| Use Case | Threshold | FPR Target | FNR Target |
-|----------|-----------|------------|------------|
-| Consumer Device | 0.7-0.8 | <2% | <5% |
-| Accessibility | 0.4-0.5 | <10% | <2% |
-| Security | 0.85-0.95 | <0.5% | <10% |
-
-## Real-World Testing
-
-### Test Scenarios
-
-#### 1. Acoustic Conditions
-- Quiet room
-- TV/music playing
-- Multiple speakers
-- Outdoor environment
-- Car interior
-
-#### 2. Speaker Variations
-- Different ages
-- Gender diversity
-- Accent variations
-- Speech impediments
-- Emotional states (excited, tired, etc.)
-
-#### 3. Distance & Position
-- Near (30cm)
-- Medium (1-2m)
-- Far (3-5m)
-- Off-axis angles
-
-#### 4. Challenging Cases
-- Whisper
-- Shouting
-- Fast speech
-- Hesitant speech
-- Partial utterance
-
-### Testing Checklist
-
-✅ Test set metrics (Acc, FPR, FNR)
-✅ Confusion matrix analysis
-✅ Per-class performance
-✅ Real-world file testing
-✅ Live microphone testing
-✅ Various acoustic conditions
-✅ Multiple speakers
-✅ Edge cases
-✅ Latency measurement
-✅ Error analysis
-
-## Deployment Considerations
-
-### Model Format
-- **PyTorch (.pt)**: Training and Python deployment
-- **ONNX (.onnx)**: Cross-platform, faster inference
-- **Quantized ONNX**: Smaller, faster, slight accuracy loss
-
-### Optimization Techniques
-
-#### FP16 Quantization
-- **Size**: ~50% reduction
-- **Speed**: 1.5-2x faster on modern GPUs
-- **Accuracy**: Minimal loss (<1%)
-- **Recommended**: Yes for most deployments
-
-#### INT8 Quantization
-- **Size**: ~75% reduction
-- **Speed**: 2-4x faster
-- **Accuracy**: 1-3% loss
-- **Consideration**: Requires calibration data
-
-### Edge Deployment
-
-#### Target Devices
-- Raspberry Pi
-- NVIDIA Jetson
-- Mobile phones (iOS/Android)
-- Custom hardware
-
-#### Requirements
-- **Model Size**: <10MB (INT8 quantized)
-- **Inference Time**: <50ms
-- **Memory**: <100MB RAM
-- **Power**: Low-power optimized
-
-#### Recommendations
-- Use MobileNetV3 architecture
-- INT8 quantization
-- Optimize for target hardware
-- Test on actual device
-
-### Inference Pipeline
-
-1. **Audio Capture**: Continuous or triggered
-2. **Preprocessing**: Resample, normalize
-3. **Feature Extraction**: MFCC/Mel-spectrogram
-4. **Model Inference**: Forward pass
-5. **Post-processing**: Threshold, smoothing
-6. **Action**: Trigger downstream logic
-
-### Latency Budget
-
-| Component | Time (ms) | Optimization |
-|-----------|-----------|--------------|
-| Audio Buffer | 10-50 | Minimize buffer size |
-| Preprocessing | 5-10 | Optimize transforms |
-| Model Inference | 10-30 | Quantization, optimization |
-| Post-processing | 1-5 | Efficient algorithms |
-| **Total** | **30-100** | **<100ms target** |
-
-## Production Checklist
-
-✅ Model meets accuracy targets (>95%)
-✅ FPR is acceptable (<5%)
-✅ FNR is acceptable (<5%)
-✅ Inference latency <100ms
-✅ Model size fits deployment constraints
-✅ Real-world testing passed
-✅ Error handling implemented
-✅ Monitoring & logging in place
-✅ A/B testing plan ready
-✅ Rollback strategy defined
-                """
-                )
-
-            # Troubleshooting
+            # -------------------------------------------------------------------------
+            # 2. Detailed Configuration Guide
+            # -------------------------------------------------------------------------
+            with gr.TabItem("📘 Configuration Guide"):
+                gr.Markdown("# Detailed Configuration Guide")
+                gr.Markdown("Every parameter in this platform has a specific purpose. Here is a deep dive into what they do and how to choose the right values.")
+                
+                with gr.Accordion("1. Data Configuration (The Foundation)", open=True):
+                    gr.Markdown(
+                        """
+The quality of your model depends entirely on how you process the audio data.
+
+### `sample_rate` (Default: 16000)
+*   **What it is**: The number of audio snapshots taken per second (Hz).
+*   **Why 16000?**: Human speech intelligibility is mostly contained below 8kHz. According to the Nyquist theorem, a 16kHz sample rate captures frequencies up to 8kHz, which is perfect for speech.
+*   **When to change**:
+    *   **Use 8000**: Only for extremely low-power chips where every byte counts. Quality will suffer.
+    *   **Use 44100/48000**: Generally unnecessary for wakewords and will just slow down training and inference by 3x.
+
+### `audio_duration` (Default: 1.0 - 1.5s)
+*   **What it is**: The fixed length of the audio window the model looks at.
+*   **Best Practice**: Your wakeword should fit comfortably within this window.
+    *   Short words ("Alexa"): **1.0s** is usually enough.
+    *   Long phrases ("Hey Google"): **1.5s** or **2.0s** might be needed.
+*   **Trade-off**: Longer duration = More context for the model, but higher latency (the user has to wait longer for a response).
+
+### `feature_type` (Default: "mel")
+*   **What it is**: How raw audio waves are converted into an image (spectrogram) for the AI.
+*   **Recommendation**: Always use **"mel"** (Mel Spectrogram). It mimics how the human ear perceives sound (more sensitivity to lower frequencies).
+*   **`n_mels`**: The vertical resolution of the spectrogram.
+    *   **64**: The gold standard. Good balance of detail and speed.
+    *   **40**: Use this for edge devices (ESP32) to reduce computation.
+    *   **80+**: Overkill for simple wakewords, mostly used for complex speech recognition (ASR).
+
+### `normalize_audio` (Default: True)
+*   **What it is**: Adjusts the volume of every clip to a standard level.
+*   **Why it matters**: You don't want your model to think that "Loud" = "Wakeword". It should trigger even if you whisper. This setting ensures volume invariance.
+                        """
+                    )
+
+                with gr.Accordion("2. Model Architecture (The Brain)", open=False):
+                    gr.Markdown(
+                        """
+Choosing the right brain for your application is critical.
+
+### `resnet18` (The Powerhouse)
+*   **Description**: A deep convolutional network with "residual connections" that allow it to learn very complex patterns without getting stuck.
+*   **Best For**: **Server-side verification ("The Judge")** or powerful edge devices (Raspberry Pi 4, Jetson Nano).
+*   **Pros**: Highest accuracy, very robust to noise.
+*   **Cons**: Large file size (~45MB), slower inference.
+
+### `mobilenetv3` (The Balanced Choice)
+*   **Description**: Designed specifically for mobile phones. Uses "depthwise separable convolutions" to reduce math operations by ~8x.
+*   **Best For**: **Smartphones, High-end Microcontrollers**.
+*   **Pros**: Fast, lightweight (~3-5MB), good accuracy.
+*   **Cons**: Slightly less robust than ResNet in very noisy environments.
+
+### `tiny_conv` (The Minimalist)
+*   **Description**: A custom, extremely shallow network.
+*   **Best For**: **Low-power Microcontrollers (ESP32, Arduino)**.
+*   **Pros**: Tiny (<100KB), ultra-fast, low battery usage.
+*   **Cons**: Lower accuracy, higher false alarm rate. Intended to be used as a "Sentry" that wakes up a bigger processor.
+
+### `dropout` (Default: 0.2 - 0.5)
+*   **What it is**: During training, we randomly "turn off" a percentage of neurons.
+*   **Why**: This forces the model to not rely on any single feature (like a specific frequency), making it more robust.
+*   **Tuning**:
+    *   **0.2**: Good for large datasets.
+    *   **0.5**: Use if you have a small dataset to prevent overfitting (memorization).
+                        """
+                    )
+
+                with gr.Accordion("3. Training Parameters (The Process)", open=False):
+                    gr.Markdown(
+                        """
+### `batch_size` (Default: 32 - 128)
+*   **What it is**: How many audio clips the model studies at once before updating its brain.
+*   **Trade-off**:
+    *   **Larger (64, 128)**: Faster training, more stable gradient estimates (smoother learning). Requires more GPU VRAM.
+    *   **Smaller (8, 16)**: Uses less memory, but training can be "noisy" and erratic.
+*   **Recommendation**: Set this as high as your GPU allows without crashing (OOM).
+
+### `learning_rate` (Default: 0.001)
+*   **What it is**: The "step size" the model takes when trying to improve.
+*   **Analogy**: Imagine hiking down a mountain in the fog.
+    *   **Too High**: You take giant leaps and might jump over the valley (fail to converge).
+    *   **Too Low**: You take tiny baby steps and it takes forever to reach the bottom.
+*   **Tip**: Use the **Learning Rate Finder** feature in the code to automatically find the perfect starting value.
+
+### `epochs` (Default: 50+)
+*   **What it is**: One full pass through your entire dataset.
+*   **Strategy**: Don't worry about setting this too high. We use **Early Stopping**, which automatically kills the training if the model stops improving for `early_stopping_patience` epochs.
+
+### `optimizer` (Default: AdamW)
+*   **Recommendation**: Stick with **AdamW**. It is the modern standard. It combines the adaptive learning of Adam with better weight decay (regularization) handling, leading to models that generalize better to new data.
+                        """
+                    )
+
+                with gr.Accordion("4. Augmentation (The Secret Sauce)", open=False):
+                    gr.Markdown(
+                        """
+Real-world data is messy. Augmentation simulates this messiness so your model isn't surprised when deployed.
+
+### `background_noise_prob` (Critical!)
+*   **What it is**: The probability of mixing a clean voice sample with background noise (cafe, rain, traffic).
+*   **Recommendation**: Set to **0.5 - 0.7**.
+*   **Why**: Without this, your model will work perfectly in a quiet room but fail immediately if a TV is on.
+
+### `rir_prob` (Room Impulse Response)
+*   **What it is**: Simulates the echo/reverb of different rooms (bathroom, living room, hall).
+*   **Why**: A voice sounds very different in a tiled bathroom vs. a carpeted bedroom. This helps the model ignore those acoustic differences.
+
+### `time_stretch` & `pitch_shift`
+*   **What it is**: Randomly speeding up/slowing down audio and changing the pitch.
+*   **Why**: This simulates different speakers (fast talkers, slow talkers, high/low voices) without needing to actually record 1000 different people.
+                        """
+                    )
+
+            # -------------------------------------------------------------------------
+            # 3. Training & Metrics Deep Dive
+            # -------------------------------------------------------------------------
+            with gr.TabItem("📊 Metrics & Analysis"):
+                gr.Markdown("# Understanding Training Metrics")
+                gr.Markdown("How to read the numbers and diagnose your model's health.")
+
+                with gr.Accordion("The 'Big Three' Metrics", open=True):
+                    gr.Markdown(
+                        """
+### 1. F1 Score (The King of Metrics)
+*   **Definition**: The harmonic mean of Precision and Recall.
+*   **Why it matters**: Accuracy is useless. If you have 990 negative samples and 10 positive samples, a model that predicts "Negative" for everything has 99% accuracy but is useless. F1 Score penalizes this.
+*   **Interpretation**:
+    *   **> 0.90**: Excellent. Production-ready.
+    *   **0.80 - 0.90**: Good. Usable but might need a secondary verification stage.
+    *   **< 0.50**: Poor. The model is confused or the data is bad.
+
+### 2. FPR (False Positive Rate) - "The Annoyance Factor"
+*   **Definition**: Out of all the times the world was silent or people were talking about other things, what percentage of time did the model scream "I heard it!"?
+*   **Target**: You want this as close to **0.00%** as possible.
+*   **Real-world impact**: If FPR is 1%, and your device listens to 1000 windows per hour, it will wake up randomly 10 times an hour. That is unacceptable. **Target < 0.1%**.
+
+### 3. FNR (False Negative Rate) - "The Frustration Factor"
+*   **Definition**: Out of all the times you actually said the wakeword, what percentage of time did the model ignore you?
+*   **Target**: **< 5%**.
+*   **Real-world impact**: If FNR is high, users have to repeat themselves ("Alexa... ALEXA!"). This leads to user frustration and product abandonment.
+                        """
+                    )
+
+                with gr.Accordion("Diagnosing Common Problems", open=True):
+                    gr.Markdown(
+                        """
+### Scenario A: "The Overfit"
+*   **Symptoms**: Training Loss goes DOWN, but Validation Loss goes UP. Training Accuracy is 99%, Validation Accuracy is 80%.
+*   **Diagnosis**: The model is memorizing the training files instead of learning the sound of the word.
+*   **Solution**:
+    1.  Increase **Dropout**.
+    2.  Increase **Weight Decay**.
+    3.  Add more **Augmentation** (Noise, RIR).
+    4.  Get more diverse training data.
+
+### Scenario B: "The Trigger Happy"
+*   **Symptoms**: High Recall (catches the wakeword), but very high False Positive Rate.
+*   **Diagnosis**: The model thinks *everything* is the wakeword. It hasn't learned to discriminate.
+*   **Solution**:
+    1.  Add **Hard Negatives**: Find words that sound like your wakeword (e.g., for "Marvin", record "Carving", "Starving") and add them to the negative dataset.
+    2.  Increase `hard_negative_weight` in the config.
+    3.  Increase the ratio of negative samples in the dataset.
+
+### Scenario C: "The Deaf Model"
+*   **Symptoms**: Loss doesn't decrease. F1 Score stays near 0.
+*   **Diagnosis**: The model isn't learning anything.
+*   **Solution**:
+    1.  Check your data! Are the labels correct? Is the audio silent?
+    2.  Your **Learning Rate** might be too high (exploding) or too low (stuck).
+    3.  Try "Overfitting a single batch": Train on just 10 samples. If it can't learn those perfectly, your code/pipeline is broken.
+                        """
+                    )
+
+            # -------------------------------------------------------------------------
+            # 4. Advanced Technical Reference
+            # -------------------------------------------------------------------------
+            with gr.TabItem("⚙️ Technical Deep Dive"):
+                gr.Markdown("# Under the Hood")
+                gr.Markdown("Detailed explanation of the advanced algorithms powering this platform.")
+
+                with gr.Accordion("1. CMVN (Cepstral Mean and Variance Normalization)", open=False):
+                    gr.Markdown(
+                        """
+**The Problem**: A recording from a high-end studio microphone has very different statistical properties (mean energy, variance) compared to a recording from a cheap laptop mic. A model trained on one might fail on the other.
+
+**The Solution (CMVN)**:
+Before the model sees the spectrogram, we calculate the statistical Mean and Variance of the entire dataset. We then subtract the Mean and divide by the Variance for every single pixel.
+*   **Result**: All audio, regardless of source, is transformed into a "standard normal distribution" (Mean=0, Std=1).
+*   **Benefit**: The model stops caring about the microphone quality or volume and focuses purely on the *shape* of the sound (phonemes). This typically boosts accuracy by 2-4%.
+                        """
+                    )
+
+                with gr.Accordion("2. Balanced Batch Sampling", open=False):
+                    gr.Markdown(
+                        """
+**The Problem**: In wakeword detection, you usually have 1,000 positive samples and 50,000 negative samples (background noise, speech). If you train naively, 98% of every batch will be "Negative". The model will just learn to always guess "Negative" and achieve 98% accuracy without learning anything.
+
+**The Solution**:
+We use a custom `WeightedRandomSampler` that forces every training batch to have a specific ratio, regardless of the total dataset size.
+*   **Default Ratio**: 1:1:1 (Positive : Negative : Hard Negative).
+*   **Benefit**: The model sees the wakeword just as often as it sees silence, forcing it to learn the difference. This is crucial for convergence.
+                        """
+                    )
+
+                with gr.Accordion("3. Quantization Aware Training (QAT)", open=False):
+                    gr.Markdown(
+                        """
+**The Problem**: Standard AI models use 32-bit floating point numbers (FP32). Microcontrollers (like ESP32) are very slow at FP32 math but very fast at 8-bit integer (INT8) math. Converting a model to INT8 after training usually destroys accuracy.
+
+**The Solution (QAT)**:
+We simulate the rounding errors of INT8 *during training*. The model learns to adapt its weights to be robust to this loss of precision.
+*   **Workflow**:
+    1.  Train normally for a few epochs.
+    2.  Enable QAT. The system inserts "Fake Quantization" nodes into the network.
+    3.  Continue training. The model "heals" itself from the quantization damage.
+    4.  Export. The resulting model is ready for INT8 deployment with almost zero accuracy loss.
+                        """
+                    )
+
+                with gr.Accordion("4. Knowledge Distillation", open=False):
+                    gr.Markdown(
+                        """
+**The Concept**: How do you make a tiny model (Student) as smart as a huge model (Teacher)?
+
+**The Process**:
+1.  We take a massive, pre-trained model (like Wav2Vec 2.0) that understands all human speech perfectly. This is the **Teacher**.
+2.  We have our tiny MobileNet model. This is the **Student**.
+3.  We pass the same audio to both.
+4.  The Student tries to predict the label (Wakeword/Not Wakeword).
+5.  **Crucially**, the Student is also punished if its internal activation patterns don't match the Teacher's patterns.
+6.  **Result**: The Student learns to "think" like the Teacher, achieving higher accuracy than it could ever reach on its own.
+                        """
+                    )
+
+            # -------------------------------------------------------------------------
+            # 5. Troubleshooting & FAQ
+            # -------------------------------------------------------------------------
             with gr.TabItem("🔧 Troubleshooting"):
-                gr.Markdown(
-                    """
-# Troubleshooting Guide
-
-## Installation Issues
-
-### CUDA Not Available
-**Symptoms**: "CUDA is not available" error on startup
-
-**Solutions**:
-1. Check GPU is NVIDIA (AMD not supported)
-2. Install CUDA Toolkit (11.8 or 12.x)
-3. Install PyTorch with CUDA:
-   ```
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-   ```
-4. Verify installation:
-   ```python
-   import torch
-   print(torch.cuda.is_available())
-   print(torch.cuda.get_device_name(0))
-   ```
-
-### Package Conflicts
-**Symptoms**: Import errors, version conflicts
-
-**Solutions**:
-1. Use fresh virtual environment
-2. Install exact versions from requirements.txt
-3. Clear pip cache: `pip cache purge`
-4. Reinstall: `pip install -r requirements.txt --force-reinstall`
-
-## Data Issues
-
-### Corrupted Audio Files
-**Symptoms**: Loading errors, NaN loss
-
-**Solutions**:
-1. Run dataset validation
-2. Check audio with: `soundfile.read(path)`
-3. Remove corrupted files
-4. Re-encode problematic files:
-   ```
-   ffmpeg -i input.wav -ar 16000 -ac 1 output.wav
-   ```
-
-### Imbalanced Dataset
-**Symptoms**: High accuracy but poor FPR/FNR
-
-**Solutions**:
-1. Check class distribution in health report
-2. Collect more minority class samples
-3. Use class weighting: `class_weights='balanced'`
-4. Adjust sampling strategy
-5. Try focal loss
-
-### Data Leakage
-**Symptoms**: Perfect training, poor real-world performance
-
-**Check For**:
-- Same speaker in train/val/test
-- Duplicate files across splits
-- Overlapping recordings
-
-**Solutions**:
-- Speaker-independent splitting
-- Remove duplicates
-- Re-split datasets
-
-## Training Issues
-
-### GPU Out of Memory
-**Symptoms**: "CUDA out of memory" error
-
-**Solutions** (in order):
-1. Reduce batch_size (try 16, 8, 4)
-2. Reduce audio_duration
-3. Smaller model architecture
-4. Enable gradient accumulation
-5. Clear CUDA cache: `torch.cuda.empty_cache()`
-6. Close other GPU programs
-
-### Loss is NaN
-**Symptoms**: Loss becomes NaN after few iterations
-
-**Solutions**:
-1. Lower learning rate (try 1e-4 or 1e-5)
-2. Check for corrupted data
-3. Enable gradient clipping
-4. Use smaller batch size
-5. Check for extreme values in data
-
-### Training is Stuck
-**Symptoms**: Loss not decreasing, accuracy ~50%
-
-**Solutions**:
-1. Check data loading (verify labels)
-2. Increase learning rate
-3. Try different optimizer
-4. Simplify model first
-5. Check for bugs in data pipeline
-
-### Overfitting
-**Symptoms**: Train acc >> Val acc, increasing val_loss
-
-**Solutions**:
-1. More data augmentation
-2. Increase weight_decay (try 1e-3)
-3. Use label_smoothing (0.1-0.2)
-4. Smaller model
-5. Early stopping (lower patience)
-6. Dropout layers
-7. More training data
-
-### Underfitting
-**Symptoms**: Both train/val accuracy low
-
-**Solutions**:
-1. Larger model
-2. More epochs
-3. Higher learning rate
-4. Less regularization
-5. Better features
-6. Check data quality
-
-### Very Slow Training
-**Symptoms**: <100 samples/sec, low GPU utilization
-
-**Solutions**:
-1. Increase batch_size
-2. Reduce num_workers if CPU bottleneck
-3. Enable mixed_precision=True
-4. Check data loading speed
-5. Profile code to find bottleneck
-6. Use faster data augmentation
-
-## Evaluation Issues
-
-### High False Positive Rate
-**Symptoms**: Many false alarms in testing
-
-**Solutions**:
-1. **More hard negatives**: Critical!
-2. Increase hard_negative_weight
-3. Lower detection threshold
-4. Analyze false positives
-5. Add those cases to training data
-6. Check for confusable phonemes
-
-### High False Negative Rate
-**Symptoms**: Missing actual wakewords
-
-**Solutions**:
-1. More positive samples (especially edge cases)
-2. More aggressive augmentation
-3. Higher detection threshold
-4. Check if model is too aggressive
-5. Analyze missed cases
-6. Add those cases to training data
-
-### Poor Real-World Performance
-**Symptoms**: Good test metrics, poor in practice
-
-**Check For**:
-- Train/test mismatch (clean train, noisy reality)
-- Missing acoustic conditions
-- Different microphone characteristics
-- Data leakage
-
-**Solutions**:
-1. Collect real-world data
-2. More diverse training data
-3. Better augmentation
-4. Test in actual deployment environment
-
-### Inconsistent Results
-**Symptoms**: Performance varies across runs
-
-**Solutions**:
-1. Set random seeds
-2. Larger test set
-3. Multiple evaluation runs
-4. Check for dataset size
-5. Ensure deterministic operations
-
-## Export Issues
-
-### ONNX Export Fails
-**Symptoms**: Export error, incompatible operations
-
-**Solutions**:
-1. Use lower opset version (try 13, 12)
-2. Simplify model architecture
-3. Check for unsupported operations
-4. Update onnx package
-5. Export to TorchScript first
-
-### ONNX Model Incorrect
-**Symptoms**: Different outputs from PyTorch vs ONNX
-
-**Solutions**:
-1. Check input preprocessing
-2. Verify shapes and dtypes
-3. Compare outputs numerically
-4. Check for dynamic operations
-5. Validate with test inputs
-
-### Quantized Model Poor Accuracy
-**Symptoms**: Significant accuracy drop after INT8
-
-**Solutions**:
-1. Use calibration data
-2. Try FP16 instead
-3. Quantization-aware training
-4. Check quantization configuration
-5. Some models don't quantize well
-
-## Microphone Issues
-
-### No Audio Captured
-**Symptoms**: Silence when recording
-
-**Solutions**:
-1. Check microphone permissions
-2. Select correct microphone device
-3. Test with system audio recorder
-4. Check sample rate compatibility
-5. Restart application
-
-### Poor Detection with Microphone
-**Symptoms**: Works with files, not with mic
-
-**Possible Causes**:
-- Different audio characteristics
-- Microphone noise
-- Wrong sample rate
-- Buffer size issues
-
-**Solutions**:
-1. Match training conditions
-2. Add more real microphone data
-3. Adjust buffer size
-4. Check preprocessing pipeline
-
-## General Debugging
-
-### Enable Verbose Logging
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-### Check GPU Status
-```python
-from src.config.cuda_utils import get_cuda_validator
-validator = get_cuda_validator()
-print(validator.get_device_info())
-print(validator.get_memory_info())
-```
-
-### Profile Code
-```python
-import torch.profiler as profiler
-# Profile training loop
-```
-
-### Validate Dataset
-- Run health check in Panel 1
-- Manually inspect samples
-- Check statistics
-
-## Getting Help
-
-If issues persist:
-1. Check logs in `logs/` directory
-2. Review configuration in Panel 2
-3. Verify GPU status
-4. Collect error messages
-5. Document reproduction steps
-
-## Common Error Messages
-
-### "Expected tensor to be on CUDA but got CPU"
-- **Cause**: Tensor on wrong device
-- **Fix**: Ensure all tensors moved to GPU
-
-### "RuntimeError: CUDA error: device-side assert triggered"
-- **Cause**: Invalid index, NaN values
-- **Fix**: Check labels, data ranges
-
-### "RuntimeError: cuDNN error: CUDNN_STATUS_NOT_INITIALIZED"
-- **Cause**: cuDNN not properly installed
-- **Fix**: Reinstall CUDA and cuDNN
-
-### "ValueError: Expected input to be 2D, got 3D"
-- **Cause**: Shape mismatch
-- **Fix**: Check model input requirements
-                """
-                )
-
-            # Glossary
-            with gr.TabItem("📖 Glossary"):
-                gr.Markdown(
-                    """
-# Glossary
-
-## A
-
-**Accuracy**: Percentage of correct predictions (TP+TN)/(TP+TN+FP+FN)
-
-**Augmentation**: Transforming training data to increase diversity
-
-## B
-
-**Batch Size**: Number of samples processed together
-
-**Background Noise**: Environmental sounds without speech
-
-## C
-
-**Checkpoint**: Saved model state during training
-
-**Class Imbalance**: Unequal number of samples per class
-
-**CUDA**: NVIDIA's parallel computing platform
-
-**Confusion Matrix**: Table showing prediction vs actual labels
-
-## D
-
-**Dataset Split**: Division into train/validation/test sets
-
-**dB (Decibel)**: Logarithmic unit for sound intensity
-
-## E
-
-**Early Stopping**: Halting training when validation stops improving
-
-**Epoch**: One complete pass through training dataset
-
-## F
-
-**False Positive (FP)**: Negative sample classified as positive
-
-**False Negative (FN)**: Positive sample classified as negative
-
-**F1-Score**: Harmonic mean of precision and recall
-
-**FPR (False Positive Rate)**: FP / (FP + TN)
-
-**FNR (False Negative Rate)**: FN / (TP + FN)
-
-## G
-
-**Gradient Clipping**: Limiting gradient magnitude to prevent exploding gradients
-
-**GPU**: Graphics Processing Unit (required for this platform)
-
-## H
-
-**Hard Negative**: Negative sample similar to positive
-
-**Hyperparameter**: Configuration parameter set before training
-
-## L
-
-**Label Smoothing**: Softening hard targets (0.9 instead of 1.0)
-
-**Learning Rate**: Step size for weight updates
-
-**Loss Function**: Measures prediction error
-
-## M
-
-**MFCC**: Mel-Frequency Cepstral Coefficients (audio features)
-
-**Mixed Precision**: Using FP16 and FP32 together
-
-## O
-
-**ONNX**: Open Neural Network Exchange (model format)
-
-**Optimizer**: Algorithm for updating model weights (Adam, SGD)
-
-**Overfitting**: Model memorizes training data, poor generalization
-
-## P
-
-**Precision**: TP / (TP + FP) - When model says positive, how often correct?
-
-## Q
-
-**Quantization**: Reducing model precision (FP32→FP16→INT8)
-
-## R
-
-**Recall**: TP / (TP + FN) - Of all positives, how many caught?
-
-**Regularization**: Techniques to prevent overfitting
-
-**RIR**: Room Impulse Response (acoustic room characteristics)
-
-**ROC Curve**: Receiver Operating Characteristic curve
-
-## S
-
-**Sample Rate**: Audio samples per second (Hz)
-
-**Scheduler**: Adjusts learning rate during training
-
-**SNR**: Signal-to-Noise Ratio
-
-**Spectrogram**: Visual representation of audio frequencies over time
-
-## T
-
-**Threshold**: Confidence cutoff for positive classification
-
-**True Positive (TP)**: Positive sample correctly classified
-
-**True Negative (TN)**: Negative sample correctly classified
-
-## U
-
-**Underfitting**: Model too simple, poor performance on train and val
-
-## V
-
-**Validation Set**: Data for tuning hyperparameters (not used in training)
-
-## W
-
-**Wakeword**: Trigger phrase for voice activation
-
-**Weight Decay**: L2 regularization strength
-
-## Acronyms
-
-- **AI**: Artificial Intelligence
-- **CNN**: Convolutional Neural Network
-- **cuDNN**: CUDA Deep Neural Network library
-- **DNN**: Deep Neural Network
-- **FP16**: 16-bit Floating Point
-- **FP32**: 32-bit Floating Point
-- **INT8**: 8-bit Integer
-- **ML**: Machine Learning
-- **NN**: Neural Network
-- **OOM**: Out Of Memory
-- **TCN**: Temporal Convolutional Network
-- **RNN**: Recurrent Neural Network
-- **LSTM**: Long Short-Term Memory
-- **GRU**: Gated Recurrent Unit
-                """
-                )
+                gr.Markdown("# Troubleshooting Guide")
+                
+                with gr.Accordion("Installation & Environment", open=True):
+                    gr.Markdown(
+                        """
+### "CUDA not available" / Training on CPU
+*   **Cause**: PyTorch cannot see your NVIDIA GPU.
+*   **Solution**:
+    1.  Open a terminal.
+    2.  Run `nvidia-smi`. If this fails, install NVIDIA Drivers.
+    3.  Reinstall PyTorch with the correct CUDA version:
+        `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
+
+### "ImportError: dll load failed" (Windows)
+*   **Cause**: Missing C++ redistributables or corrupted environment.
+*   **Solution**: Install the "Microsoft Visual C++ Redistributable" and recreate your Conda/Python environment.
+                        """
+                    )
+
+                with gr.Accordion("Training Errors", open=True):
+                    gr.Markdown(
+                        """
+### "CUDA Out of Memory" (OOM)
+*   **Cause**: The batch size is too large for your GPU's VRAM.
+*   **Solutions (in order)**:
+    1.  Reduce `batch_size` (e.g., 64 -> 32 -> 16).
+    2.  Enable `mixed_precision` in the config (uses 50% less memory).
+    3.  Reduce `audio_duration` (e.g., 1.5s -> 1.0s).
+    4.  Switch to a smaller model architecture (`mobilenetv3`).
+
+### Loss is NaN (Not a Number)
+*   **Cause**: The math exploded. Usually because the Learning Rate is too high.
+*   **Solution**:
+    1.  Reduce `learning_rate` by 10x (e.g., 0.001 -> 0.0001).
+    2.  Check your dataset for corrupted audio files (0-byte files or pure static).
+    3.  Enable `gradient_clipping` in the config.
+                        """
+                    )
+
+                with gr.Accordion("Deployment Issues", open=True):
+                    gr.Markdown(
+                        """
+### "Model works on PC but fails on ESP32"
+*   **Cause**: Domain mismatch or quantization loss.
+*   **Solution**:
+    1.  Did you use **QAT**? If not, the INT8 conversion probably destroyed the accuracy.
+    2.  **Microphone Mismatch**: The ESP32 mic is likely much worse than your PC mic. You need to record training data *using the ESP32 mic* or apply heavy augmentation (Bandpass filter) to simulate it.
+
+### "Too many false alarms in the living room"
+*   **Cause**: The model wasn't trained on "TV noise".
+*   **Solution**:
+    1.  Download a "TV/Movie Audio" dataset.
+    2.  Add it to your `background_noise` folder.
+    3.  Retrain. The model needs to learn that "people talking on TV" != "Wakeword".
+                        """
+                    )
 
         gr.Markdown("---")
         gr.Markdown(
-            "*This documentation is comprehensive. Use the tabs above to navigate topics.*"
+            "*This documentation is automatically generated and updated based on the latest system capabilities.*"
         )
 
     return panel

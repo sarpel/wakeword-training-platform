@@ -14,6 +14,7 @@ import torchaudio
 from tqdm import tqdm
 
 from src.data.vad import EnergyVAD
+from src.security import validate_path
 
 logger = structlog.get_logger(__name__)
 
@@ -42,9 +43,13 @@ class VADFilter:
         Returns:
             Path to new manifest
         """
-        manifest_path = Path(manifest_path)
+        # Validate manifest path
+        manifest_path = validate_path(manifest_path, must_exist=True, must_be_file=True)
         if output_path is None:
             output_path = manifest_path.parent / f"{manifest_path.stem}_cleaned.json"
+        else:
+            # Validate output path
+            output_path = validate_path(output_path)
 
         with open(manifest_path, "r") as f:
             data = json.load(f)

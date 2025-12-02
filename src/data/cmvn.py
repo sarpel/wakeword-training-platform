@@ -11,6 +11,8 @@ import structlog
 import torch
 import torch.nn as nn
 
+from src.security import validate_path
+
 logger = structlog.get_logger(__name__)
 
 
@@ -178,6 +180,9 @@ class CMVN(nn.Module):
         if save_path is None:
             raise ValueError("No stats path provided")
 
+        # Validate path
+        save_path = validate_path(save_path)
+
         if not self._initialized:
             raise RuntimeError("No stats to save.")
 
@@ -200,8 +205,9 @@ class CMVN(nn.Module):
         load_path = Path(path) if path else self.stats_path
         if load_path is None:
             raise ValueError("No stats path provided")
-        if not load_path.exists():
-            raise FileNotFoundError(f"Stats file not found: {load_path}")
+
+        # Validate path
+        load_path = validate_path(load_path, must_exist=True, must_be_file=True)
 
         with open(load_path, "r") as f:
             stats_dict = json.load(f)
