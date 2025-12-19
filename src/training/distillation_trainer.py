@@ -74,13 +74,25 @@ class DistillationTrainer(Trainer):
         targets: torch.Tensor,
         inputs: Optional[torch.Tensor] = None,
         processed_inputs: Optional[torch.Tensor] = None,
+        is_hard_negative: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Compute loss with distillation component.
 
         Loss = (1 - alpha) * StudentLoss + alpha * KL(Student || Teacher)
+
+        Args:
+            outputs: Student model predictions (logits)
+            targets: Ground truth labels
+            inputs: Raw audio waveform (for teacher model)
+            processed_inputs: Processed features (for embedding extraction)
+            is_hard_negative: Tensor indicating hard negative samples
+
+        Returns:
+            Combined loss (student + distillation)
         """
-        student_loss = super().compute_loss(outputs, targets, inputs, processed_inputs)
+        # Compute student loss with hard negative weighting
+        student_loss = super().compute_loss(outputs, targets, inputs, processed_inputs, is_hard_negative)
 
         if not self.distillation_enabled or self.teacher is None:
             return student_loss

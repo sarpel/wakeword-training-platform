@@ -18,6 +18,7 @@ class ProjectPaths:
     SRC: Path = ROOT / "src"
     MODELS: Path = ROOT / "models"
     CONFIGS: Path = ROOT / "configs"
+    PROFILES: Path = CONFIGS / "profiles"
 
     # Data subdirectories
     RAW_DATA: Path = DATA / "raw"
@@ -46,6 +47,7 @@ class ProjectPaths:
             cls.CHECKPOINTS,
             cls.EXPORTS,
             cls.CONFIGS,
+            cls.PROFILES,
         ]:
             path.mkdir(parents=True, exist_ok=True)
 

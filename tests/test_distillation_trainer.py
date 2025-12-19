@@ -76,9 +76,9 @@ class TestDistillationTrainer(unittest.TestCase):
         outputs = torch.randn(2, 2)
         targets = torch.randint(0, 2, (2,))
         
-        # Call compute_loss
-        loss = trainer.compute_loss(outputs, targets, inputs=raw_inputs)
-        
+        # Call compute_loss (with optional is_hard_negative parameter)
+        loss = trainer.compute_loss(outputs, targets, inputs=raw_inputs, is_hard_negative=None)
+
         # Verify teacher was called
         mock_teacher_instance.assert_called_once_with(raw_inputs)
         
@@ -114,9 +114,9 @@ class TestDistillationTrainer(unittest.TestCase):
         outputs = torch.randn(2, 2)
         targets = torch.randint(0, 2, (2,))
         
-        # Call compute_loss
-        loss = trainer.compute_loss(outputs, targets, inputs=spectrogram_inputs)
-        
+        # Call compute_loss (with optional is_hard_negative parameter)
+        loss = trainer.compute_loss(outputs, targets, inputs=spectrogram_inputs, is_hard_negative=None)
+
         # Verify teacher was NOT called
         mock_teacher_instance.assert_not_called()
         print("Distillation skip verified: Teacher NOT called with spectrogram inputs.")
