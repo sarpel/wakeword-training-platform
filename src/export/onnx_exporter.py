@@ -186,7 +186,8 @@ class ONNXExporter:
                 str(output_folder),
                 "-ois",
                 f"input:{input_shape_str}",
-                "-v",  # verbose
+                "-v",
+                "info",  # verbose level
             ]
 
             logger.info(f"Running command: {' '.join(cmd)}")
@@ -332,6 +333,7 @@ def export_model_to_onnx(
 
     # Create model
     from src.models.architectures import create_model
+    from src.training.qat_utils import prepare_model_for_qat, cleanup_qat_for_export
 
     # Calculate input size for model
     input_samples = int(config.data.sample_rate * config.data.audio_duration)
@@ -353,27 +355,40 @@ def export_model_to_onnx(
         input_channels=1,
     )
 
+    # Handle QAT checkpoints
+    is_qat_model = False
+    if hasattr(config, "qat") and config.qat.enabled:
+        logger.info(f"Detected QAT configuration (backend: {config.qat.backend})")
+        # Prepare model for QAT to match checkpoint structure
+        model = prepare_model_for_qat(model, config.qat)
+        is_qat_model = True
+
     # Load weights
     state_dict = checkpoint["model_state_dict"]
 
-    # Handle QAT checkpoints loaded into FP32 models
-    # Filter out quantization keys that are not in the model
-    model_keys = set(model.state_dict().keys())
-    checkpoint_keys = set(state_dict.keys())
-    unexpected_keys = checkpoint_keys - model_keys
+    # Handle QAT checkpoints loaded into FP32 models (if NOT prepared above)
+    if not is_qat_model:
+        # Filter out quantization keys that are not in the model
+        model_keys = set(model.state_dict().keys())
+        checkpoint_keys = set(state_dict.keys())
+        unexpected_keys = checkpoint_keys - model_keys
 
-    if unexpected_keys:
-        # Check if these are quantization keys
-        quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
-        
-        if quant_keys:
-            logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
-            # Filter the state dict
-            state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
+        if unexpected_keys:
+            # Check if these are quantization keys
+            quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
+            
+            if quant_keys:
+                logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
+                # Filter the state dict
+                state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
 
     model.load_state_dict(state_dict, strict=True)
     model.to(device)
     model.eval()
+
+    # Cleanup QAT model for export (replace unsupported fused ops)
+    if is_qat_model:
+        model = cleanup_qat_for_export(model)
 
     logger.info(f"Model loaded: {config.model.architecture}")
 
@@ -395,6 +410,12 @@ def export_model_to_onnx(
 
     # Create exporter
     exporter = ONNXExporter(model, sample_input_shape, device)
+
+    # Disable PTQ if model is already QAT
+    if is_qat_model and (quantize_int8 or quantize_fp16):
+        logger.warning("Disabling post-training quantization (PTQ) because model is already QAT-trained.")
+        quantize_int8 = False
+        quantize_fp16 = False
 
     # Create export config
     export_config = ExportConfig(

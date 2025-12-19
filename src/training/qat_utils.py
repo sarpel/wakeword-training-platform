@@ -92,3 +92,89 @@ def convert_model_to_quantized(model: nn.Module) -> nn.Module:
     # Mypy: Explicitly annotate return type to avoid Any
     quantized_model: nn.Module = torch.quantization.convert(model, inplace=False)
     return quantized_model
+
+
+def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
+    """
+    Replace FusedMovingAvgObsFakeQuantize modules with standard FakeQuantize modules.
+    This is necessary for ONNX export, as the 'aten::fused_moving_avg_obs_fake_quant'
+    operator is often not supported.
+
+    Args:
+        model: The QAT model (in eval mode)
+
+    Returns:
+        The cleaned model ready for export
+    """
+    logger.info("Cleaning up QAT model for ONNX export (replacing Fused ops)...")
+
+    # Try to import the Fused class to check against
+    try:
+        from torch.ao.quantization.fake_quantize import (
+            FakeQuantize,
+            FusedMovingAvgObsFakeQuantize,
+        )
+    except ImportError:
+        try:
+            # Fallback for older PyTorch
+            from torch.quantization.fake_quantize import (
+                FakeQuantize,
+                FusedMovingAvgObsFakeQuantize,
+            )
+        except ImportError:
+            logger.warning("Could not import FusedMovingAvgObsFakeQuantize. Skipping cleanup.")
+            return model
+
+    from torch.ao.quantization.observer import (
+        MovingAverageMinMaxObserver,
+        MovingAveragePerChannelMinMaxObserver,
+    )
+
+    # Iterate and replace
+    for name, module in model.named_children():
+        if isinstance(module, FusedMovingAvgObsFakeQuantize):
+            logger.info(f"Replacing fused fake quant: {name}")
+            
+            # Select appropriate observer and kwargs
+            if hasattr(module, "ch_axis"):
+                obs_cls = MovingAveragePerChannelMinMaxObserver
+                kwargs = {
+                    "observer": obs_cls,
+                    "quant_min": module.quant_min,
+                    "quant_max": module.quant_max,
+                    "dtype": module.dtype,
+                    "qscheme": module.qscheme,
+                    "ch_axis": module.ch_axis,
+                }
+            else:
+                obs_cls = MovingAverageMinMaxObserver
+                kwargs = {
+                    "observer": obs_cls,
+                    "quant_min": module.quant_min,
+                    "quant_max": module.quant_max,
+                    "dtype": module.dtype,
+                    "qscheme": module.qscheme,
+                }
+            
+            new_fq = FakeQuantize(**kwargs)
+            
+            # Copy state (scale, zero_point)
+            new_fq.register_buffer("scale", module.scale)
+            new_fq.register_buffer("zero_point", module.zero_point)
+            
+            # Explicitly set ch_axis on the module if present
+            if hasattr(module, "ch_axis"):
+                new_fq.ch_axis = module.ch_axis
+            
+            # Disable observer and enable fake_quant
+            new_fq.observer_enabled[0] = 0
+            new_fq.fake_quant_enabled[0] = 1
+            
+            # Replace in parent
+            setattr(model, name, new_fq)
+        
+        else:
+            # Recursive call
+            cleanup_qat_for_export(module)
+
+    return model
