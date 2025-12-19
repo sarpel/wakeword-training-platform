@@ -8,6 +8,7 @@ from typing import Any, List, cast
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 try:
     import torchvision.models as models
@@ -29,6 +30,7 @@ class ResNet18Wakeword(nn.Module):
         pretrained: bool = False,
         dropout: float = 0.3,
         input_channels: int = 1,
+        **kwargs: Any  # Accept additional kwargs for flexibility
     ):
         """
         Initialize ResNet18 for wakeword detection
@@ -38,6 +40,7 @@ class ResNet18Wakeword(nn.Module):
             pretrained: Use ImageNet pretrained weights
             dropout: Dropout rate
             input_channels: Number of input channels (1 for mono spectrogram)
+            **kwargs: Additional unused parameters for compatibility
         """
         super().__init__()
 
@@ -93,7 +96,10 @@ class ResNet18Wakeword(nn.Module):
 
 
 class MobileNetV3Wakeword(nn.Module):
-    """MobileNetV3-Small adapted for wakeword detection"""
+    """
+    MobileNetV3 architecture for wakeword detection with hybrid capabilities
+    Supports adding LSTM/GRU layers and custom MLP heads based on config
+    """
 
     def __init__(
         self,
@@ -101,15 +107,21 @@ class MobileNetV3Wakeword(nn.Module):
         pretrained: bool = False,
         dropout: float = 0.3,
         input_channels: int = 1,
+        **kwargs: Any
     ):
         """
-        Initialize MobileNetV3 for wakeword detection
+        Initialize MobileNetV3 for wakeword detection with hybrid architecture support
 
         Args:
             num_classes: Number of output classes
             pretrained: Use ImageNet pretrained weights
             dropout: Dropout rate
             input_channels: Number of input channels
+            **kwargs: Additional arguments including:
+                - bidirectional: Whether to use bidirectional RNN (for LSTM/GRU)
+                - hidden_size: Hidden size for RNN layers
+                - num_layers: Number of RNN layers  
+                - cddnn_hidden_layers: List of hidden layer sizes for custom MLP head
         """
         super().__init__()
 
@@ -128,35 +140,129 @@ class MobileNetV3Wakeword(nn.Module):
                 input_channels, 16, kernel_size=3, stride=2, padding=1, bias=False
             )
 
-        # Replace classifier
+        # Extract the feature extractor (without the classifier)
+        self.features = self.mobilenet.features
+        
+        # Get the number of output features from the feature extractor
         num_features = self.mobilenet.classifier[0].in_features
-        self.mobilenet.classifier = nn.Sequential(
-            nn.Linear(num_features, 1024),
-            nn.Hardswish(),
-            nn.Dropout(dropout),
-            nn.Linear(1024, num_classes),
-        )
+        
+        # Build hybrid head based on config
+        head_layers = []
+        
+        # Add RNN layers if configured
+        self.use_rnn = kwargs.get("num_layers", 0) > 0
+        if self.use_rnn:
+            rnn_type = kwargs.get("rnn_type", "lstm").lower()
+            hidden_size = kwargs.get("hidden_size", 128)
+            num_layers = kwargs.get("num_layers", 2)
+            bidirectional = kwargs.get("bidirectional", True)
+            
+            if rnn_type == "lstm":
+                self.rnn = nn.LSTM(
+                    input_size=num_features,
+                    hidden_size=hidden_size,
+                    num_layers=num_layers,
+                    bidirectional=bidirectional,
+                    dropout=dropout if num_layers > 1 else 0,
+                    batch_first=True
+                )
+            else:  # gru
+                self.rnn = nn.GRU(
+                    input_size=num_features,
+                    hidden_size=hidden_size,
+                    num_layers=num_layers,
+                    bidirectional=bidirectional,
+                    dropout=dropout if num_layers > 1 else 0,
+                    batch_first=True
+                )
+            
+            # Update num_features for the next layer
+            num_features = hidden_size * (2 if bidirectional else 1)
+        else:
+            self.rnn = None
+        
+        # Build custom MLP head
+        cddnn_hidden_layers = kwargs.get("cddnn_hidden_layers", [1024])
+        
+        # Build the MLP layers
+        for hidden_size in cddnn_hidden_layers:
+            head_layers.append(nn.Linear(num_features, hidden_size))
+            head_layers.append(nn.Hardswish())
+            head_layers.append(nn.Dropout(dropout))
+            num_features = hidden_size
+        
+        # Add final classification layer
+        head_layers.append(nn.Linear(num_features, num_classes))
+        
+        # Create the classifier head
+        self.classifier = nn.Sequential(*head_layers)
+        
+        # Store whether to use adaptive pooling
+        self.use_adaptive_pool = True
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass
 
         Args:
-            x: Input tensor (batch, channels, height, width)
+            x: Input tensor of shape (batch, channels, height, width)
 
         Returns:
-            Output logits (batch, num_classes)
+            Output tensor of shape (batch, num_classes)
         """
-        return cast(torch.Tensor, self.mobilenet(x))
+        # Extract features
+        x = self.features(x)
+        
+        # Adaptive average pooling
+        if self.use_adaptive_pool:
+            x = F.adaptive_avg_pool2d(x, (1, 1))
+        
+        # Flatten
+        x = x.view(x.size(0), -1)
+        
+        # Apply RNN if configured
+        if self.rnn is not None:
+            # Reshape for RNN: (batch, seq_len=1, features)
+            x = x.unsqueeze(1)
+            x, _ = self.rnn(x)
+            # Take the last output
+            x = x[:, -1, :]
+        
+        # Apply classifier head
+        x = self.classifier(x)
+        
+        return x
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Get feature embeddings
+        Get embeddings (features before final classification layer)
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Embedding tensor
         """
-        # MobileNetV3 features
-        x = self.mobilenet.features(x)
-        x = self.mobilenet.avgpool(x)
-        x = torch.flatten(x, 1)
+        # Extract features
+        x = self.features(x)
+        
+        # Adaptive average pooling
+        if self.use_adaptive_pool:
+            x = F.adaptive_avg_pool2d(x, (1, 1))
+        
+        # Flatten
+        x = x.view(x.size(0), -1)
+        
+        # Apply RNN if configured
+        if self.rnn is not None:
+            x = x.unsqueeze(1)
+            x, _ = self.rnn(x)
+            x = x[:, -1, :]
+        
+        # Apply all layers except the last one
+        for layer in self.classifier[:-1]:
+            x = layer(x)
+        
         return x
 
 
@@ -171,6 +277,7 @@ class LSTMWakeword(nn.Module):
         num_classes: int = 2,
         bidirectional: bool = True,
         dropout: float = 0.3,
+        **kwargs: Any  # Accept additional kwargs for flexibility
     ):
         """
         Initialize LSTM for wakeword detection
@@ -182,6 +289,7 @@ class LSTMWakeword(nn.Module):
             num_classes: Number of output classes
             bidirectional: Use bidirectional LSTM
             dropout: Dropout rate
+            **kwargs: Additional unused parameters for compatibility
         """
         super().__init__()
 
@@ -273,6 +381,7 @@ class GRUWakeword(nn.Module):
         num_classes: int = 2,
         bidirectional: bool = True,
         dropout: float = 0.3,
+        **kwargs: Any  # Accept additional kwargs for flexibility
     ):
         """
         Initialize GRU for wakeword detection
@@ -284,6 +393,7 @@ class GRUWakeword(nn.Module):
             num_classes: Number of output classes
             bidirectional: Use bidirectional GRU
             dropout: Dropout rate
+            **kwargs: Additional unused parameters for compatibility
         """
         super().__init__()
 
@@ -485,23 +595,36 @@ class TCNWakeword(nn.Module):
     def __init__(
         self,
         input_size: int = 40,
-        num_channels: list = [64, 128, 256],
+        num_channels: list = None,
         kernel_size: int = 3,
         num_classes: int = 2,
         dropout: float = 0.3,
+        **kwargs: Any
     ):
         """
         Initialize TCN for wakeword detection
 
         Args:
             input_size: Input feature dimension
-            num_channels: List of channel sizes
-            kernel_size: Convolution kernel size
+            num_channels: List of channel sizes (if None, uses tcn_num_channels from kwargs or defaults)
+            kernel_size: Convolution kernel size (can be overridden by tcn_kernel_size in kwargs)
             num_classes: Number of output classes
-            dropout: Dropout rate
+            dropout: Dropout rate (can be overridden by tcn_dropout in kwargs)
+            **kwargs: Additional config parameters including:
+                - tcn_num_channels: List of channel sizes for TCN blocks
+                - tcn_kernel_size: Kernel size for temporal convolutions
+                - tcn_dropout: Dropout rate for TCN blocks
         """
         super().__init__()
 
+        # Use config parameters from kwargs if available
+        if num_channels is None:
+            num_channels = kwargs.get("tcn_num_channels", [64, 128, 256])
+        
+        # Override with kwargs if present
+        kernel_size = kwargs.get("tcn_kernel_size", kernel_size)
+        dropout = kwargs.get("tcn_dropout", dropout)
+        
         self.input_size = input_size  # Store input size for verification/testing
         self.tcn = TemporalConvNet(
             input_channels=input_size,
@@ -569,36 +692,78 @@ class TCNWakeword(nn.Module):
 
 class TinyConvWakeword(nn.Module):
     """
-    Tiny CNN for embedded devices (ESP32/Arduino)
-    Size: ~50KB parameters
-    Compute: ~2M FLOPs
+    Tiny Convolutional Network for wakeword detection with dynamic configuration
+    Extremely lightweight architecture suitable for edge devices
     """
 
     def __init__(self, num_classes: int = 2, input_channels: int = 1, dropout: float = 0.3, **kwargs: Any) -> None:
+        """
+        Initialize TinyConvWakeword with dynamic channel configuration
+
+        Args:
+            num_classes: Number of output classes
+            input_channels: Number of input channels
+            dropout: Dropout rate
+            **kwargs: Additional arguments including:
+                - tcn_num_channels: List of channel sizes for each conv block
+                - kernel_size: Kernel size for convolutions (default: 3)
+                - tcn_dropout: Dropout rate for conv layers (overrides dropout)
+        """
         super().__init__()
-        self.features = nn.Sequential(
-            # Block 1
-            nn.Conv2d(input_channels, 16, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-            # Block 2
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            # Block 3 (Depthwise Separable mostly for efficiency, here just standard small)
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            # Block 4
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+        
+        # Get channel configuration from kwargs or use defaults
+        channels = kwargs.get("tcn_num_channels", [16, 32, 64, 64])
+        kernel_size = kwargs.get("kernel_size", 3)
+        conv_dropout = kwargs.get("tcn_dropout", dropout)
+        
+        # Build dynamic feature extraction layers
+        layers = []
+        in_channels = input_channels
+        
+        for i, out_channels in enumerate(channels):
+            # Determine stride (2 for first few layers to downsample, 1 for later layers)
+            stride = 2 if i < min(3, len(channels) - 1) else 1
+            
+            # Add convolutional block
+            layers.append(nn.Conv2d(
+                in_channels, out_channels, 
+                kernel_size=kernel_size, 
+                stride=stride, 
+                padding=kernel_size // 2,  # Same padding
+                bias=False
+            ))
+            layers.append(nn.BatchNorm2d(out_channels))
+            layers.append(nn.ReLU(inplace=True))
+            
+            # Add dropout between conv blocks (except for the last block)
+            if i < len(channels) - 1 and conv_dropout > 0:
+                layers.append(nn.Dropout2d(conv_dropout))
+            
+            in_channels = out_channels
+        
+        self.features = nn.Sequential(*layers)
+        
+        # Global average pooling
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        
+        # Classifier with final channel count
+        final_channels = channels[-1] if channels else 64
+        self.classifier = nn.Sequential(
+            nn.Flatten(), 
+            nn.Dropout(dropout),
+            nn.Linear(final_channels, num_classes)
         )
 
-        self.pool = nn.AdaptiveAvgPool2d(1)
-        self.classifier = nn.Sequential(nn.Flatten(), nn.Dropout(dropout), nn.Linear(64, num_classes))
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass
+
+        Args:
+            x: Input tensor of shape (batch, channels, height, width)
+
+        Returns:
+            Output tensor of shape (batch, num_classes)
+        """
         x = self.features(x)
         x = self.pool(x)
         x = self.classifier(x)
@@ -614,21 +779,40 @@ class CDDNNWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int,
-        hidden_layers: list = [512, 256, 128],
+        input_size: int = None,
+        hidden_layers: list = None,
         num_classes: int = 2,
         dropout: float = 0.3,
+        **kwargs: Any
     ):
         """
-        Initialize CD-DNN
+        Initialize CD-DNN with dynamic configuration
 
         Args:
             input_size: Total input size (features * context_frames)
             hidden_layers: List of hidden layer sizes
             num_classes: Number of output classes
             dropout: Dropout rate
+            **kwargs: Additional config parameters including:
+                - cddnn_hidden_layers: List of hidden layer sizes
+                - cddnn_context_frames: Number of context frames
+                - cddnn_dropout: Dropout rate for CD-DNN layers
         """
         super().__init__()
+        
+        # Use config parameters from kwargs if not provided directly
+        if hidden_layers is None:
+            hidden_layers = kwargs.get("cddnn_hidden_layers", [512, 256, 128])
+        
+        # Override dropout if specified in kwargs
+        dropout = kwargs.get("cddnn_dropout", dropout)
+        
+        # Calculate input size if not provided
+        if input_size is None:
+            # Get from kwargs or use default
+            feature_size = kwargs.get("input_size", 40)
+            context_frames = kwargs.get("cddnn_context_frames", 50)
+            input_size = feature_size * context_frames
 
         layers: list[nn.Module] = []
         in_features = input_size
@@ -688,60 +872,44 @@ def create_model(architecture: str, num_classes: int = 2, pretrained: bool = Fal
         return ResNet18Wakeword(
             num_classes=num_classes,
             pretrained=pretrained,
-            dropout=kwargs.get("dropout", 0.3),
-            input_channels=kwargs.get("input_channels", 1),
+            **kwargs  # Pass all kwargs to model
         )
 
     elif architecture == "mobilenetv3":
         return MobileNetV3Wakeword(
             num_classes=num_classes,
             pretrained=pretrained,
-            dropout=kwargs.get("dropout", 0.3),
-            input_channels=kwargs.get("input_channels", 1),
+            **kwargs  # Pass all kwargs to model
         )
 
     elif architecture == "lstm":
         return LSTMWakeword(
-            input_size=kwargs.get("input_size", 40),
-            hidden_size=kwargs.get("hidden_size", 128),
-            num_layers=kwargs.get("num_layers", 2),
             num_classes=num_classes,
-            bidirectional=kwargs.get("bidirectional", True),
-            dropout=kwargs.get("dropout", 0.3),
+            **kwargs  # Pass all kwargs to model
         )
 
     elif architecture == "gru":
         return GRUWakeword(
-            input_size=kwargs.get("input_size", 40),
-            hidden_size=kwargs.get("hidden_size", 128),
-            num_layers=kwargs.get("num_layers", 2),
             num_classes=num_classes,
-            bidirectional=kwargs.get("bidirectional", True),
-            dropout=kwargs.get("dropout", 0.3),
+            **kwargs  # Pass all kwargs to model
         )
 
     elif architecture == "tcn":
         return TCNWakeword(
-            input_size=kwargs.get("input_size", 40),
-            num_channels=kwargs.get("tcn_num_channels", [64, 128, 256]),
-            kernel_size=kwargs.get("tcn_kernel_size", 3),
             num_classes=num_classes,
-            dropout=kwargs.get("tcn_dropout", 0.3),
+            **kwargs  # Pass all kwargs to model
         )
 
     elif architecture == "tiny_conv":
         return TinyConvWakeword(
             num_classes=num_classes,
-            input_channels=kwargs.get("input_channels", 1),
-            dropout=kwargs.get("dropout", 0.3),
+            **kwargs  # Pass all kwargs to model
         )
 
     elif architecture == "cd_dnn":
         return CDDNNWakeword(
-            input_size=kwargs.get("input_size", 40 * 50),  # Default: 40 features * 50 frames
-            hidden_layers=kwargs.get("cddnn_hidden_layers", [512, 256, 128]),
             num_classes=num_classes,
-            dropout=kwargs.get("cddnn_dropout", 0.3),
+            **kwargs  # Pass all kwargs to model
         )
 
     else:
