@@ -468,6 +468,11 @@ def start_training(
                 config.augmentation.noise_snr_max,
             ),
             "rir_prob": config.augmentation.rir_prob,
+            "time_shift_prob": getattr(config.augmentation, "time_shift_prob", 0.0),
+            "time_shift_range_ms": (
+                getattr(config.augmentation, "time_shift_min_ms", -100),
+                getattr(config.augmentation, "time_shift_max_ms", 100),
+            ),
         }
 
         # Normalize feature type name
@@ -659,6 +664,11 @@ def start_training(
             dropout=config.model.dropout,
             input_size=input_size,  # Pass calculated input size
             input_channels=1,       # Always 1 for spectrograms
+            hidden_size=config.model.hidden_size,
+            num_layers=config.model.num_layers,
+            bidirectional=config.model.bidirectional,
+            tcn_num_channels=getattr(config.model, "tcn_num_channels", None),
+            tcn_kernel_size=getattr(config.model, "tcn_kernel_size", 3),
         )
 
         training_state.add_log(f"Model created: {config.model.architecture} (Input Size: {input_size})")

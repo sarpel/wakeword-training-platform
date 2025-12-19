@@ -107,6 +107,9 @@ class MobileNetV3Wakeword(nn.Module):
         pretrained: bool = False,
         dropout: float = 0.3,
         input_channels: int = 1,
+        hidden_size: int = 128,
+        num_layers: int = 0,
+        bidirectional: bool = True,
         **kwargs: Any
     ):
         """
@@ -117,11 +120,10 @@ class MobileNetV3Wakeword(nn.Module):
             pretrained: Use ImageNet pretrained weights
             dropout: Dropout rate
             input_channels: Number of input channels
-            **kwargs: Additional arguments including:
-                - bidirectional: Whether to use bidirectional RNN (for LSTM/GRU)
-                - hidden_size: Hidden size for RNN layers
-                - num_layers: Number of RNN layers  
-                - cddnn_hidden_layers: List of hidden layer sizes for custom MLP head
+            hidden_size: Hidden size for RNN layers
+            num_layers: Number of RNN layers (0 to disable)
+            bidirectional: Whether to use bidirectional RNN
+            **kwargs: Additional arguments
         """
         super().__init__()
 
@@ -150,12 +152,10 @@ class MobileNetV3Wakeword(nn.Module):
         head_layers = []
         
         # Add RNN layers if configured
-        self.use_rnn = kwargs.get("num_layers", 0) > 0
+        self.use_rnn = num_layers > 0
         if self.use_rnn:
             rnn_type = kwargs.get("rnn_type", "lstm").lower()
-            hidden_size = kwargs.get("hidden_size", 128)
-            num_layers = kwargs.get("num_layers", 2)
-            bidirectional = kwargs.get("bidirectional", True)
+            # hidden_size, num_layers, bidirectional are now passed as args
             
             if rnn_type == "lstm":
                 self.rnn = nn.LSTM(
@@ -696,7 +696,14 @@ class TinyConvWakeword(nn.Module):
     Extremely lightweight architecture suitable for edge devices
     """
 
-    def __init__(self, num_classes: int = 2, input_channels: int = 1, dropout: float = 0.3, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        num_classes: int = 2,
+        input_channels: int = 1,
+        dropout: float = 0.3,
+        tcn_num_channels: list = None,
+        **kwargs: Any
+    ) -> None:
         """
         Initialize TinyConvWakeword with dynamic channel configuration
 
@@ -704,15 +711,16 @@ class TinyConvWakeword(nn.Module):
             num_classes: Number of output classes
             input_channels: Number of input channels
             dropout: Dropout rate
-            **kwargs: Additional arguments including:
-                - tcn_num_channels: List of channel sizes for each conv block
-                - kernel_size: Kernel size for convolutions (default: 3)
-                - tcn_dropout: Dropout rate for conv layers (overrides dropout)
+            tcn_num_channels: List of channel sizes for each conv block
+            **kwargs: Additional arguments
         """
         super().__init__()
         
-        # Get channel configuration from kwargs or use defaults
-        channels = kwargs.get("tcn_num_channels", [16, 32, 64, 64])
+        # Get channel configuration
+        if tcn_num_channels is None:
+            tcn_num_channels = [16, 32, 64, 64]
+        
+        channels = tcn_num_channels
         kernel_size = kwargs.get("kernel_size", 3)
         conv_dropout = kwargs.get("tcn_dropout", dropout)
         

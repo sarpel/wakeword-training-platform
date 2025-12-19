@@ -221,16 +221,84 @@ class DistillationConfig:
     """Knowledge Distillation configuration"""
 
     enabled: bool = False
-    teacher_model_path: str = ""  # Path to pretrained teacher checkpoint
-    teacher_architecture: str = "wav2vec2"
+    teacher_model_path: str = ""
+    
+    # Private fields for storage
+    _teacher_architecture: str = field(default="wav2vec2", repr=False)
+    _temperature: float = field(default=2.0, repr=False)
+    _alpha: float = field(default=0.5, repr=False)
 
-    # Distillation parameters
-    temperature: float = 2.0
-    alpha: float = 0.5  # Weight for distillation loss (1-alpha for student loss)
+    def __init__(
+        self,
+        enabled: bool = False,
+        teacher_model_path: str = "",
+        teacher_architecture: str = "wav2vec2",
+        temperature: float = 2.0,
+        alpha: float = 0.5,
+    ):
+        """Initialize with validation"""
+        self.enabled = enabled
+        self.teacher_model_path = teacher_model_path
+        
+        # Use setters to validate and set private fields
+        self.teacher_architecture = teacher_architecture
+        self.temperature = temperature
+        self.alpha = alpha
+
+    @property
+    def temperature(self) -> float:
+        """Temperature for softening probability distributions (1.0-10.0)"""
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, value: float) -> None:
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"temperature must be numeric, got {type(value)}")
+        if not 1.0 <= value <= 10.0:
+            raise ValueError(
+                f"temperature must be in range [1.0, 10.0], got {value}. "
+                f"Higher values soften distributions more."
+            )
+        self._temperature = float(value)
+
+    @property
+    def alpha(self) -> float:
+        """Weight for teacher loss vs student loss (0.0-1.0)"""
+        return self._alpha
+
+    @alpha.setter
+    def alpha(self, value: float) -> None:
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"alpha must be numeric, got {type(value)}")
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(
+                f"alpha must be in range [0.0, 1.0], got {value}. "
+                f"Alpha=0.0 means no distillation, alpha=1.0 means ignore ground truth."
+            )
+        self._alpha = float(value)
+
+    @property
+    def teacher_architecture(self) -> str:
+        return self._teacher_architecture
+
+    @teacher_architecture.setter
+    def teacher_architecture(self, value: str) -> None:
+        valid_architectures = ["wav2vec2"]  # Expand as more teachers added
+        if value not in valid_architectures:
+            raise ValueError(
+                f"teacher_architecture must be one of {valid_architectures}, got '{value}'"
+            )
+        self._teacher_architecture = value
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
-        return asdict(self)
+        return {
+            "enabled": self.enabled,
+            "teacher_model_path": self.teacher_model_path,
+            "teacher_architecture": self.teacher_architecture,
+            "temperature": self.temperature,
+            "alpha": self.alpha,
+        }
 
 
 @dataclass

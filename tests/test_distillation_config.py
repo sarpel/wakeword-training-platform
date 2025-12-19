@@ -1,0 +1,111 @@
+import pytest
+from src.config.defaults import DistillationConfig, WakewordConfig
+import tempfile
+import yaml
+import os
+
+def test_default_values():
+    """Test default configuration values"""
+    config = DistillationConfig()
+    assert config.enabled is False
+    assert config.temperature == 2.0
+    assert config.alpha == 0.5
+    assert config.teacher_architecture == "wav2vec2"
+
+def test_init_values():
+    """Test initialization with values"""
+    config = DistillationConfig(enabled=True, alpha=0.8, temperature=5.0)
+    assert config.enabled is True
+    assert config.alpha == 0.8
+    assert config.temperature == 5.0
+
+def test_alpha_validation():
+    """Test alpha parameter validation"""
+    config = DistillationConfig()
+
+    # Valid values
+    config.alpha = 0.0  # OK
+    config.alpha = 0.5  # OK
+    config.alpha = 1.0  # OK
+
+    # Invalid values
+    with pytest.raises(ValueError, match="alpha must be in range"):
+        config.alpha = -0.1
+
+    with pytest.raises(ValueError, match="alpha must be in range"):
+        config.alpha = 1.5
+        
+    # Test validation on init
+    with pytest.raises(ValueError, match="alpha must be in range"):
+        DistillationConfig(alpha=1.5)
+
+def test_temperature_validation():
+    """Test temperature parameter validation"""
+    config = DistillationConfig()
+
+    # Valid values
+    config.temperature = 1.0  # OK
+    config.temperature = 5.0  # OK
+    config.temperature = 10.0  # OK
+
+    # Invalid values
+    with pytest.raises(ValueError, match="temperature must be in range"):
+        config.temperature = 0.5
+
+    with pytest.raises(ValueError, match="temperature must be in range"):
+        config.temperature = 15.0
+        
+    # Test validation on init
+    with pytest.raises(ValueError, match="temperature must be in range"):
+        DistillationConfig(temperature=0.5)
+
+def test_teacher_architecture_validation():
+    """Test teacher architecture validation"""
+    config = DistillationConfig()
+
+    # Valid
+    config.teacher_architecture = "wav2vec2"  # OK
+
+    # Invalid
+    with pytest.raises(ValueError, match="teacher_architecture must be one of"):
+        config.teacher_architecture = "unknown_model"
+        
+    # Test validation on init
+    with pytest.raises(ValueError, match="teacher_architecture must be one of"):
+        DistillationConfig(teacher_architecture="unknown_model")
+
+def test_config_to_dict():
+    """Test configuration serialization"""
+    config = DistillationConfig()
+    config.enabled = True
+    config.alpha = 0.7
+
+    config_dict = config.to_dict()
+
+    assert config_dict["enabled"] is True
+    assert config_dict["alpha"] == 0.7
+    assert "temperature" in config_dict
+    assert "teacher_architecture" in config_dict
+
+def test_yaml_roundtrip():
+    """Test saving and loading from YAML"""
+    config = WakewordConfig()
+    config.distillation.enabled = True
+    config.distillation.alpha = 0.8
+    config.distillation.temperature = 3.5
+
+    # Save to YAML
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump(config.to_dict(), f)
+        yaml_path = f.name
+
+    try:
+        # Load from YAML
+        config_loaded = WakewordConfig.load(yaml_path)
+
+        assert config_loaded.distillation.enabled is True
+        assert config_loaded.distillation.alpha == 0.8
+        assert config_loaded.distillation.temperature == 3.5
+    finally:
+        if os.path.exists(yaml_path):
+            os.unlink(yaml_path)

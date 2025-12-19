@@ -31,6 +31,82 @@ class DistillationTrainer(Trainer):
         else:
             self.teacher = None
 
+    def _load_teacher_checkpoint(self, checkpoint_path: str) -> dict:
+        """
+        Safely load teacher checkpoint with validation.
+
+        Args:
+            checkpoint_path: Path to checkpoint file
+
+        Returns:
+            Loaded checkpoint dictionary
+
+        Raises:
+            ValueError: If path is outside allowed directories
+            FileNotFoundError: If checkpoint file doesn't exist
+        """
+        from pathlib import Path
+
+        # Convert to absolute path
+        checkpoint_path_obj = Path(checkpoint_path).resolve()
+
+        # Define allowed directories (checkpoints, current project root)
+        project_root = Path.cwd().resolve()
+        allowed_dirs = [
+            project_root / "checkpoints",
+            project_root / "models",
+            project_root,
+        ]
+
+        # Validate path is within allowed directories
+        is_allowed = any(
+            checkpoint_path_obj.is_relative_to(allowed_dir)
+            for allowed_dir in allowed_dirs
+        )
+
+        if not is_allowed:
+            raise ValueError(
+                f"Teacher checkpoint must be in allowed directories:\n"
+                f"  - {project_root / 'checkpoints'}\n"
+                f"  - {project_root / 'models'}\n"
+                f"  - {project_root}\n"
+                f"Got: {checkpoint_path_obj}"
+            )
+
+        # Check file exists
+        if not checkpoint_path_obj.exists():
+            raise FileNotFoundError(
+                f"Teacher checkpoint not found: {checkpoint_path_obj}\n"
+                f"Please ensure the checkpoint file exists."
+            )
+
+        # Check file is actually a file (not directory)
+        if not checkpoint_path_obj.is_file():
+            raise ValueError(f"Teacher checkpoint path is not a file: {checkpoint_path_obj}")
+
+        logger.info(f"Loading teacher checkpoint: {checkpoint_path_obj}")
+
+        # Load checkpoint with security: weights_only=True (PyTorch 1.13+)
+        # This prevents arbitrary code execution from malicious pickles
+        try:
+            checkpoint = torch.load(
+                checkpoint_path_obj,
+                map_location="cpu",
+                weights_only=True  # SECURITY: Prevents code execution
+            )
+        except TypeError:
+             # Fallback for older PyTorch versions that don't support weights_only
+             # But we know requirements.txt says 2.1.2 so this should be fine.
+             # Just in case user has older env:
+             logger.warning("torch.load doesn't support weights_only=True, loading unsafely (upgrade PyTorch!)")
+             checkpoint = torch.load(checkpoint_path_obj, map_location="cpu")
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load teacher checkpoint from {checkpoint_path_obj}: {e}"
+            ) from e
+
+        return checkpoint
+
     def _init_teacher(self) -> None:
         """Initialize the teacher model."""
         dist_config = self.config.distillation
@@ -51,8 +127,10 @@ class DistillationTrainer(Trainer):
         # Load weights if path provided
         if dist_config.teacher_model_path:
             logger.info(f"Loading teacher weights from {dist_config.teacher_model_path}")
-            # Checkpoint loading logic here...
-            checkpoint = torch.load(dist_config.teacher_model_path, map_location="cpu")
+            
+            # Secure loading
+            checkpoint = self._load_teacher_checkpoint(dist_config.teacher_model_path)
+            
             if "model_state_dict" in checkpoint:
                 self.teacher.load_state_dict(checkpoint["model_state_dict"])
             else:
