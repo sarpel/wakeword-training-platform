@@ -11,6 +11,9 @@ def test_default_values():
     assert config.temperature == 2.0
     assert config.alpha == 0.5
     assert config.teacher_architecture == "wav2vec2"
+    assert config.teacher_on_cpu is False
+    assert config.teacher_mixed_precision is True
+    assert config.log_memory_usage is False
 
 def test_init_values():
     """Test initialization with values"""
@@ -86,6 +89,9 @@ def test_config_to_dict():
     assert config_dict["alpha"] == 0.7
     assert "temperature" in config_dict
     assert "teacher_architecture" in config_dict
+    assert "teacher_on_cpu" in config_dict
+    assert "teacher_mixed_precision" in config_dict
+    assert "log_memory_usage" in config_dict
 
 def test_yaml_roundtrip():
     """Test saving and loading from YAML"""

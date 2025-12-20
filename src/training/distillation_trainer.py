@@ -137,12 +137,33 @@ class DistillationTrainer(Trainer):
                 self.teacher.load_state_dict(checkpoint)
 
         if self.teacher:
-            self.teacher.to(self.device)
+            # Memory-efficient placement
+            if hasattr(dist_config, "teacher_on_cpu") and dist_config.teacher_on_cpu:
+                logger.info("Keeping teacher on CPU to save VRAM")
+                self.teacher.to("cpu")
+                self.teacher_device = torch.device("cpu")
+            else:
+                self.teacher.to(self.device)
+                self.teacher_device = self.device
+            
             self.teacher.eval()
 
         # Freeze teacher parameters
         for param in self.teacher.parameters():
             param.requires_grad = False
+
+        # Enable mixed precision for teacher if requested
+        device_type = self.device.type if isinstance(self.device, torch.device) else self.device
+        
+        if hasattr(dist_config, "teacher_mixed_precision") and dist_config.teacher_mixed_precision and device_type == "cuda":
+            logger.info("Using FP16 for teacher inference")
+            self.teacher.half()  # Convert to FP16
+
+        # Log memory usage
+        if hasattr(dist_config, "log_memory_usage") and dist_config.log_memory_usage and device_type == "cuda":
+            allocated = torch.cuda.memory_allocated() / 1e9
+            reserved = torch.cuda.memory_reserved() / 1e9
+            logger.info(f"VRAM after teacher init: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
 
         logger.info("Teacher model initialized and frozen")
 
@@ -188,7 +209,23 @@ class DistillationTrainer(Trainer):
         # Teacher forward pass
         with torch.no_grad():
             # Teacher expects raw audio. 'inputs' should contain raw audio.
-            teacher_outputs = self.teacher(inputs)
+            # Move inputs to teacher device (CPU or GPU)
+            teacher_device = getattr(self, "teacher_device", self.device)
+            inputs_teacher = inputs.to(teacher_device)
+
+            # Mixed precision context if enabled
+            use_mixed = (
+                hasattr(self.config.distillation, "teacher_mixed_precision") 
+                and self.config.distillation.teacher_mixed_precision
+            )
+            
+            teacher_device_type = teacher_device.type if isinstance(teacher_device, torch.device) else teacher_device
+            
+            if use_mixed and teacher_device_type == 'cuda':
+                with torch.cuda.amp.autocast():
+                    teacher_outputs = self.teacher(inputs_teacher)
+            else:
+                teacher_outputs = self.teacher(inputs_teacher)
 
             # Get logits (handle different return types from teacher model)
             if isinstance(teacher_outputs, dict):
@@ -197,9 +234,17 @@ class DistillationTrainer(Trainer):
                 teacher_logits = teacher_outputs[0]
             else:
                 teacher_logits = teacher_outputs
+                
+            # Move teacher outputs back to student device
+            teacher_logits = teacher_logits.to(self.device)
+
+        # Numerical stability check
+        if torch.any(torch.isnan(teacher_logits)) or torch.any(torch.isinf(teacher_logits)):
+            logger.warning("Teacher logits contain invalid values (NaN/Inf), skipping distillation for this batch")
+            return student_loss
 
         # Distillation Loss (KL Divergence)
-        T = self.config.distillation.temperature
+        T = max(1.0, float(self.config.distillation.temperature)) # Clamp temperature
         alpha = self.config.distillation.alpha
 
         # Soft targets from teacher

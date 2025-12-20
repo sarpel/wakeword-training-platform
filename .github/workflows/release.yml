@@ -13,6 +13,8 @@ jobs:
   build-wheel:
     name: Build Python Wheel
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       
@@ -82,7 +84,7 @@ jobs:
           path: dist/
       
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true

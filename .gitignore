@@ -73,6 +73,9 @@ configs/
 # Project Specific - Server
 server/venv/
 
+# AI Agents
+.claude-flow/
+
 # OS Generated
 .DS_Store
 Thumbs.db

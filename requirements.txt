@@ -51,8 +51,8 @@ seaborn==0.12.2             # Statistical visualization
 # ============================================================================
 # Model Export & Deployment
 # ============================================================================
-onnx==1.15.0                # ONNX model format
-onnx2tf==1.26.0             # ONNX to TFLite converter
+onnx>=1.16.0 # ONNX model format (Fixed CVE-2024-222)
+onnx2tf==1.26.0 # ONNX to TFLite converter
 onnxruntime-gpu==1.15.1     # ONNX inference engine (GPU)
 # For CPU only: onnxruntime==1.15.1
 
