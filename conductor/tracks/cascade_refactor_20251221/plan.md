@@ -25,7 +25,7 @@
 ## Phase 3: Benchmarking and Validation
 *Goal: Implement performance measurement tools and verify the refactor.*
 
-- [ ] Task: Create `src/evaluation/benchmarking.py` for latency and memory profiling
+- [x] Task: Create `src/evaluation/benchmarking.py` for latency and memory profiling (14b5ebe)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Verify end-to-end cascade flow with the new modular architecture
