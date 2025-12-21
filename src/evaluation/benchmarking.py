@@ -60,7 +60,7 @@ class BenchmarkRunner:
             "min_latency_ms": np.min(latencies),
             "max_latency_ms": np.max(latencies),
             "iterations": num_iterations,
-            "memory_allocated_mb": max(0, end_mem - start_mem)
+            "process_memory_mb": self._get_memory_usage()
         }
         
         # Add GPU memory if applicable

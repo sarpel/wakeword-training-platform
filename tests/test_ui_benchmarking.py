@@ -31,7 +31,7 @@ def test_run_benchmark_success(mock_stage, mock_runner):
         "mean_latency_ms": 10.5,
         "min_latency_ms": 9.0,
         "max_latency_ms": 12.0,
-        "memory_allocated_mb": 50.0,
+        "process_memory_mb": 50.0,
         "gpu_memory_allocated_mb": 100.0
     }
     

@@ -94,7 +94,7 @@ def test_full_debug_workflow(mock_load, mock_eval_state):
         mock_runner.return_value.run_benchmark.return_value = {
             "name": "test_arch",
             "mean_latency_ms": 5.0,
-            "memory_allocated_mb": 10.0
+            "process_memory_mb": 10.0
         }
         
         results = run_benchmark_test()
