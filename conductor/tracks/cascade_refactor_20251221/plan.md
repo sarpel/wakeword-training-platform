@@ -14,7 +14,7 @@
 ## Phase 2: Stage Implementation
 *Goal: Refactor existing Sentry and Judge logic into the new modular components.*
 
-- [ ] Task: Implement `SentryInferenceStage` (MobileNetV3) as a modular component
+- [x] Task: Implement `SentryInferenceStage` (MobileNetV3) as a modular component (dceff7c)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Implement `JudgeInferenceStage` (Wav2Vec 2.0) as a modular component
