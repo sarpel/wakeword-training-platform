@@ -28,7 +28,7 @@
 - [x] Task: Create `src/evaluation/benchmarking.py` for latency and memory profiling (14b5ebe)
     - [ ] Write Tests
     - [ ] Implement Feature
-- [ ] Task: Verify end-to-end cascade flow with the new modular architecture
+- [x] Task: Verify end-to-end cascade flow with the new modular architecture (07c6185)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Benchmarking and Validation' (Protocol in workflow.md)
