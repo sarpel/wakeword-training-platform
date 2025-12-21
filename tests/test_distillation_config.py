@@ -24,56 +24,38 @@ def test_init_values():
 
 def test_alpha_validation():
     """Test alpha parameter validation"""
-    config = DistillationConfig()
-
     # Valid values
-    config.alpha = 0.0  # OK
-    config.alpha = 0.5  # OK
-    config.alpha = 1.0  # OK
+    DistillationConfig(alpha=0.0)
+    DistillationConfig(alpha=0.5)
+    DistillationConfig(alpha=1.0)
 
-    # Invalid values
+    # Invalid values (Validation on init)
     with pytest.raises(ValueError, match="alpha must be in range"):
-        config.alpha = -0.1
+        DistillationConfig(alpha=-0.1)
 
-    with pytest.raises(ValueError, match="alpha must be in range"):
-        config.alpha = 1.5
-        
-    # Test validation on init
     with pytest.raises(ValueError, match="alpha must be in range"):
         DistillationConfig(alpha=1.5)
 
 def test_temperature_validation():
     """Test temperature parameter validation"""
-    config = DistillationConfig()
-
     # Valid values
-    config.temperature = 1.0  # OK
-    config.temperature = 5.0  # OK
-    config.temperature = 10.0  # OK
+    DistillationConfig(temperature=1.0)
+    DistillationConfig(temperature=5.0)
+    DistillationConfig(temperature=10.0)
 
-    # Invalid values
-    with pytest.raises(ValueError, match="temperature must be in range"):
-        config.temperature = 0.5
-
-    with pytest.raises(ValueError, match="temperature must be in range"):
-        config.temperature = 15.0
-        
-    # Test validation on init
+    # Invalid values (Validation on init)
     with pytest.raises(ValueError, match="temperature must be in range"):
         DistillationConfig(temperature=0.5)
 
+    with pytest.raises(ValueError, match="temperature must be in range"):
+        DistillationConfig(temperature=15.0)
+
 def test_teacher_architecture_validation():
     """Test teacher architecture validation"""
-    config = DistillationConfig()
-
     # Valid
-    config.teacher_architecture = "wav2vec2"  # OK
+    DistillationConfig(teacher_architecture="wav2vec2")
 
-    # Invalid
-    with pytest.raises(ValueError, match="teacher_architecture must be one of"):
-        config.teacher_architecture = "unknown_model"
-        
-    # Test validation on init
+    # Invalid (Validation on init)
     with pytest.raises(ValueError, match="teacher_architecture must be one of"):
         DistillationConfig(teacher_architecture="unknown_model")
 

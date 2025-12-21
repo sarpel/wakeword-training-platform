@@ -31,6 +31,7 @@ from src.exceptions import WakewordException
 from src.training.metrics import MetricResults
 from src.evaluation.benchmarking import BenchmarkRunner
 from src.evaluation.stages import SentryInferenceStage
+from src.config.cuda_utils import get_cuda_validator
 
 logger = structlog.get_logger(__name__)
 
@@ -44,6 +45,11 @@ class EvaluationState:
         self.evaluator: Optional[ModelEvaluator] = None
         self.mic_inference: Optional[Union[MicrophoneInference, SimulatedMicrophoneInference]] = None
         self.is_mic_recording = False
+        
+        # Detect device
+        validator = get_cuda_validator(allow_cpu=True)
+        self.device = "cuda" if validator.validate()[0] and validator.cuda_available else "cpu"
+        logger.info(f"Evaluation Panel initialized on {self.device}")
 
         # File evaluation results
         self.file_results: List[EvaluationResult] = []
@@ -95,12 +101,12 @@ def load_model(model_path: str) -> str:
 
     try:
         logger.info(f"Loading model: {model_path}")
-        model, info = load_model_for_evaluation(Path(model_path), device="cuda")
+        model, info = load_model_for_evaluation(Path(model_path), device=eval_state.device)
         evaluator = ModelEvaluator(
             model=model,
             sample_rate=info["config"].data.sample_rate,
             audio_duration=info["config"].data.audio_duration,
-            device="cuda",
+            device=eval_state.device,
             feature_type=info["config"].data.feature_type,
             n_mels=info["config"].data.n_mels,
             n_mfcc=info["config"].data.n_mfcc,
@@ -177,7 +183,7 @@ def start_microphone() -> Tuple[str, float, Optional[Any], str]:
             sample_rate=eval_state.waveform_sr,
             audio_duration=eval_state.model_info["config"].data.audio_duration,
             threshold=0.5,
-            device="cuda",
+            device=eval_state.device,
         )
         mic_inf.start()
         eval_state.mic_inference = mic_inf
@@ -225,7 +231,7 @@ def run_benchmark_test(num_iterations: int = 10) -> Dict[str, Any]:
     if eval_state.model is None:
         return {"error": "No model loaded"}
     try:
-        stage = SentryInferenceStage(model=eval_state.model, name=eval_state.model_info["config"].model.architecture, device="cuda")
+        stage = SentryInferenceStage(model=eval_state.model, name=eval_state.model_info["config"].model.architecture, device=eval_state.device)
         runner = BenchmarkRunner(stage)
         audio = np.random.randn(int(eval_state.waveform_sr * eval_state.model_info["config"].data.audio_duration)).astype(np.float32)
         metrics = runner.run_benchmark(audio, num_iterations=num_iterations)
@@ -264,7 +270,7 @@ def evaluate_test_set(data_root, test_split_path, threshold, target_fah, use_adv
     if eval_state.evaluator is None:
         return {"status": "❌ Load model"}, None, None, {}
     try:
-        test_dataset = WakewordDataset(manifest_path=Path(test_split_path), sample_rate=eval_state.waveform_sr, audio_duration=eval_state.model_info["config"].data.audio_duration, augment=False, device="cuda", return_raw_audio=True)
+        test_dataset = WakewordDataset(manifest_path=Path(test_split_path), sample_rate=eval_state.waveform_sr, audio_duration=eval_state.model_info["config"].data.audio_duration, augment=False, device=eval_state.device, return_raw_audio=True)
         metrics, results = eval_state.evaluator.evaluate_dataset(test_dataset, threshold=threshold)
         eval_state.test_results = results
         logits = torch.tensor(np.stack([r.logits for r in results]))
