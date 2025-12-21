@@ -14,7 +14,7 @@
 ## Phase 2: Interactive UI Components
 *Goal: Build the Gradio interface for debugging and tuning.*
 
-- [ ] Task: Extend `src/ui/panel_evaluation.py` with an "Analysis Dashboard" section
+- [x] Task: Extend `src/ui/panel_evaluation.py` with an "Analysis Dashboard" section (2f5b41d)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Implement the "False Positive Inspector" gallery with audio playback
