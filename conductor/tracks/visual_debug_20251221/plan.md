@@ -17,7 +17,7 @@
 - [x] Task: Extend `src/ui/panel_evaluation.py` with an "Analysis Dashboard" section (2f5b41d)
     - [ ] Write Tests
     - [ ] Implement Feature
-- [ ] Task: Implement the "False Positive Inspector" gallery with audio playback
+- [x] Task: Implement the "False Positive Inspector" gallery with audio playback (db3131a)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Interactive UI Components' (Protocol in workflow.md)
