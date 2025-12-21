@@ -1,7 +1,9 @@
 try:
     import wandb
 except ImportError:
-    wandb = None
+    wandb = None  # type: ignore
+
+from typing import Any, Dict, Optional
 
 from src.training.metrics import MetricResults
 
@@ -9,7 +11,7 @@ from src.training.metrics import MetricResults
 class WandbCallback:
     """A callback to log training metrics to Weights & Biases."""
 
-    def __init__(self, project_name: str, config: dict):
+    def __init__(self, project_name: str, config: Dict[str, Any]):
         """Initializes the WandbCallback.
 
         Args:
@@ -22,12 +24,10 @@ class WandbCallback:
         # Ensure we don't have an active run
         if wandb.run is not None:
             wandb.finish()
-            
+
         wandb.init(project=project_name, config=config, reinit=True)
 
-    def on_epoch_end(
-        self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults
-    ) -> None:
+    def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
         """Logs metrics at the end of an epoch."""
         wandb.log(
             {
@@ -43,7 +43,7 @@ class WandbCallback:
             }
         )
 
-    def on_batch_end(self, batch_idx: int, loss: float, acc: float, step: int = None) -> None:
+    def on_batch_end(self, batch_idx: int, loss: float, acc: float, step: Optional[int] = None) -> None:
         """Logs metrics at the end of a batch."""
         log_dict = {"batch_loss": loss, "batch_acc": acc}
         if step is not None:

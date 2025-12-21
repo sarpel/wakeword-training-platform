@@ -5,10 +5,11 @@ Panel 1: Dataset Management
 - .npy file extraction
 - Dataset health briefing
 """
+
 import sys
 import traceback
 from pathlib import Path
-from typing import Tuple
+from typing import Literal, Optional, Tuple, cast
 
 import gradio as gr
 import torch
@@ -31,9 +32,13 @@ _current_scanner = None
 _current_dataset_info = None
 
 
-def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
+def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = None) -> gr.Blocks:
     """
     Create Panel 1: Dataset Management
+
+    Args:
+        data_root: Root directory for data
+        state: Global state dictionary for sharing config
 
     Returns:
         Gradio Blocks interface
@@ -50,7 +55,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     placeholder="C:/path/to/datasets or data/raw",
                     lines=1,
                     value=str(Path(data_root) / "raw"),  # Default value
-                    info="Path to the root folder containing 'positive', 'negative', etc. subfolders."
+                    info="Path to the root folder containing 'positive', 'negative', etc. subfolders.",
                 )
 
                 gr.Markdown("**Expected Structure:**")
@@ -76,13 +81,13 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
                 skip_validation = gr.Checkbox(
                     label="Fast Scan (Skip Validation)",
-                    value=False,
+                    value=True,
                     info="Only count files without validation (much faster for large datasets)",
                 )
 
                 move_unqualified_checkbox = gr.Checkbox(
                     label="Move Unqualified Files",
-                    value=True,
+                    value=False,
                     info="If ticked, move files with quality issues to 'unqualified_datasets' folder. If unticked, keep them in place.",
                 )
 
@@ -96,9 +101,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
             with gr.Column():
                 gr.Markdown("### Dataset Statistics")
-                stats_display = gr.JSON(
-                    label="Dataset Summary", value={"status": "No datasets scanned yet"}
-                )
+                stats_display = gr.JSON(label="Dataset Summary", value={"status": "No datasets scanned yet"})
 
         gr.Markdown("---")
 
@@ -109,9 +112,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
         with gr.Tabs():
             # Tab 1: Batch Feature Extraction
             with gr.TabItem("⚡ Batch Feature Extraction"):
-                gr.Markdown(
-                    "**Performance**: Extract features NOW to speed up training by 40-60%."
-                )
+                gr.Markdown("**Performance**: Extract features NOW to speed up training by 40-60%.")
 
                 with gr.Row():
                     with gr.Column():
@@ -129,14 +130,15 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                         )
                         extract_duration = gr.Number(
                             label="Audio Duration (s)",
-                            value=1.5,
+                            value=1.0,
+                            precision=1,
                             info="Target duration in seconds (must match training config)",
                         )
-                        
+
                         with gr.Row():
                             extract_n_mels = gr.Number(
                                 label="Mel Channels",
-                                value=64,
+                                value=40,
                                 precision=0,
                                 info="Number of mel filterbanks (frequency resolution)",
                             )
@@ -152,7 +154,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                                 precision=0,
                                 info="FFT window size (frequency analysis window)",
                             )
-                        
+
                         extract_batch_size = gr.Slider(
                             minimum=16,
                             maximum=128,
@@ -166,9 +168,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             value="data/npy",
                             info="Directory to store the extracted .npy files",
                         )
-                        batch_extract_button = gr.Button(
-                            "⚡ Extract All Features to NPY", variant="primary"
-                        )
+                        batch_extract_button = gr.Button("⚡ Extract All Features to NPY", variant="primary")
 
                     with gr.Column():
                         batch_extraction_log = gr.Textbox(
@@ -188,21 +188,15 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             placeholder="Path to .npy files (or leave empty to scan dataset_root/npy)",
                             lines=1,
                         )
-                        analyze_button = gr.Button(
-                            "🔍 Analyze .npy Files", variant="secondary"
-                        )
+                        analyze_button = gr.Button("🔍 Analyze .npy Files", variant="secondary")
 
                         gr.Markdown("### 📐 Shape Validation")
-                        gr.Markdown(
-                            "Check if NPY files match the expected input shape for training."
-                        )
+                        gr.Markdown("Check if NPY files match the expected input shape for training.")
 
                         with gr.Row():
-                            val_sample_rate = gr.Number(
-                                label="Target Sample Rate", value=16000
-                            )
-                            val_duration = gr.Number(label="Target Duration (s)", value=1.5)
-                            val_n_mels = gr.Number(label="Mel Channels", value=64, precision=0)
+                            val_sample_rate = gr.Number(label="Target Sample Rate", value=16000)
+                            val_duration = gr.Number(label="Target Duration (s)", value=1.0, precision=1)
+                            val_n_mels = gr.Number(label="Mel Channels", value=40, precision=0)
                             val_hop_length = gr.Number(label="Hop Length", value=160)
 
                         validate_shape_checkbox = gr.Checkbox(
@@ -215,9 +209,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                             value=False,
                             info="⚠️ Permanently delete files with mismatching shapes",
                         )
-                        validate_button = gr.Button(
-                            "📏 Validate & Clean Shapes", variant="secondary"
-                        )
+                        validate_button = gr.Button("📏 Validate & Clean Shapes", variant="secondary")
 
                     with gr.Column():
                         analysis_log = gr.Textbox(
@@ -231,37 +223,31 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             with gr.TabItem("🧹 VAD Filtering"):
                 gr.Markdown("### Voice Activity Detection (VAD) Filter")
                 gr.Markdown(
-                    "Remove silent or noisy files that do not contain speech. "
-                    "Run this BEFORE splitting datasets."
+                    "Remove silent or noisy files that do not contain speech. " "Run this BEFORE splitting datasets."
                 )
-                
+
                 with gr.Row():
                     with gr.Column():
                         vad_energy_threshold = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.05, step=0.01,
+                            minimum=0.0,
+                            maximum=1.0,
+                            value=0.05,
+                            step=0.01,
                             label="Energy Threshold",
-                            info="Higher = stricter (needs louder speech)"
+                            info="Higher = stricter (needs louder speech)",
                         )
-                        vad_min_duration = gr.Number(
-                            label="Min Speech Duration (s)", value=0.1
-                        )
+                        vad_min_duration = gr.Number(label="Min Speech Duration (s)", value=0.1)
                         vad_filter_btn = gr.Button("🧹 Filter Dataset with VAD", variant="primary")
-                        
+
                     with gr.Column():
-                        vad_log = gr.Textbox(
-                            label="VAD Filter Log",
-                            lines=10,
-                            interactive=False
-                        )
+                        vad_log = gr.Textbox(label="VAD Filter Log", lines=10, interactive=False)
         gr.Markdown("---")
 
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### ✂️ Train/Test/Validation Split")
 
-                gr.Markdown(
-                    "**Industry Standard Ratios:** Train: 70%, Val: 15%, Test: 15%"
-                )
+                gr.Markdown("**Industry Standard Ratios:** Train: 70%, Val: 15%, Test: 15%")
 
                 train_ratio = gr.Slider(
                     minimum=0.5,
@@ -309,7 +295,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
         # Event handlers with full implementation
         def scan_datasets_handler(
-            root_path: str, skip_val: bool, move_unqualified: bool, progress=gr.Progress()
+            root_path: str, skip_val: bool, move_unqualified: bool, progress: gr.Progress = gr.Progress()
         ) -> Tuple[dict, str, str]:
             """Scan datasets and return statistics and health report"""
             global _current_scanner, _current_dataset_info
@@ -317,37 +303,34 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             try:
                 if not root_path:
                     return (
-                        {"error": "Please provide dataset root path"},
-                        "❌ No path provided",
-                        "Run dataset scan to see health report...",
+                        {},
+                        "❌ Please select a dataset folder",
+                        "No folder selected",
                     )
 
-                root_path = Path(root_path)
-                if not root_path.exists():
+                root_path_obj = Path(root_path)
+                if not root_path_obj.exists():
                     return (
-                        {"error": f"Path does not exist: {root_path}"},
-                        f"❌ Directory not found: {root_path}",
-                        "Run dataset scan to see health report...",
+                        {},
+                        f"❌ Directory not found: {root_path_obj}",
+                        "Directory not found",
                     )
 
-                logger.info(
-                    f"Scanning datasets in: {root_path} (skip_validation={skip_val})"
-                )
+                logger.info(f"Scanning datasets in: {root_path} (skip_validation={skip_val})")
 
                 # Progress callback for Gradio
-                def update_progress(progress_value, message):
+                def update_progress(progress_value: float, message: str) -> None:
                     progress(progress_value, desc=f"Scanning: {message}")
 
                 # Create scanner with caching and parallel processing
-                use_cache = not skip_val  # Only use cache when validating
-                scanner = DatasetScanner(root_path, use_cache=use_cache)
+                scanner = DatasetScanner(root_path_obj)
+                _current_scanner = scanner
 
-                # Scan datasets with progress
-                progress(0, desc="Initializing scan...")
+                progress(0.1, desc="Scanning dataset structure...")
                 dataset_info = scanner.scan_datasets(
-                    progress_callback=update_progress,
                     skip_validation=skip_val,
                     exclude_unqualified=move_unqualified,
+                    progress_callback=update_progress,
                 )
 
                 # Get statistics
@@ -361,21 +344,22 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # Move excluded files
                 moved_count = 0
                 if move_unqualified:
-                    progress(0.96, desc="Moving excluded files...")
+                    progress(0.90, desc="Moving excluded files...")
                     moved_count = scanner.move_excluded_files()
                 else:
                     logger.info("Skipping move of excluded files (option disabled)")
 
                 # Generate health report
-                progress(0.97, desc="Generating health report...")
+                progress(0.95, desc="Generating health report...")
                 health_checker = DatasetHealthChecker(stats)
                 health_report_text = health_checker.generate_report()
 
+                # Log health report
+                logger.info("Dataset Health Report:\n" + health_report_text)
+
                 # Save manifest
                 progress(0.99, desc="Saving manifest...")
-                manifest_path = (
-                    Path(root_path).parent / "splits" / "dataset_manifest.json"
-                )
+                manifest_path = Path(root_path).parent / "splits" / "dataset_manifest.json"
                 scanner.save_manifest(manifest_path)
 
                 logger.info("Dataset scan complete")
@@ -424,7 +408,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             val: float,
             test: float,
             npy_source: str,  # Added npy_source input
-            progress=gr.Progress(),
+            progress: gr.Progress = gr.Progress(),
         ) -> Tuple[str, str]:
             """Split datasets into train/val/test"""
             global _current_dataset_info
@@ -451,9 +435,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 splitter = DatasetSplitter(_current_dataset_info)
 
                 # Determine npy source directory
-                npy_source_path = (
-                    Path(npy_source) if npy_source else Path(root_path) / "npy"
-                )
+                npy_source_path = Path(npy_source) if npy_source else Path(root_path) / "npy"
                 if not npy_source_path.exists():
                     # Fallback to default if custom path doesn't exist or wasn't provided
                     npy_source_path = Path(root_path) / "npy"
@@ -505,6 +487,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 report_text = "\n".join(report)
 
                 logger.info("Dataset split complete")
+                logger.info(report_text)
 
                 progress(1.0, desc="Complete!")
 
@@ -534,7 +517,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             n_fft: int,
             batch_size: int,
             output_dir: str,
-            progress=gr.Progress(),
+            progress: gr.Progress = gr.Progress(),
         ) -> str:
             """Batch extract features to NPY files"""
             global _current_dataset_info
@@ -544,17 +527,15 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 if _current_dataset_info is None:
                     return "❌ Please scan datasets first (Step 1)"
 
-                logger.info(
-                    f"Batch extracting {feature_type} features with batch_size={batch_size}"
-                )
+                logger.info(f"Batch extracting {feature_type} features with batch_size={batch_size}")
 
                 # Import batch extractor
-                from src.config.defaults import DataConfig
+                from src.config.defaults import DataConfig, WakewordConfig
                 from src.data.batch_feature_extractor import BatchFeatureExtractor
 
                 # Create config for feature extraction
                 progress(0.05, desc="Initializing batch extractor...")
-                config = DataConfig(
+                data_config = DataConfig(
                     feature_type=feature_type,
                     sample_rate=int(sample_rate),
                     audio_duration=float(audio_duration),
@@ -562,18 +543,35 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     n_mfcc=40,  # MFCC için varsayılan, feature_type='mfcc' ise kullanılır
                     n_fft=int(n_fft),
                     hop_length=int(hop_length),
+                    use_precomputed_features_for_training=True,
+                    npy_feature_dir=output_dir,
+                    npy_feature_type=feature_type,
                 )
+
+                # Update global state if available
+                if state is not None:
+                    logger.info("Updating global configuration with extraction parameters")
+                    if state.value is None:
+                        state.value = {}
+                    
+                    # Get existing config or create new
+                    current_config = state.value.get("config")
+                    if current_config is None:
+                        current_config = WakewordConfig()
+                    
+                    # Update data config
+                    current_config.data = data_config
+                    state.value["config"] = current_config
+                    logger.info(f"Global config updated: n_mels={n_mels}, feature_type={feature_type}")
 
                 # Initialize extractor
                 device = "cuda" if torch.cuda.is_available() else "cpu"
-                extractor = BatchFeatureExtractor(config=config, device=device)
+                extractor = BatchFeatureExtractor(config=data_config, device=device)
 
                 # Collect all audio files from scanned dataset
                 progress(0.1, desc="Collecting audio files...")
                 all_files = []
-                for category, category_data in _current_dataset_info[
-                    "categories"
-                ].items():
+                for category, category_data in _current_dataset_info["categories"].items():
                     if category in [
                         "positive",
                         "negative",
@@ -588,7 +586,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 logger.info(f"Found {len(all_files)} audio files to process")
 
                 # Progress callback
-                def update_progress(current, total, message):
+                def update_progress(current: int, total: int, message: str) -> None:
                     progress_value = 0.1 + (current / total) * 0.8
                     progress(progress_value, desc=f"{message}")
 
@@ -626,34 +624,25 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 if results["failed_count"] > 0:
                     report.append("Failed Files:")
                     for failed in results["failed_files"][:10]:  # Show first 10
-                        report.append(
-                            f"  - {Path(failed['path']).name}: {failed['error']}"
-                        )
+                        report.append(f"  - {Path(failed['path']).name}: {failed['error']}")
                     if results["failed_count"] > 10:
                         report.append(f"  ... and {results['failed_count'] - 10} more")
                     report.append("")
 
                 report.append("=" * 60)
                 report.append("Next Steps:")
-                report.append(
-                    "1. Split your dataset using 'Train/Test/Validation Split' section"
-                )
-                report.append(
-                    "   → This will automatically organize NPY files into data/npy/train|val|test"
-                )
+                report.append("1. Split your dataset using 'Train/Test/Validation Split' section")
+                report.append("   → This will automatically organize NPY files into data/npy/train|val|test")
                 report.append("2. Go to Panel 2 (Configuration)")
                 report.append("3. Verify 'NPY Feature Directory' is set to: data/npy")
                 report.append(f"4. Verify 'NPY Feature Type' matches: {feature_type}")
-                report.append(
-                    "5. Start training (40-60% faster with precomputed features!)"
-                )
+                report.append("5. Start training (40-60% faster with precomputed features!)")
                 report.append("=" * 60)
 
                 report_text = "\n".join(report)
 
-                logger.info(
-                    f"Batch extraction complete: {results['success_count']}/{results['total_files']}"
-                )
+                logger.info(f"Batch extraction complete: {results['success_count']}/{results['total_files']}")
+                logger.info(report_text)
 
                 progress(1.0, desc="Complete!")
 
@@ -670,23 +659,21 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 logger.error(traceback.format_exc())
                 return f"❌ Error: {str(e)}\n\nStack trace:\n{traceback.format_exc()}"
 
-        def analyze_npy_handler(
-            npy_path: str, root_path: str, progress=gr.Progress()
-        ) -> str:
+        def analyze_npy_handler(npy_path: str, root_path: str, progress: gr.Progress = gr.Progress()) -> str:
             """Analyze existing .npy files"""
             try:
                 # Determine npy folder path
                 if not npy_path:
                     if not root_path:
                         return "❌ Please provide either .npy folder path or scan datasets first"
-                    npy_path = Path(root_path) / "npy"
+                    npy_path_obj = Path(root_path) / "npy"
                 else:
-                    npy_path = Path(npy_path)
+                    npy_path_obj = Path(npy_path)
 
-                if not npy_path.exists():
-                    return f"❌ Directory not found: {npy_path}"
+                if not npy_path_obj.exists():
+                    return f"❌ Directory not found: {npy_path_obj}"
 
-                logger.info(f"Analyzing .npy files in: {npy_path}")
+                logger.info(f"Analyzing .npy files in: {npy_path_obj}")
 
                 # Create extractor with parallel processing
                 progress(0.05, desc="Initializing analyzer...")
@@ -694,27 +681,26 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
                 # Scan for .npy files
                 progress(0.1, desc="Scanning for .npy files...")
-                npy_files = extractor.scan_npy_files(npy_path, recursive=True)
+                npy_files = extractor.scan_npy_files(npy_path_obj, recursive=True)
 
                 if not npy_files:
-                    return f"ℹ️  No .npy files found in: {npy_path}"
+                    return f"ℹ️  No .npy files found in: {npy_path_obj}"
 
                 # Progress callback for extraction
-                def update_progress(current, total, message):
+                def update_progress(current: int, total: int, message: str) -> None:
                     progress_value = 0.1 + (current / total) * 0.8
                     progress(progress_value, desc=f"Analyzing: {message}")
 
                 # Extract and analyze
                 progress(0.1, desc=f"Processing {len(npy_files)} .npy files...")
-                results = extractor.extract_and_convert(
-                    npy_files, progress_callback=update_progress
-                )
+                results = extractor.extract_and_convert(npy_files, progress_callback=update_progress)
 
                 # Generate report
                 progress(0.95, desc="Generating report...")
                 report = extractor.generate_report()
 
                 logger.info("NPY analysis complete")
+                logger.info(report)
 
                 progress(1.0, desc="Complete!")
 
@@ -735,7 +721,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             target_duration: float,
             target_n_mels: int,
             target_hop_length: int,
-            progress=gr.Progress(),
+            progress: gr.Progress = gr.Progress(),
         ) -> str:
             """Validate NPY file shapes"""
             try:
@@ -743,12 +729,12 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 if not npy_path:
                     if not root_path:
                         return "❌ Please provide either .npy folder path or scan datasets first"
-                    npy_path = Path(root_path) / "npy"
+                    npy_path_obj = Path(root_path) / "npy"
                 else:
-                    npy_path = Path(npy_path)
+                    npy_path_obj = Path(npy_path)
 
-                if not npy_path.exists():
-                    return f"❌ Directory not found: {npy_path}"
+                if not npy_path_obj.exists():
+                    return f"❌ Directory not found: {npy_path_obj}"
 
                 # Get current config to determine expected shape
                 from src.config.defaults import DataConfig
@@ -769,7 +755,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # Helper extractor to calculate shape
                 helper_extractor = FeatureExtractor(
                     sample_rate=config.sample_rate,
-                    feature_type=config.feature_type,
+                    feature_type=cast(Literal["mel", "mfcc"], config.feature_type),
                     n_mels=config.n_mels,
                     n_mfcc=config.n_mfcc,
                     n_fft=config.n_fft,
@@ -778,22 +764,20 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
 
                 expected_shape = helper_extractor.get_output_shape(target_samples)
 
-                logger.info(
-                    f"Validating shapes in {npy_path} against expected: {expected_shape}"
-                )
+                logger.info(f"Validating shapes in {npy_path_obj} against expected: {expected_shape}")
 
                 # Initialize NPY extractor
                 extractor = NpyExtractor()
 
                 # Scan files
                 progress(0.1, desc="Scanning .npy files...")
-                npy_files = extractor.scan_npy_files(npy_path, recursive=True)
+                npy_files = extractor.scan_npy_files(npy_path_obj, recursive=True)
 
                 if not npy_files:
-                    return f"ℹ️ No .npy files found in {npy_path}"
+                    return f"ℹ️ No .npy files found in {npy_path_obj}"
 
                 # Progress callback
-                def update_progress(current, total, message):
+                def update_progress(current: int, total: int, message: str) -> None:
                     progress_value = 0.1 + (current / total) * 0.8
                     progress(progress_value, desc=message)
 
@@ -838,10 +822,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 return f"❌ Error during validation: {str(e)}\n{traceback.format_exc()}"
 
         def vad_filter_handler(
-            root_path: str,
-            threshold: float,
-            min_duration: float,
-            progress=gr.Progress()
+            root_path: str, threshold: float, min_duration: float, progress: gr.Progress = gr.Progress()
         ) -> str:
             """Filter dataset using VAD"""
             try:
@@ -851,48 +832,48 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # We filter the manifest files in the splits/ directory (or we could scan directories directly)
                 # But usually we rely on the manifest generated by "Scan Datasets"
                 # Let's assume we operate on the "dataset_manifest.json" generated by Scan
-                
+
                 manifest_path = Path(root_path).parent / "splits" / "dataset_manifest.json"
-                
+
                 if not manifest_path.exists():
                     return "❌ Manifest not found. Please 'Scan Datasets' first."
-                
+
                 logger.info(f"Running VAD filter on {manifest_path}...")
-                
+
                 progress(0.1, desc="Initializing VAD...")
                 vad = VADFilter(energy_threshold=threshold)
-                
+
                 progress(0.2, desc="Filtering...")
-                output_path = vad.process_dataset(
-                    manifest_path, 
-                    min_speech_duration=min_duration
-                )
-                
+                output_path = vad.process_dataset(manifest_path, min_speech_duration=min_duration)
+
                 # Update global scanner info if possible, or just warn user to re-scan
                 # Since we modified the manifest (created a new one actually), we should probably
-                # instruct user to use the cleaned one. 
+                # instruct user to use the cleaned one.
                 # Ideally, we replace the main manifest or the scanner updates itself.
-                
+
                 # For now, let's overwrite the main manifest if it was successful so subsequent steps use it?
                 # Or maybe VADFilter returned a "_cleaned.json".
-                # Let's rename it to be the main manifest so Splitter picks it up? 
+                # Let's rename it to be the main manifest so Splitter picks it up?
                 # That's destructive. Better to tell user or have Splitter look for cleaned.
                 # Simplest for UI: Overwrite and backup old.
-                
+
                 backup_path = manifest_path.with_suffix(".json.bak")
                 import shutil
+
                 shutil.copy(manifest_path, backup_path)
                 shutil.move(output_path, manifest_path)
-                
-                return (f"✅ VAD Filtering Complete!\n"
-                        f"Original manifest backed up to {backup_path.name}\n"
-                        f"Active manifest updated. You can now Split Datasets.")
-                
+
+                return (
+                    f"✅ VAD Filtering Complete!\n"
+                    f"Original manifest backed up to {backup_path.name}\n"
+                    f"Active manifest updated. You can now Split Datasets."
+                )
+
             except Exception as e:
-                 error_msg = f"Error during VAD filtering: {str(e)}"
-                 logger.error(error_msg)
-                 logger.error(traceback.format_exc())
-                 return f"❌ Error: {str(e)}\n{traceback.format_exc()}"
+                error_msg = f"Error during VAD filtering: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                return f"❌ Error: {str(e)}\n{traceback.format_exc()}"
 
         def auto_start_handler(
             root_path: str,
@@ -925,12 +906,13 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
             wandb_project: str,
             wandb_api_key: str,  # Added API key
             state: gr.State,
-            progress=gr.Progress(),
-        ):
+            progress: gr.Progress = gr.Progress(),
+        ) -> str:
             """Orchestrates the full pipeline: Scan -> Extract -> Split -> Config -> Train"""
-            
+
             logs = []
-            def log(msg):
+
+            def log(msg: str) -> str:
                 logs.append(msg)
                 logger.info(msg)
                 return "\n".join(logs)
@@ -949,8 +931,15 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 log("\n--- STEP 2: EXTRACTING FEATURES ---")
                 log(f"Extracting {feature_type} features to {output_dir}...")
                 extract_report = batch_extract_handler(
-                    root_path, feature_type, sample_rate, audio_duration, 
-                    n_mels, hop_length, n_fft, batch_size, output_dir
+                    root_path,
+                    feature_type,
+                    sample_rate,
+                    audio_duration,
+                    n_mels,
+                    hop_length,
+                    n_fft,
+                    batch_size,
+                    output_dir,
                 )
                 if "❌ Error" in extract_report:
                     return log(f"❌ Extraction Failed:\n{extract_report}")
@@ -967,9 +956,9 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                 # 4. Load Config
                 progress(0.7, desc="Step 4/5: Loading Configuration...")
                 log("\n--- STEP 4: PREPARING CONFIGURATION ---")
-                
-                from src.config.defaults import WakewordConfig, DataConfig, TrainingConfig, ModelConfig
-                
+
+                from src.config.defaults import DataConfig, ModelConfig, TrainingConfig, WakewordConfig
+
                 # Create config matching UI parameters
                 config = WakewordConfig()
                 config.data = DataConfig(
@@ -980,41 +969,50 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
                     hop_length=int(hop_length),
                     feature_type=feature_type,
                     use_precomputed_features_for_training=True,
-                    npy_feature_dir=output_dir
+                    npy_feature_dir=output_dir,
                 )
-                
+
                 # Try to load saved config if exists to preserve model params
                 config_path = Path("configs/wakeword_config.yaml")
                 if config_path.exists():
                     try:
                         loaded_config = WakewordConfig.load(config_path)
                         # Update data params to match UI but keep model params
-                        loaded_config.data = config.data 
+                        loaded_config.data = config.data
                         config = loaded_config
                         log(f"Loaded saved configuration from {config_path}")
                     except Exception as e:
                         log(f"⚠️ Failed to load saved config, using defaults: {e}")
-                
+
                 # Update state with config
                 if state is None:
                     state = {}
                 state["config"] = config
-                
+
                 # 5. Start Training
                 progress(0.9, desc="Step 5/5: Starting Training...")
                 log("\n--- STEP 5: STARTING TRAINING ---")
-                
+
                 from src.ui.panel_training import start_training
-                
+
                 # Call start_training with the state containing our config
                 train_msg, _, _, _, _, _ = start_training(
-                    state, use_cmvn, use_ema, ema_decay, 
-                    use_balanced_sampler, sampler_ratio_pos, sampler_ratio_neg, sampler_ratio_hard,
-                    run_lr_finder, use_wandb, wandb_project, wandb_api_key
+                    state,
+                    use_cmvn,
+                    use_ema,
+                    ema_decay,
+                    use_balanced_sampler,
+                    sampler_ratio_pos,
+                    sampler_ratio_neg,
+                    sampler_ratio_hard,
+                    run_lr_finder,
+                    use_wandb,
+                    wandb_project,
+                    wandb_api_key,
                 )
-                
+
                 log(f"Training Launch Result: {train_msg}")
-                
+
                 if "✅" in train_msg:
                     log("\n✅ PIPELINE STARTED SUCCESSFULLY!")
                     log("Switch to 'Model Training' tab to view progress.")
@@ -1084,9 +1082,7 @@ def create_dataset_panel(data_root: str = "data") -> gr.Blocks:
         )
 
         vad_filter_btn.click(
-            fn=vad_filter_handler,
-            inputs=[dataset_root, vad_energy_threshold, vad_min_duration],
-            outputs=[vad_log]
+            fn=vad_filter_handler, inputs=[dataset_root, vad_energy_threshold, vad_min_duration], outputs=[vad_log]
         )
 
         gr.Markdown("---")

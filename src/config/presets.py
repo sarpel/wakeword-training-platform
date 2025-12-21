@@ -2,17 +2,19 @@
 Configuration Presets for Different Use Cases
 Provides optimized configurations for various scenarios
 """
-from typing import Dict
+
+from typing import Callable, Dict
 
 from src.config.defaults import (
     AugmentationConfig,
     DataConfig,
+    DistillationConfig,
     LossConfig,
     ModelConfig,
     OptimizerConfig,
+    QATConfig,
     TrainingConfig,
     WakewordConfig,
-    QATConfig,
 )
 
 
@@ -28,8 +30,16 @@ def get_default_preset() -> WakewordConfig:
         data=DataConfig(),
         training=TrainingConfig(),
         model=ModelConfig(),
-        augmentation=AugmentationConfig(),
-        optimizer=OptimizerConfig(),
+        augmentation=AugmentationConfig(
+            # Added moderate time shift for robustness
+            time_shift_prob=0.3,
+            time_shift_min_ms=-30,
+            time_shift_max_ms=30,
+        ),
+        optimizer=OptimizerConfig(
+            optimizer="adamw",  # Modern standard
+            weight_decay=0.01,
+        ),
         loss=LossConfig(),
     )
 
@@ -47,9 +57,7 @@ def get_small_dataset_preset() -> WakewordConfig:
     return WakewordConfig(
         config_name="small_dataset",
         description="Optimized for small datasets (<10k samples) with aggressive augmentation",
-        data=DataConfig(
-            sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64
-        ),
+        data=DataConfig(sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64),
         training=TrainingConfig(
             batch_size=16,  # Smaller batch for limited data
             epochs=100,  # More epochs
@@ -74,10 +82,14 @@ def get_small_dataset_preset() -> WakewordConfig:
             rir_prob=0.5,  # Higher RIR usage for acoustic variety
             rir_dry_wet_min=0.2,  # More aggressive reverb range
             rir_dry_wet_max=0.8,
+            # Added time shift for robustness
+            time_shift_prob=0.6,
+            time_shift_min_ms=-60,
+            time_shift_max_ms=60,
         ),
         optimizer=OptimizerConfig(
-            optimizer="adam",
-            weight_decay=1e-3,  # Stronger regularization
+            optimizer="adamw",  # Better regularization than adam
+            weight_decay=1e-2,  # Stronger regularization for small data
             scheduler="cosine",
             gradient_clip=1.0,
             mixed_precision=True,
@@ -104,9 +116,7 @@ def get_large_dataset_preset() -> WakewordConfig:
     return WakewordConfig(
         config_name="large_dataset",
         description="Optimized for large datasets (>100k samples) with faster training",
-        data=DataConfig(
-            sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64
-        ),
+        data=DataConfig(sample_rate=16000, audio_duration=1.5, n_mfcc=0, n_fft=400, n_mels=64),
         training=TrainingConfig(
             batch_size=128,  # Larger batch for better GPU utilization
             epochs=30,  # Fewer epochs needed with large data
@@ -131,10 +141,14 @@ def get_large_dataset_preset() -> WakewordConfig:
             rir_prob=0.25,
             rir_dry_wet_min=0.4,  # Lighter reverb
             rir_dry_wet_max=0.6,
+            # Added moderate time shift
+            time_shift_prob=0.3,
+            time_shift_min_ms=-30,
+            time_shift_max_ms=30,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=1e-4,
+            weight_decay=0.01,  # Standard AdamW weight decay (was 1e-4)
             scheduler="cosine",
             warmup_epochs=3,
             gradient_clip=1.0,
@@ -167,7 +181,7 @@ def get_fast_training_preset() -> WakewordConfig:
             audio_duration=1.0,  # Shorter audio for speed
             n_mfcc=0,
             n_fft=400,
-            n_mels=64,
+            n_mels=40,  # Reduced for speed
         ),
         training=TrainingConfig(
             batch_size=64,
@@ -175,6 +189,7 @@ def get_fast_training_preset() -> WakewordConfig:
             learning_rate=0.003,  # Higher LR for faster convergence
             early_stopping_patience=5,
             num_workers=6,
+            use_ema=False,  # Disable EMA for faster training
         ),
         model=ModelConfig(
             architecture="mobilenetv3",  # Fast, lightweight architecture
@@ -193,9 +208,13 @@ def get_fast_training_preset() -> WakewordConfig:
             rir_prob=0.1,  # Minimal RIR usage
             rir_dry_wet_min=0.5,  # Light reverb only
             rir_dry_wet_max=0.7,
+            # Added minimal time shift
+            time_shift_prob=0.1,
+            time_shift_min_ms=-20,
+            time_shift_max_ms=20,
         ),
         optimizer=OptimizerConfig(
-            optimizer="adam",
+            optimizer="adamw",
             weight_decay=1e-4,
             scheduler="step",
             gradient_clip=1.0,
@@ -228,7 +247,7 @@ def get_high_accuracy_preset() -> WakewordConfig:
             audio_duration=2.0,  # Longer context for better accuracy
             n_mfcc=0,
             n_fft=400,
-            n_mels=64,
+            n_mels=80,  # Increased resolution for high accuracy
         ),
         training=TrainingConfig(
             batch_size=24,  # Smaller batch for better generalization
@@ -254,10 +273,14 @@ def get_high_accuracy_preset() -> WakewordConfig:
             rir_prob=0.4,  # High RIR for acoustic variety
             rir_dry_wet_min=0.2,  # Wide reverb range
             rir_dry_wet_max=0.8,
+            # Added comprehensive time shift
+            time_shift_prob=0.5,
+            time_shift_min_ms=-50,
+            time_shift_max_ms=50,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=5e-4,  # Strong regularization
+            weight_decay=0.01,  # Standard AdamW weight decay (was 5e-4)
             scheduler="cosine",
             warmup_epochs=10,
             gradient_clip=0.5,  # Stricter clipping for stability
@@ -290,7 +313,7 @@ def get_edge_deployment_preset() -> WakewordConfig:
         description="Optimized for edge devices (mobile/IoT) with small model size",
         data=DataConfig(
             sample_rate=16000,
-            audio_duration=1.0,  # "Hey Katya" fits in 1s, optimal for ESP32 RAM
+            audio_duration=1.5,  # Increased to 1.5s for better wakeword coverage
             n_mfcc=0,
             n_fft=400,
             n_mels=40,  # Reduced for MCU efficiency
@@ -317,12 +340,16 @@ def get_edge_deployment_preset() -> WakewordConfig:
             noise_snr_min=8.0,
             noise_snr_max=20.0,
             rir_prob=0.3,  # Real-world acoustics
+            # Added time shift for edge robustness
+            time_shift_prob=0.4,
+            time_shift_min_ms=-40,
+            time_shift_max_ms=40,
             rir_dry_wet_min=0.4,
             rir_dry_wet_max=0.6,
         ),
         optimizer=OptimizerConfig(
-            optimizer="adam",
-            weight_decay=1e-4,
+            optimizer="adamw",  # Switch to AdamW
+            weight_decay=0.01,  # Standard AdamW weight decay (was 1e-4)
             scheduler="cosine",
             gradient_clip=1.0,
             mixed_precision=True,  # Critical for edge deployment
@@ -332,6 +359,11 @@ def get_edge_deployment_preset() -> WakewordConfig:
             label_smoothing=0.08,  # Slight smoothing for generalization
             class_weights="balanced",
             hard_negative_weight=2.5,  # Reduce false positives
+        ),
+        qat=QATConfig(
+            enabled=True,  # Enabled for int8 readiness
+            backend="qnnpack",
+            start_epoch=5,
         ),
     )
 
@@ -358,9 +390,9 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
         ),
         training=TrainingConfig(
             batch_size=32,
-            epochs=100,  # Tiny models need more epochs to converge
+            epochs=150,  # Increased to 150
             learning_rate=0.001,
-            early_stopping_patience=15,
+            early_stopping_patience=25,  # Increased to 25
             num_workers=4,
         ),
         model=ModelConfig(
@@ -368,50 +400,57 @@ def get_esp32_no_psram_preset() -> WakewordConfig:
             num_classes=2,
             pretrained=False,
             dropout=0.2,
+            # Explicitly set requested params (though tiny_conv might ignore some RNN params)
+            bidirectional=False,
+            hidden_size=64,
         ),
         augmentation=AugmentationConfig(
             time_stretch_min=0.8,
             time_stretch_max=1.2,
             pitch_shift_min=-2,
             pitch_shift_max=2,
-            background_noise_prob=0.6,  # Heavy augmentation helps tiny models generalize
+            background_noise_prob=0.6,
             noise_snr_min=5.0,
             noise_snr_max=20.0,
             rir_prob=0.4,
-            # New: Time shift for robustness against alignment issues
-            time_shift_prob=0.4,
+            # Re-enabled time shift for robustness
+            time_shift_prob=0.5,
             time_shift_min_ms=-50,
             time_shift_max_ms=50,
-            # New: RIR mixing
             rir_dry_wet_min=0.4,
             rir_dry_wet_max=0.6,
+            # Reduced SpecAugment for tiny model
+            freq_mask_param=10,
+            time_mask_param=20,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=1e-3,
+            weight_decay=0.01,  # Standard AdamW weight decay (was 1e-4)
             scheduler="cosine",
             gradient_clip=1.0,
             mixed_precision=True,
         ),
         loss=LossConfig(
-            loss_function="focal_loss",  # Helps with hard examples
+            loss_function="focal_loss",
             label_smoothing=0.0,
             class_weights="balanced",
             hard_negative_weight=3.0,
-            # New: Focal loss tuning for hard examples
             focal_alpha=0.25,
             focal_gamma=2.5,
         ),
         qat=QATConfig(
-            enabled=True,  # Enable QAT by default for this target
-            backend="qnnpack",  # ARM backend
-            start_epoch=10,
+            enabled=True,  # Enabled for int8 readiness
+            backend="qnnpack",
+            start_epoch=5,  # Start QAT earlier
+        ),
+        distillation=DistillationConfig(
+            enabled=False,
         ),
     )
 
 
 # Preset registry
-PRESETS: Dict[str, callable] = {
+PRESETS: Dict[str, Callable[[], WakewordConfig]] = {
     "Default": get_default_preset,
     "Small Dataset (<10k samples)": get_small_dataset_preset,
     "Large Dataset (>100k samples)": get_large_dataset_preset,
@@ -437,9 +476,7 @@ def get_preset(preset_name: str) -> WakewordConfig:
     """
     if preset_name not in PRESETS:
         available = ", ".join(PRESETS.keys())
-        raise ValueError(
-            f"Preset '{preset_name}' not found. " f"Available presets: {available}"
-        )
+        raise ValueError(f"Preset '{preset_name}' not found. " f"Available presets: {available}")
 
     return PRESETS[preset_name]()
 

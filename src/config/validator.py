@@ -2,6 +2,7 @@
 Configuration Validator
 Validates configuration parameters and checks for compatibility using Pydantic.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
@@ -18,14 +19,15 @@ try:
 except Exception:
     from typing import Protocol  # fallback tip
 
-    class WakewordConfig(Protocol):
-        def to_dict(self) -> Dict[str, Any]:
-            ...
+    class WakewordConfigProtocol(Protocol):
+        def to_dict(self) -> Dict[str, Any]: ...
+
+    WakewordConfig = WakewordConfigProtocol
 
 
 # Pydantic model ve sürüm-agnostik doğrulayıcı
 WakewordPydanticConfig = None
-PydanticValidationError = None
+PydanticValidationError: Any = None
 _pydantic_version = 0
 
 try:
@@ -56,7 +58,7 @@ if WakewordPydanticConfig is None:
 
 
 # CUDA bilgisi
-def get_cuda_validator():
+def get_cuda_validator() -> Any:
     """
     Projedeki gerçek get_cuda_validator yoksa basit fallback.
     Beklenen arayüz:
@@ -130,7 +132,7 @@ class ValidationError:
 class ConfigValidator:
     """Validates wakeword training configuration using Pydantic"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize validator"""
         self.errors: List[ValidationError] = []
         self.warnings: List[ValidationError] = []
@@ -156,9 +158,7 @@ class ConfigValidator:
                         msg = error.get("msg", str(error))
                         self.errors.append(ValidationError(field or "<config>", msg))
                 else:
-                    self.errors.append(
-                        ValidationError("<config>", f"Pydantic validation failed: {e}")
-                    )
+                    self.errors.append(ValidationError("<config>", f"Pydantic validation failed: {e}"))
             return
 
         # Proje-özel model yoksa ama pydantic yüklüyse yine de atla.
@@ -186,9 +186,7 @@ class ConfigValidator:
         try:
             config_dict = config.to_dict()
         except Exception as e:
-            self.errors.append(
-                ValidationError("<config>", f"Config to_dict() failed: {e}")
-            )
+            self.errors.append(ValidationError("<config>", f"Config to_dict() failed: {e}"))
             return False, self.errors
 
         # Pydantic validation (opsiyonel)
@@ -202,7 +200,7 @@ class ConfigValidator:
         is_valid = len(self.errors) == 0
         return is_valid, all_issues
 
-    def _add_custom_warnings(self, config: WakewordConfig):
+    def _add_custom_warnings(self, config: WakewordConfig) -> None:
         """Add custom warnings not covered by Pydantic validators"""
         # Sample rate warning
         if 8000 <= config.data.sample_rate < 16000:
@@ -261,28 +259,17 @@ class ConfigValidator:
                 )
             )
 
-    def _validate_gpu_compatibility(self, config: WakewordConfig):
+    def _validate_gpu_compatibility(self, config: WakewordConfig) -> None:
         """Validate GPU compatibility and estimate memory usage"""
         if not self.cuda_validator.cuda_available:
             # GPU mecburi ise error, değilse info: burada hatayı koruyoruz
-            self.errors.append(
-                ValidationError(
-                    "system.gpu", "GPU not available but required for training"
-                )
-            )
+            self.errors.append(ValidationError("system.gpu", "GPU not available but required for training"))
             return
 
         # Tahmini bellek hesabı
-        total_samples_per_clip = int(
-            config.data.sample_rate * config.data.audio_duration
-        )
+        total_samples_per_clip = int(config.data.sample_rate * config.data.audio_duration)
         # 1 kanal, float32 varsayımı
-        batch_memory_mb = (
-            config.training.batch_size
-            * total_samples_per_clip
-            * 4
-            / (1024 * 1024)  # float32=4 byte
-        )
+        batch_memory_mb = config.training.batch_size * total_samples_per_clip * 4 / (1024 * 1024)  # float32=4 byte
 
         mem_info = self.cuda_validator.get_memory_info(0)
         available_memory_mb = float(mem_info.get("free_gb", 0.0)) * 1024.0
@@ -367,11 +354,7 @@ if __name__ == "__main__":
         validator = ConfigValidator()
         is_valid, issues = validator.validate(config)
         print(validator.generate_report())
-        print(
-            "\n✅ Validation test passed"
-            if is_valid
-            else "\n❌ Validation test found errors"
-        )
+        print("\n✅ Validation test passed" if is_valid else "\n❌ Validation test found errors")
         print("\nValidator test complete")
     except Exception as e:
         print("Self-test skipped:", e)

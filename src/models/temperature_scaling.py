@@ -2,11 +2,14 @@
 Temperature Scaling for Model Calibration
 Learns optimal temperature parameter to calibrate model confidence
 """
+
 import logging
+from typing import Any, cast
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.utils.data
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +78,12 @@ class TemperatureScaling(nn.Module):
         # Optimize temperature
         optimizer = optim.LBFGS([self.temperature], lr=lr, max_iter=max_iter)
 
-        def closure():
+        def closure() -> float:
             optimizer.zero_grad()
             scaled_logits = self.forward(logits)
             loss = criterion(scaled_logits, labels)
             loss.backward()
-            return loss
+            return float(loss.item())
 
         # Run optimization
         optimizer.step(closure)
@@ -88,14 +91,10 @@ class TemperatureScaling(nn.Module):
         # Compute final loss
         with torch.no_grad():
             scaled_logits = self.forward(logits)
-            final_loss = criterion(scaled_logits, labels).item()
+            final_loss = float(criterion(scaled_logits, labels).item())
 
         if verbose:
-            logger.info(
-                f"Temperature scaling fitted: "
-                f"T={self.temperature.item():.4f}, "
-                f"NLL={final_loss:.4f}"
-            )
+            logger.info(f"Temperature scaling fitted: " f"T={self.temperature.item():.4f}, " f"NLL={final_loss:.4f}")
 
         return final_loss
 
@@ -106,7 +105,7 @@ class TemperatureScaling(nn.Module):
 
 def calibrate_model(
     model: nn.Module,
-    val_loader,
+    val_loader: torch.utils.data.DataLoader,
     device: str = "cuda",
     lr: float = 0.01,
     max_iter: int = 50,
@@ -129,8 +128,9 @@ def calibrate_model(
     model.eval()
 
     # Collect all logits and labels from validation set
-    all_logits = []
-    all_labels = []
+    # Mypy: Explicitly type as list of Tensors
+    all_logits: list[torch.Tensor] = []
+    all_labels: list[torch.Tensor] = []
 
     with torch.no_grad():
         for batch in val_loader:
@@ -148,23 +148,19 @@ def calibrate_model(
             all_labels.append(labels.cpu())
 
     # Concatenate all batches
-    all_logits = torch.cat(all_logits, dim=0).to(device)
-    all_labels = torch.cat(all_labels, dim=0).to(device)
+    all_logits_tensor: torch.Tensor = torch.cat(all_logits, dim=0).to(device)
+    all_labels_tensor: torch.Tensor = torch.cat(all_labels, dim=0).to(device)
 
-    logger.info(f"Collected {len(all_logits)} validation samples")
+    logger.info(f"Collected {len(all_logits_tensor)} validation samples")
 
     # Fit temperature scaling
     temp_scaling = TemperatureScaling()
-    temp_scaling.fit(
-        logits=all_logits, labels=all_labels, lr=lr, max_iter=max_iter, verbose=True
-    )
+    temp_scaling.fit(logits=all_logits_tensor, labels=all_labels_tensor, lr=lr, max_iter=max_iter, verbose=True)
 
     return temp_scaling
 
 
-def apply_temperature_scaling(
-    model: nn.Module, temp_scaling: TemperatureScaling
-) -> nn.Module:
+def apply_temperature_scaling(model: nn.Module, temp_scaling: TemperatureScaling) -> nn.Module:
     """
     Wrap model with temperature scaling
 
@@ -177,15 +173,15 @@ def apply_temperature_scaling(
     """
 
     class CalibratedModel(nn.Module):
-        def __init__(self, base_model, temp_module):
+        def __init__(self, base_model: nn.Module, temp_module: TemperatureScaling) -> None:
             super().__init__()
             self.base_model = base_model
             self.temp_scaling = temp_module
 
-        def forward(self, x):
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
             logits = self.base_model(x)
             scaled_logits = self.temp_scaling(logits)
-            return scaled_logits
+            return cast(torch.Tensor, scaled_logits)
 
     calibrated_model = CalibratedModel(model, temp_scaling)
     return calibrated_model
@@ -236,9 +232,7 @@ if __name__ == "__main__":
     original_preds = logits.argmax(dim=1)
     scaled_preds = scaled_logits.argmax(dim=1)
 
-    assert torch.equal(
-        original_preds, scaled_preds
-    ), "Temperature scaling changed predictions!"
+    assert torch.equal(original_preds, scaled_preds), "Temperature scaling changed predictions!"
     print(f"\n✅ Predictions preserved after calibration")
 
     print("\n✅ Temperature scaling test complete")

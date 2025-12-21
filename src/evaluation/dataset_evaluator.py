@@ -1,4 +1,9 @@
-from typing import List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Sized, Tuple, cast
+
+if TYPE_CHECKING:
+    from src.evaluation.evaluator import ModelEvaluator
+    from torch.utils.data import Dataset
+
 import time
 from pathlib import Path
 
@@ -13,7 +18,7 @@ logger = structlog.get_logger(__name__)
 
 
 def evaluate_dataset(
-    evaluator, dataset, threshold: float = 0.5, batch_size: int = 32
+    evaluator: "ModelEvaluator", dataset: "Dataset", threshold: float = 0.5, batch_size: int = 32
 ) -> Tuple[MetricResults, List[EvaluationResult]]:
     """
     Evaluate entire dataset with ground truth labels
@@ -28,7 +33,9 @@ def evaluate_dataset(
     """
     from torch.utils.data import DataLoader
 
-    def collate_fn(batch):
+    def collate_fn(
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
 
@@ -49,12 +56,12 @@ def evaluate_dataset(
         collate_fn=collate_fn,
     )
 
-    all_predictions = []
-    all_targets = []
+    all_preds = []
+    all_targs = []
     all_logits = []
     results = []
 
-    logger.info(f"Evaluating dataset with {len(dataset)} samples...")
+    logger.info(f"Evaluating dataset with {len(cast(Sized, dataset))} samples...")
 
     # Evaluate
     with torch.no_grad():
@@ -66,7 +73,7 @@ def evaluate_dataset(
             # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
             if inputs.ndim <= 3:
                 inputs = evaluator.audio_processor(inputs)
-            
+
             # Apply memory format optimization
             inputs = inputs.to(memory_format=torch.channels_last)
 
@@ -81,8 +88,8 @@ def evaluate_dataset(
             batch_latency = (time.time() - start_time) * 1000 / len(inputs)
 
             # Collect for metrics
-            all_predictions.append(logits.cpu())
-            all_targets.append(targets.cpu())
+            all_preds.append(logits.cpu())
+            all_targs.append(targets.cpu())
             all_logits.append(logits.cpu())
 
             # Create individual results
@@ -90,28 +97,26 @@ def evaluate_dataset(
             confidences = probabilities[:, 1].cpu().numpy()
             predicted_classes = (confidences >= threshold).astype(int)
 
-            for i, (confidence, pred_class, logit, meta) in enumerate(
-                zip(confidences, predicted_classes, logits.cpu().numpy(), metadata)
+            for i, (confidence, pred_class, logit, meta, audio, target) in enumerate(
+                zip(confidences, predicted_classes, logits.cpu().numpy(), metadata, inputs.cpu().numpy(), targets.cpu().numpy())
             ):
                 results.append(
                     EvaluationResult(
-                        filename=Path(meta["path"]).name
-                        if "path" in meta
-                        else f"sample_{batch_idx}_{i}",
+                        filename=Path(meta["path"]).name if "path" in meta else f"sample_{batch_idx}_{i}",
                         prediction="Positive" if pred_class == 1 else "Negative",
                         confidence=float(confidence),
                         latency_ms=batch_latency,
                         logits=logit,
+                        label=int(target),
+                        raw_audio=audio.squeeze() if audio.ndim > 1 else audio
                     )
                 )
 
     # Calculate overall metrics
-    all_preds = torch.cat(all_predictions, dim=0)
-    all_targs = torch.cat(all_targets, dim=0)
+    all_preds = torch.cat(all_preds, dim=0)
+    all_targs = torch.cat(all_targs, dim=0)
 
-    metrics = evaluator.metrics_calculator.calculate(
-        all_preds, all_targs, threshold=threshold
-    )
+    metrics = evaluator.metrics_calculator.calculate(all_preds, all_targs, threshold=threshold)
 
     logger.info(f"Evaluation complete: {metrics}")
 
@@ -119,7 +124,7 @@ def evaluate_dataset(
 
 
 def get_roc_curve_data(
-    evaluator, dataset, batch_size: int = 32
+    evaluator: "ModelEvaluator", dataset: "Dataset", batch_size: int = 32
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Calculate ROC curve data
@@ -133,7 +138,9 @@ def get_roc_curve_data(
     """
     from torch.utils.data import DataLoader
 
-    def collate_fn(batch):
+    def collate_fn(
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
 
@@ -165,7 +172,7 @@ def get_roc_curve_data(
             # NEW: GPU Processing Pipeline for Raw Audio
             if inputs.ndim <= 3:
                 inputs = evaluator.audio_processor(inputs)
-            
+
             # Apply memory format optimization
             inputs = inputs.to(memory_format=torch.channels_last)
 
@@ -181,8 +188,8 @@ def get_roc_curve_data(
             all_confidences.extend(confidences)
             all_targets.extend(targets.cpu().numpy())
 
-    all_confidences = np.array(all_confidences)
-    all_targets = np.array(all_targets)
+    all_confidences_arr = np.array(all_confidences)
+    all_targets_arr = np.array(all_targets)
 
     # Calculate ROC curve
     thresholds = np.linspace(0, 1, 100)
@@ -190,12 +197,12 @@ def get_roc_curve_data(
     tpr_list = []
 
     for threshold in thresholds:
-        predictions = (all_confidences >= threshold).astype(int)
+        predictions = (all_confidences_arr >= threshold).astype(int)
 
-        tp = ((predictions == 1) & (all_targets == 1)).sum()
-        tn = ((predictions == 0) & (all_targets == 0)).sum()
-        fp = ((predictions == 1) & (all_targets == 0)).sum()
-        fn = ((predictions == 0) & (all_targets == 1)).sum()
+        tp = ((predictions == 1) & (all_targets_arr == 1)).sum()
+        tn = ((predictions == 0) & (all_targets_arr == 0)).sum()
+        fp = ((predictions == 1) & (all_targets_arr == 0)).sum()
+        fn = ((predictions == 0) & (all_targets_arr == 1)).sum()
 
         # True Positive Rate (Recall)
         tpr = tp / (tp + fn) if (tp + fn) > 0 else 0.0

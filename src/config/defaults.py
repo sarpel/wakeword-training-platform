@@ -2,6 +2,7 @@
 Default Configuration Parameters for Wakeword Training
 Defines basic and advanced training hyperparameters
 """
+
 import copy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -29,9 +30,7 @@ class DataConfig:
 
     # NEW: NPY feature parameters
     use_precomputed_features_for_training: bool = True  # Enable NPY loading
-    npy_feature_dir: str = (
-        "data/npy"  # Directory with split .npy files (train/val/test)
-    )
+    npy_feature_dir: str = "data/npy"  # Directory with split .npy files (train/val/test)
     npy_feature_type: str = "mel"  # mel, mfcc (must match extraction)
     npy_cache_features: bool = True  # Cache loaded features in RAM
     fallback_to_audio: bool = True  # If NPY missing, load raw audio
@@ -57,9 +56,7 @@ class TrainingConfig:
     persistent_workers: bool = True
 
     # Checkpointing
-    checkpoint_frequency: str = (
-        "every_5_epochs"  # best_only, every_epoch, every_5_epochs, every_10_epochs
-    )
+    checkpoint_frequency: str = "every_5_epochs"  # best_only, every_epoch, every_5_epochs, every_10_epochs
     save_best_only: bool = True
 
     # EMA Parameters
@@ -210,7 +207,7 @@ class QATConfig:
 
     enabled: bool = False
     backend: str = "fbgemm"  # fbgemm (x86), qnnpack (ARM)
-    
+
     # When to start QAT (usually after some epochs of normal training)
     start_epoch: int = 5
 
@@ -224,13 +221,44 @@ class DistillationConfig:
     """Knowledge Distillation configuration"""
 
     enabled: bool = False
-    teacher_model_path: str = ""  # Path to pretrained teacher checkpoint
-    teacher_architecture: str = "wav2vec2" 
+    teacher_model_path: str = ""
+    
+    # Memory optimization options
+    teacher_on_cpu: bool = False
+    teacher_mixed_precision: bool = True
+    log_memory_usage: bool = False
     
     # Distillation parameters
+    teacher_architecture: str = "wav2vec2"
     temperature: float = 2.0
-    alpha: float = 0.5  # Weight for distillation loss (1-alpha for student loss)
-    
+    alpha: float = 0.5
+
+    def __post_init__(self):
+        """Validate parameters after initialization"""
+        if not isinstance(self.temperature, (int, float)):
+            raise TypeError(f"temperature must be numeric, got {type(self.temperature)}")
+        if not 1.0 <= self.temperature <= 10.0:
+            raise ValueError(
+                f"temperature must be in range [1.0, 10.0], got {self.temperature}. "
+                f"Higher values soften distributions more."
+            )
+        self.temperature = float(self.temperature)
+
+        if not isinstance(self.alpha, (int, float)):
+            raise TypeError(f"alpha must be numeric, got {type(self.alpha)}")
+        if not 0.0 <= self.alpha <= 1.0:
+            raise ValueError(
+                f"alpha must be in range [0.0, 1.0], got {self.alpha}. "
+                f"Alpha=0.0 means no distillation, alpha=1.0 means ignore ground truth."
+            )
+        self.alpha = float(self.alpha)
+
+        valid_architectures = ["wav2vec2"]
+        if self.teacher_architecture not in valid_architectures:
+            raise ValueError(
+                f"teacher_architecture must be one of {valid_architectures}, got '{self.teacher_architecture}'"
+            )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -247,7 +275,7 @@ class WakewordConfig:
     augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     loss: LossConfig = field(default_factory=LossConfig)
-    
+
     # New optional configurations
     qat: QATConfig = field(default_factory=QATConfig)
     distillation: DistillationConfig = field(default_factory=DistillationConfig)
@@ -287,15 +315,13 @@ class WakewordConfig:
             distillation=DistillationConfig(**config_dict.get("distillation", {})),
         )
 
-    def save(self, path: Path):
+    def save(self, path: Path) -> None:
         """Save configuration to YAML file"""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "w") as f:
-            yaml.safe_dump(
-                self.to_dict(), f, default_flow_style=False, sort_keys=False
-            )  # <-- safe_dump
+            yaml.safe_dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)  # <-- safe_dump
 
     @classmethod
     def load(cls, path: Path) -> "WakewordConfig":

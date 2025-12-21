@@ -2,25 +2,26 @@
 ONNX Model Exporter
 Convert PyTorch models to ONNX with quantization and optimization
 """
+
+import shutil
+import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+import numpy as np
 import structlog
 import torch
 import torch.nn as nn
-import numpy as np
-import subprocess
-import shutil
-import sys
 
 try:
-    import onnx
-    import onnxruntime as ort
+    import onnx  # type: ignore
+    import onnxruntime as ort  # type: ignore
 except ImportError:
-    onnx = None
-    ort = None
+    onnx: Any = None  # type: ignore[no-redef]
+    ort: Any = None  # type: ignore[no-redef]
 
 logger = structlog.get_logger(__name__)
 
@@ -59,8 +60,7 @@ class ONNXExporter:
         """
         if onnx is None or ort is None:
             raise ImportError(
-                "ONNX and ONNXRuntime required. "
-                "Install with: pip install onnx onnxruntime onnxruntime-gpu"
+                "ONNX and ONNXRuntime required. " "Install with: pip install onnx onnxruntime onnxruntime-gpu"
             )
 
         self.model = model
@@ -150,73 +150,72 @@ class ONNXExporter:
             logger.exception(e)
             return {"success": False, "error": str(e)}
 
-    def export_to_tflite(self, onnx_path: Path, output_path: Path, sample_input: torch.Tensor = None) -> Dict[str, Any]:
+    def export_to_tflite(
+        self, onnx_path: Path, output_path: Path, sample_input: Optional[torch.Tensor] = None
+    ) -> Dict[str, Any]:
         """
         Export ONNX model to TFLite using onnx2tf
-        
+
         Args:
             onnx_path: Path to ONNX model
             output_path: Path to save .tflite file
             sample_input: Optional sample input for calibration/verification
-            
+
         Returns:
             Dictionary with export results
         """
         logger.info(f"Exporting to TFLite: {output_path}")
-        
+
         try:
             # Using onnx2tf via subprocess
             # onnx2tf -i input.onnx -o output_folder
-            
+
             output_folder = output_path.parent / "tflite_export"
             output_folder.mkdir(parents=True, exist_ok=True)
-            
+
             input_shape_str = ",".join(map(str, self.sample_input_shape))
-            
+
             # Use python -m onnx2tf for better compatibility
             cmd = [
-                sys.executable, "-m", "onnx2tf",
-                "-i", str(onnx_path),
-                "-o", str(output_folder),
-                "-ois", f"input:{input_shape_str}",
-                "-v" # verbose
+                sys.executable,
+                "-m",
+                "onnx2tf",
+                "-i",
+                str(onnx_path),
+                "-o",
+                str(output_folder),
+                "-ois",
+                f"input:{input_shape_str}",
+                "-v",
+                "info",  # verbose level
             ]
-            
+
             logger.info(f"Running command: {' '.join(cmd)}")
-            
-            process = subprocess.run(
-                cmd, 
-                capture_output=True, 
-                text=True, 
-                check=True
-            )
-            
+
+            process = subprocess.run(cmd, capture_output=True, text=True, check=True)
+
             logger.info(f"onnx2tf output:\n{process.stdout}")
-            
+
             # onnx2tf saves as saved_model and .tflite in the output folder
             # We need to find the .tflite file
             tflite_files = list(output_folder.glob("*.tflite"))
-            
+
             if not tflite_files:
                 raise FileNotFoundError("onnx2tf did not generate a .tflite file")
-                
+
             # Move the tflite file to requested output_path
             generated_tflite = tflite_files[0]
             shutil.move(str(generated_tflite), str(output_path))
-            
+
             # Cleanup output folder
             # shutil.rmtree(output_folder) # Optional: keep saved_model?
-            
+
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
-            
+
             logger.info(f"✅ TFLite model exported: {output_path}")
-            
-            return {
-                "success": True,
-                "path": str(output_path),
-                "file_size_mb": file_size_mb
-            }
-            
+
+            return {"success": True, "path": str(output_path), "file_size_mb": file_size_mb}
+
         except subprocess.CalledProcessError as e:
             logger.error(f"onnx2tf failed with code {e.returncode}")
             logger.error(f"STDOUT: {e.stdout}")
@@ -237,7 +236,7 @@ class ONNXExporter:
             Path to quantized model
         """
         try:
-            from onnxruntime.quantization import QuantType, quantize_dynamic
+            from onnxruntime.quantization import QuantType, quantize_dynamic  # type: ignore
 
             output_path = onnx_path.parent / f"{onnx_path.stem}_fp16.onnx"
 
@@ -268,7 +267,7 @@ class ONNXExporter:
             Path to quantized model
         """
         try:
-            from onnxruntime.quantization import QuantType, quantize_dynamic
+            from onnxruntime.quantization import QuantType, quantize_dynamic  # type: ignore
 
             output_path = onnx_path.parent / f"{onnx_path.stem}_int8.onnx"
 
@@ -295,7 +294,7 @@ def export_model_to_onnx(
     dynamic_batch: bool = True,
     quantize_fp16: bool = False,
     quantize_int8: bool = False,
-    export_tflite: bool = False, # New param
+    export_tflite: bool = False,  # New param
     device: str = "cuda",
 ) -> Dict:
     """
@@ -334,18 +333,62 @@ def export_model_to_onnx(
 
     # Create model
     from src.models.architectures import create_model
+    from src.training.qat_utils import prepare_model_for_qat, cleanup_qat_for_export
+
+    # Calculate input size for model
+    input_samples = int(config.data.sample_rate * config.data.audio_duration)
+    time_steps = input_samples // config.data.hop_length + 1
+    
+    feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
+    
+    if config.model.architecture == "cd_dnn":
+        input_size = feature_dim * time_steps
+    else:
+        input_size = feature_dim
 
     model = create_model(
         architecture=config.model.architecture,
         num_classes=config.model.num_classes,
         pretrained=False,
         dropout=config.model.dropout,
+        input_size=input_size,
+        input_channels=1,
     )
 
+    # Handle QAT checkpoints
+    is_qat_model = False
+    if hasattr(config, "qat") and config.qat.enabled:
+        logger.info(f"Detected QAT configuration (backend: {config.qat.backend})")
+        # Prepare model for QAT to match checkpoint structure
+        model = prepare_model_for_qat(model, config.qat)
+        is_qat_model = True
+
     # Load weights
-    model.load_state_dict(checkpoint["model_state_dict"])
+    state_dict = checkpoint["model_state_dict"]
+
+    # Handle QAT checkpoints loaded into FP32 models (if NOT prepared above)
+    if not is_qat_model:
+        # Filter out quantization keys that are not in the model
+        model_keys = set(model.state_dict().keys())
+        checkpoint_keys = set(state_dict.keys())
+        unexpected_keys = checkpoint_keys - model_keys
+
+        if unexpected_keys:
+            # Check if these are quantization keys
+            quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
+            
+            if quant_keys:
+                logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
+                # Filter the state dict
+                state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
+
+    model.load_state_dict(state_dict, strict=True)
     model.to(device)
     model.eval()
+
+    # Cleanup QAT model for export (replace unsupported fused ops)
+    if is_qat_model:
+        model = cleanup_qat_for_export(model)
 
     logger.info(f"Model loaded: {config.model.architecture}")
 
@@ -368,6 +411,12 @@ def export_model_to_onnx(
     # Create exporter
     exporter = ONNXExporter(model, sample_input_shape, device)
 
+    # Disable PTQ if model is already QAT
+    if is_qat_model and (quantize_int8 or quantize_fp16):
+        logger.warning("Disabling post-training quantization (PTQ) because model is already QAT-trained.")
+        quantize_int8 = False
+        quantize_fp16 = False
+
     # Create export config
     export_config = ExportConfig(
         output_path=output_path,
@@ -386,15 +435,15 @@ def export_model_to_onnx(
     if export_tflite and results["success"]:
         logger.info("Starting TFLite export...")
         tflite_path = output_path.with_suffix(".tflite")
-        
+
         # Create dummy input for calibration/shape
         dummy_input = torch.randn(*sample_input_shape)
-        
+
         # Use the base ONNX model for conversion (not quantized)
         onnx_base_path = Path(results["path"])
-        
+
         tflite_results = exporter.export_to_tflite(onnx_base_path, tflite_path)
-        
+
         results["tflite_path"] = tflite_results.get("path")
         results["tflite_size_mb"] = tflite_results.get("file_size_mb")
         results["tflite_success"] = tflite_results.get("success")
@@ -432,7 +481,7 @@ def validate_onnx_model(
 
     logger.info(f"Validating ONNX model: {onnx_path}")
 
-    results = {"valid": False, "error": None}
+    results: Dict[str, Any] = {"valid": False, "error": None}
 
     try:
         # Load and check ONNX model
@@ -442,12 +491,10 @@ def validate_onnx_model(
         results["valid"] = True
         results["graph"] = len(onnx_model.graph.node)
         results["inputs"] = [
-            (i.name, [d.dim_value for d in i.type.tensor_type.shape.dim])
-            for i in onnx_model.graph.input
+            (i.name, [d.dim_value for d in i.type.tensor_type.shape.dim]) for i in onnx_model.graph.input
         ]
         results["outputs"] = [
-            (o.name, [d.dim_value for d in o.type.tensor_type.shape.dim])
-            for o in onnx_model.graph.output
+            (o.name, [d.dim_value for d in o.type.tensor_type.shape.dim]) for o in onnx_model.graph.output
         ]
 
         # Get model size
@@ -478,9 +525,7 @@ def validate_onnx_model(
                 pytorch_model.to(device)
 
                 with torch.no_grad():
-                    pytorch_output = (
-                        pytorch_model(sample_input.to(device)).cpu().numpy()
-                    )
+                    pytorch_output = pytorch_model(sample_input.to(device)).cpu().numpy()
 
                 # Calculate difference
                 max_diff = np.abs(pytorch_output - onnx_output).max()

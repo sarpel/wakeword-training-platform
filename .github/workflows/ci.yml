@@ -1,0 +1,113 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, v3]
+  pull_request:
+    branches: [main, v3]
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install linting tools
+        run: |
+          pip install --upgrade pip
+          pip install black flake8 isort mypy types-PyYAML types-requests
+      
+      - name: Check formatting with Black
+        run: black --check --diff src/ tests/
+      
+      - name: Check imports with isort
+        run: isort --check-only --diff src/ tests/
+      
+      - name: Lint with flake8
+        run: |
+          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 src/ tests/ --count --exit-zero --max-complexity=15 --max-line-length=120 --statistics
+
+      - name: Type check with mypy
+        run: mypy src/ tests/ --ignore-missing-imports
+
+  test-cpu:
+    name: Unit Tests (CPU)
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsndfile1 ffmpeg
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+      
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v -m "unit and not gpu" --tb=short --cov=src --cov-report=xml
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  # GPU tests would run on self-hosted runner with CUDA
+  # test-gpu:
+  #   name: Integration Tests (GPU)
+  #   runs-on: self-hosted
+  #   needs: test-cpu
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Run GPU tests
+  #       run: pytest tests/ -v -m "gpu" --tb=short
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install safety
+        run: pip install safety
+      
+      - name: Check for vulnerabilities
+        run: safety check -r requirements.txt --output text

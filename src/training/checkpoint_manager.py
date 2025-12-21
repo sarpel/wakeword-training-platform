@@ -2,11 +2,12 @@
 Checkpoint Management Utilities
 Handle checkpoint loading, saving, and management
 """
+
 import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 import structlog
 import torch
@@ -66,7 +67,7 @@ class CheckpointManager:
         val_loss: float,
         val_metrics: Any,
         improved: bool,
-    ):
+    ) -> None:
         """
         Save checkpoint
 
@@ -100,9 +101,7 @@ class CheckpointManager:
         if improved:
             best_path = self.checkpoint_dir / "best_model.pt"
             torch.save(checkpoint, best_path)
-            logger.info(
-                f"Saved best model: {best_path} (F1: {val_metrics.f1_score:.4f})"
-            )
+            logger.info(f"Saved best model: {best_path} (F1: {val_metrics.f1_score:.4f})")
 
         # Save epoch checkpoint
         should_save = False
@@ -170,9 +169,7 @@ class CheckpointManager:
 
         return checkpoints
 
-    def get_best_checkpoint(
-        self, metric: str = "f1_score", mode: str = "max"
-    ) -> Optional[CheckpointInfo]:
+    def get_best_checkpoint(self, metric: str = "f1_score", mode: str = "max") -> Optional[CheckpointInfo]:
         """
         Get best checkpoint based on metric
 
@@ -235,7 +232,7 @@ class CheckpointManager:
         logger.info(f"  Epoch: {checkpoint['epoch'] + 1}")
         logger.info(f"  Val loss: {checkpoint.get('val_loss', 'N/A')}")
 
-        return checkpoint
+        return cast(Dict[str, Any], checkpoint)
 
     def load_best_model(
         self,
@@ -272,7 +269,7 @@ class CheckpointManager:
 
         return self.load_checkpoint(best_checkpoint.path, model=model, device=device)
 
-    def cleanup_old_checkpoints(self, keep_n: int = 5, keep_best: bool = True):
+    def cleanup_old_checkpoints(self, keep_n: int = 5, keep_best: bool = True) -> None:
         """
         Delete old checkpoints, keeping only N most recent
 
@@ -304,7 +301,7 @@ class CheckpointManager:
             except Exception as e:
                 logger.warning(f"Failed to delete {checkpoint.path}: {e}")
 
-    def export_checkpoint_info(self, output_path: Path):
+    def export_checkpoint_info(self, output_path: Path) -> None:
         """
         Export checkpoint metadata to JSON
 
@@ -339,7 +336,7 @@ class CheckpointManager:
         model: nn.Module,
         snapshot_name: str,
         metadata: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> None:
         """
         Create a standalone model snapshot (weights only, no optimizer)
 
@@ -355,9 +352,7 @@ class CheckpointManager:
         torch.save(snapshot, snapshot_path)
         logger.info(f"Created model snapshot: {snapshot_path}")
 
-    def load_model_snapshot(
-        self, model: nn.Module, snapshot_name: str, device: str = "cuda"
-    ) -> Dict[str, Any]:
+    def load_model_snapshot(self, model: nn.Module, snapshot_name: str, device: str = "cuda") -> Dict[str, Any]:
         """
         Load model from snapshot
 
@@ -379,12 +374,10 @@ class CheckpointManager:
         snapshot = torch.load(snapshot_path, map_location=device)
         model.load_state_dict(snapshot["model_state_dict"])
 
-        return snapshot.get("metadata", {})
+        return cast(Dict[str, Any], snapshot.get("metadata", {}))
 
 
-def extract_model_for_inference(
-    checkpoint_path: Path, output_path: Path, device: str = "cuda"
-):
+def extract_model_for_inference(checkpoint_path: Path, output_path: Path, device: str = "cuda") -> None:
     """
     Extract model weights from checkpoint for inference-only use
 
@@ -419,9 +412,7 @@ def extract_model_for_inference(
     logger.info(f"  Size reduction: {(1 - new_size/original_size)*100:.1f}%")
 
 
-def compare_checkpoints(
-    checkpoint_paths: List[Path], metric: str = "val_f1"
-) -> List[Tuple[Path, float]]:
+def compare_checkpoints(checkpoint_paths: List[Path], metric: str = "val_f1") -> List[Tuple[Path, float]]:
     """
     Compare multiple checkpoints by metric
 

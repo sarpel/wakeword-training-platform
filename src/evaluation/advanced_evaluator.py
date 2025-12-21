@@ -1,16 +1,85 @@
-from typing import Dict
+from typing import TYPE_CHECKING, Any, Dict, List, Sized, Tuple, cast
+
+if TYPE_CHECKING:
+    from src.evaluation.evaluator import ModelEvaluator
+    from torch.utils.data import Dataset
 
 import structlog
 import torch
+import numpy as np
 
 from src.training.advanced_metrics import calculate_comprehensive_metrics
 
 logger = structlog.get_logger(__name__)
 
 
+class ThresholdAnalyzer:
+    """
+    Analyzes model performance across different detection thresholds.
+    """
+    
+    def __init__(self, logits: torch.Tensor, labels: torch.Tensor):
+        """
+        Initialize analyzer with model outputs and ground truth.
+        
+        Args:
+            logits: Model output logits (N, num_classes)
+            labels: Ground truth labels (N,)
+        """
+        self.logits = logits
+        self.labels = labels
+        # Pre-calculate probabilities for class 1 (wakeword)
+        self.probs = torch.softmax(logits, dim=1)[:, 1]
+        
+    def compute_at_threshold(self, threshold: float) -> Dict[str, float]:
+        """
+        Compute basic metrics for a single threshold.
+        
+        Args:
+            threshold: Decision threshold (0.0 to 1.0)
+            
+        Returns:
+            Dictionary with precision, recall, tp, fp, tn, fn
+        """
+        preds = (self.probs >= threshold).long()
+        
+        tp = torch.sum((preds == 1) & (self.labels == 1)).item()
+        fp = torch.sum((preds == 1) & (self.labels == 0)).item()
+        tn = torch.sum((preds == 0) & (self.labels == 0)).item()
+        fn = torch.sum((preds == 0) & (self.labels == 1)).item()
+        
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        
+        return {
+            "threshold": threshold,
+            "precision": precision,
+            "recall": recall,
+            "tp": tp,
+            "fp": fp,
+            "tn": tn,
+            "fn": fn
+        }
+        
+    def analyze_range(self, thresholds: np.ndarray) -> List[Dict[str, float]]:
+        """
+        Compute metrics for a range of thresholds.
+        
+        Args:
+            thresholds: Array of thresholds to evaluate
+            
+        Returns:
+            List of metric dictionaries
+        """
+        results = []
+        for t in thresholds:
+            results.append(self.compute_at_threshold(float(t)))
+        return results
+
+
 def evaluate_with_advanced_metrics(
-    evaluator,
-    dataset,
+    evaluator: "ModelEvaluator",
+    dataset: "Dataset",
     total_seconds: float,
     target_fah: float = 1.0,
     batch_size: int = 32,
@@ -29,7 +98,9 @@ def evaluate_with_advanced_metrics(
     """
     from torch.utils.data import DataLoader
 
-    def collate_fn(batch):
+    def collate_fn(
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
         features = torch.stack(features)
@@ -49,7 +120,7 @@ def evaluate_with_advanced_metrics(
     all_logits = []
     all_targets = []
 
-    logger.info(f"Running comprehensive evaluation on {len(dataset)} samples...")
+    logger.info(f"Running comprehensive evaluation on {len(cast(Sized, dataset))} samples...")
 
     # Collect all predictions
     with torch.no_grad():
@@ -60,7 +131,7 @@ def evaluate_with_advanced_metrics(
             # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
             if inputs.ndim <= 3:
                 inputs = evaluator.audio_processor(inputs)
-            
+
             # Apply memory format optimization
             inputs = inputs.to(memory_format=torch.channels_last)
 
@@ -73,13 +144,13 @@ def evaluate_with_advanced_metrics(
             all_targets.append(targets.cpu())
 
     # Concatenate all batches
-    all_logits = torch.cat(all_logits, dim=0)
-    all_targets = torch.cat(all_targets, dim=0)
+    all_logits_tensor = torch.cat(all_logits, dim=0)
+    all_targets_tensor = torch.cat(all_targets, dim=0)
 
     # Calculate comprehensive metrics
     metrics = calculate_comprehensive_metrics(
-        logits=all_logits,
-        labels=all_targets,
+        logits=all_logits_tensor,
+        labels=all_targets_tensor,
         total_seconds=total_seconds,
         target_fah=target_fah,
     )

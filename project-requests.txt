@@ -1,4 +1,0 @@
-Project requests:
-Add a tick what you have finished.
-[x] 1. add security features to the server, I will use it open to the web, with cloudflared tunnel to reach with my own domain name. So make necessary additions for cors, admin login panel etc (if necessary) but include some kind of authorization mechanism. It shouldnt blindly respond to all requests or show the traffic to strangers.
-[x] 2. add information popup boxes or sub info panels for all technical terms in Gradio UI, use whatever method is compatible with gradio.

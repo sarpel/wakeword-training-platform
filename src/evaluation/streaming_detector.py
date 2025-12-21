@@ -1,15 +1,65 @@
 """
-Streaming Wakeword Detector
-Implements sliding window, voting, hysteresis, and lockout for real-time detection
+Streaming wakeword detector for real-time audio processing.
+
+This module provides classes for detecting wakewords in streaming audio using:
+- Sliding window processing
+- Voting mechanisms (N out of M detections)
+- Hysteresis (separate on/off thresholds)
+- Lockout periods after detection
 """
-from collections import deque
-from typing import Optional, Tuple
 
-import numpy as np
-import structlog
-import torch
+# Standard library imports
+from collections import deque  # For efficient fixed-size buffers
+from typing import Deque, List, Optional, Tuple  # Type hints for better code clarity
 
+# Third-party imports
+import numpy as np  # For numerical operations on audio arrays
+import structlog  # For structured logging
+import torch  # For PyTorch model inference
+
+from src.evaluation.types import InferenceEngine, StageBase
+
+# Initialize logger for this module
 logger = structlog.get_logger(__name__)
+
+
+class CascadeInferenceEngine(InferenceEngine):
+    """
+    Orchestration engine for distributed cascade inference.
+    
+    Manages multiple inference stages (e.g., Sentry, Judge) and handles
+    the logic for passing results between them.
+    """
+    
+    def __init__(self):
+        self.stages: List[StageBase] = []
+        
+    def add_stage(self, stage: StageBase):
+        """Add an inference stage to the cascade"""
+        self.stages.append(stage)
+        logger.info(f"Added stage to cascade: {stage.name}")
+        
+    def run(self, audio: np.ndarray) -> List[dict]:
+        """
+        Execute the cascade inference.
+        
+        Follows a sequential pipeline where each stage only runs if 
+        the previous stage detected a potential wakeword.
+        """
+        results = []
+        for stage in self.stages:
+            stage_result = stage.predict(audio)
+            results.append({
+                "stage": stage.name,
+                "result": stage_result
+            })
+            
+            # Cascade handoff: stop if not detected
+            if not stage_result.get("detected", True):
+                logger.info(f"Cascade stopped at {stage.name} (no detection)")
+                break
+            
+        return results
 
 
 class StreamingDetector:
@@ -44,17 +94,13 @@ class StreamingDetector:
             vote_threshold: Number of votes needed for detection
         """
         self.threshold_on = threshold_on
-        self.threshold_off = (
-            threshold_off
-            if threshold_off is not None
-            else max(threshold_on - hysteresis, 0)
-        )
+        self.threshold_off = threshold_off if threshold_off is not None else max(threshold_on - hysteresis, 0)
         self.lockout_ms = lockout_ms
         self.vote_window = vote_window
         self.vote_threshold = vote_threshold
 
         # State
-        self.score_buffer = deque(maxlen=vote_window)
+        self.score_buffer: Deque[float] = deque(maxlen=vote_window)
         self.locked_until_ms = 0
         self.is_active = False
 
@@ -100,7 +146,7 @@ class StreamingDetector:
 
         return False
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset detector state"""
         self.score_buffer.clear()
         self.locked_until_ms = 0
@@ -178,7 +224,7 @@ class SlidingWindowProcessor:
 
 
 def process_audio_stream(
-    model,
+    model: torch.nn.Module,
     audio: np.ndarray,
     sample_rate: int = 16000,
     window_duration_s: float = 1.0,
@@ -188,7 +234,7 @@ def process_audio_stream(
     vote_threshold: int = 3,
     lockout_ms: int = 1500,
     device: str = "cuda",
-) -> Tuple[list, list]:
+) -> Tuple[List[Tuple[int, float]], List[Tuple[int, float]]]:
     """
     Process audio stream and detect wakewords
 
@@ -276,9 +322,7 @@ if __name__ == "__main__":
     # Test 1: Basic detector
     print("\n1. Testing StreamingDetector...")
 
-    detector = StreamingDetector(
-        threshold_on=0.7, vote_window=5, vote_threshold=3, lockout_ms=1500
-    )
+    detector = StreamingDetector(threshold_on=0.7, vote_window=5, vote_threshold=3, lockout_ms=1500)
 
     # Simulate scores
     test_scores = [
@@ -306,9 +350,7 @@ if __name__ == "__main__":
     # Test 2: Sliding window processor
     print("\n2. Testing SlidingWindowProcessor...")
 
-    processor = SlidingWindowProcessor(
-        window_duration_s=1.0, hop_duration_s=0.1, sample_rate=16000
-    )
+    processor = SlidingWindowProcessor(window_duration_s=1.0, hop_duration_s=0.1, sample_rate=16000)
 
     # Create dummy audio (5 seconds)
     audio = np.random.randn(5 * 16000)
@@ -348,9 +390,7 @@ if __name__ == "__main__":
     for timestamp_ms, score in hyst_scores:
         detected = detector_hyst.step(score, timestamp_ms)
         state = "ACTIVE" if detector_hyst.is_active else "INACTIVE"
-        print(
-            f"  t={timestamp_ms}ms, score={score:.2f}, state={state}, detected={detected}"
-        )
+        print(f"  t={timestamp_ms}ms, score={score:.2f}, state={state}, detected={detected}")
 
     print(f"  ✅ Hysteresis test passed")
 

@@ -5,28 +5,34 @@ Panel 4: Model Evaluation
 - Test set evaluation with comprehensive metrics
 - Confusion matrix and ROC curve visualization
 """
+
+
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import gradio as gr
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
+import plotly.graph_objects as go
 
 matplotlib.use("Agg")
 import structlog
 
-from src.evaluation.evaluator import (
-    ModelEvaluator,
-    load_model_for_evaluation,
-)
-from src.evaluation.types import EvaluationResult
-from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
 from src.data.dataset import WakewordDataset
-from src.training.metrics import MetricResults
+from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
+from src.evaluation.advanced_evaluator import ThresholdAnalyzer
+from src.evaluation.data_collector import FalsePositiveCollector
+from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
+from src.evaluation.types import EvaluationResult
 from src.exceptions import WakewordException
+from src.training.metrics import MetricResults
+from src.evaluation.benchmarking import BenchmarkRunner
+from src.evaluation.stages import SentryInferenceStage
+from src.config.cuda_utils import get_cuda_validator
 
 logger = structlog.get_logger(__name__)
 
@@ -34,28 +40,39 @@ logger = structlog.get_logger(__name__)
 class EvaluationState:
     """Global evaluation state manager"""
 
-    def __init__(self):
-        self.model = None
-        self.model_info = None
+    def __init__(self) -> None:
+        self.model: Optional[torch.nn.Module] = None
+        self.model_info: Optional[Dict[str, Any]] = None
         self.evaluator: Optional[ModelEvaluator] = None
-        self.mic_inference: Optional[MicrophoneInference] = None
+        self.mic_inference: Optional[Union[MicrophoneInference, SimulatedMicrophoneInference]] = None
         self.is_mic_recording = False
+        
+        # Detect device
+        validator = get_cuda_validator(allow_cpu=True)
+        self.device = "cuda" if validator.validate()[0] and validator.cuda_available else "cpu"
+        logger.info(f"Evaluation Panel initialized on {self.device}")
 
         # File evaluation results
         self.file_results: List[EvaluationResult] = []
 
         # Test set results
-        self.test_metrics = None
+        self.test_metrics: Optional[MetricResults] = None
         self.test_results: List[EvaluationResult] = []
 
         # Microphone history
-        self.mic_history = []
+        self.mic_history: List[str] = []
 
-        self.waveform_fig = None
-        self.waveform_ax = None
-        self.waveform_line = None
+        self.waveform_fig: Optional[Any] = None
+        self.waveform_ax: Optional[Any] = None
+        self.waveform_line: Optional[Any] = None
         self.waveform_sr = 16000  # modelden set edilecek
         self.window_sec = 1.0  # ekranda gösterilecek süre
+
+        # Analysis Data
+        self.last_logits: Optional[torch.Tensor] = None
+        self.last_labels: Optional[torch.Tensor] = None
+        self.threshold_analyzer: Optional[ThresholdAnalyzer] = None
+        self.fp_collector = FalsePositiveCollector()
 
 
 # Global state
@@ -65,70 +82,46 @@ eval_state = EvaluationState()
 def get_available_models() -> List[str]:
     """
     Get list of available trained models
-
-    Returns:
-        List of model checkpoint paths
     """
     checkpoint_dir = Path("models/checkpoints")
-
     if not checkpoint_dir.exists():
         return ["No models available"]
-
-    # Find all checkpoint files
     checkpoints = list(checkpoint_dir.glob("*.pt"))
-
     if not checkpoints:
         return ["No models available"]
-
-    # Sort by modification time (newest first)
     checkpoints.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-
     return [str(p) for p in checkpoints]
 
 
 def load_model(model_path: str) -> str:
     """
     Load model for evaluation
-
-    Args:
-        model_path: Path to model checkpoint
-
-    Returns:
-        Status message
     """
     if model_path == "No models available":
         return "❌ No models available. Train a model first (Panel 3)."
 
     try:
         logger.info(f"Loading model: {model_path}")
-
-        # Load model
-        model, info = load_model_for_evaluation(Path(model_path), device="cuda")
-
-        # Create evaluator
+        model, info = load_model_for_evaluation(Path(model_path), device=eval_state.device)
         evaluator = ModelEvaluator(
             model=model,
             sample_rate=info["config"].data.sample_rate,
             audio_duration=info["config"].data.audio_duration,
-            device="cuda",
+            device=eval_state.device,
             feature_type=info["config"].data.feature_type,
             n_mels=info["config"].data.n_mels,
             n_mfcc=info["config"].data.n_mfcc,
             n_fft=info["config"].data.n_fft,
             hop_length=info["config"].data.hop_length,
-            config=info["config"],  # Pass config object
+            config=info["config"],
         )
-
-        # NEW: Force audio_processor to eval mode
         if hasattr(evaluator, "audio_processor"):
             evaluator.audio_processor.eval()
-
-        # Update state
         eval_state.model = model
         eval_state.model_info = info
         eval_state.evaluator = evaluator
         eval_state.waveform_sr = info["config"].data.sample_rate
-
+        
         # Format status message
         status = f"✅ Model Loaded Successfully\n"
         status += f"Architecture: {info['config'].model.architecture}\n"
@@ -142,359 +135,143 @@ def load_model(model_path: str) -> str:
                 status += f"FPR: {metrics.get('fpr', 0) * 100:.2f}%\n"
                 status += f"FNR: {metrics.get('fnr', 0) * 100:.2f}%"
 
-        logger.info("Model loaded successfully")
         return status
-
-    except WakewordException as e:
-        error_msg = f"❌ Model Error: {str(e)}"
-        logger.error(error_msg)
-        logger.exception(e)
-        return f"{error_msg}\n\nActionable suggestion: Please check your model for the following error: {e}"
     except Exception as e:
-        error_msg = f"❌ Failed to load model: {str(e)}"
-        logger.error(error_msg)
-        logger.exception(e)
-        return error_msg
+        logger.error(f"Failed to load model: {e}")
+        return f"❌ Failed to load model: {str(e)}"
 
 
-def _ensure_waveform_fig():
-    if (
-        eval_state.waveform_fig is None
-        or eval_state.waveform_ax is None
-        or eval_state.waveform_line is None
-    ):
-        # Eski fig varsa kapat
-        if eval_state.waveform_fig is not None:
-            try:
-                plt.close(eval_state.waveform_fig)
-            except:
-                pass
+def _ensure_waveform_fig() -> None:
+    if eval_state.waveform_fig is None:
         fig, ax = plt.subplots(figsize=(10, 3))
-        # Başlangıç boş veri
-        x = np.linspace(
-            0,
-            eval_state.window_sec,
-            int(eval_state.waveform_sr * eval_state.window_sec),
-        )
+        x = np.linspace(0, eval_state.window_sec, int(eval_state.waveform_sr * eval_state.window_sec))
         y = np.zeros_like(x)
         (line,) = ax.plot(x, y, linewidth=0.5)
-        ax.set_xlabel("Time (s)", fontsize=10)
-        ax.set_ylabel("Amplitude", fontsize=10)
-        ax.set_title("Live Audio Waveform", fontsize=12, fontweight="bold")
-        ax.grid(True, alpha=0.3)
         ax.set_ylim([-1.0, 1.0])
-        ax.set_xlim([0, eval_state.window_sec])
-        plt.tight_layout()
-        eval_state.waveform_fig, eval_state.waveform_ax, eval_state.waveform_line = (
-            fig,
-            ax,
-            line,
-        )
+        eval_state.waveform_fig, eval_state.waveform_ax, eval_state.waveform_line = fig, ax, line
 
-
-def _update_waveform_plot(audio: np.ndarray):
+def _update_waveform_plot(audio: np.ndarray) -> Any:
     _ensure_waveform_fig()
-    sr = eval_state.waveform_sr
-    # Son window_sec kadarını göster
-    max_len = int(sr * eval_state.window_sec)
+    max_len = int(eval_state.waveform_sr * eval_state.window_sec)
     if audio.shape[0] > max_len:
         audio = audio[-max_len:]
-    x = np.linspace(0, eval_state.window_sec, max_len)
-    # Kısa gelirse sağa hizala
     y = np.zeros(max_len, dtype=audio.dtype)
     y[-len(audio) :] = audio
-    eval_state.waveform_line.set_data(x, y)
-    # Limitleri sabit tut. redraw için fig’i döndür.
+    if eval_state.waveform_line:
+        eval_state.waveform_line.set_ydata(y)
     return eval_state.waveform_fig
 
-
 def evaluate_uploaded_files(files: List, threshold: float) -> Tuple[pd.DataFrame, str]:
-    """
-    Evaluate uploaded audio files
-
-    Args:
-        files: List of uploaded file objects
-        threshold: Detection threshold
-
-    Returns:
-        Tuple of (results_dataframe, log_message)
-    """
     if eval_state.evaluator is None:
         return None, "❌ Please load a model first"
-
-    if files is None or len(files) == 0:
-        return None, "❌ Please upload audio files"
-
     try:
-        logger.info(f"Evaluating {len(files)} files...")
-
-        # Get file paths
-        file_paths = [Path(f.name) for f in files]
-
-        # Evaluate
-        results = eval_state.evaluator.evaluate_files(
-            file_paths, threshold=threshold, batch_size=32
-        )
-
-        # Store results
+        results = eval_state.evaluator.evaluate_files([Path(f.name) for f in files], threshold=threshold, batch_size=32)
         eval_state.file_results = results
-
-        # Convert to dataframe
-        data = []
-        for result in results:
-            data.append(
-                {
-                    "Filename": result.filename,
-                    "Prediction": result.prediction,
-                    "Confidence": f"{result.confidence:.2%}",
-                    "Latency (ms)": f"{result.latency_ms:.2f}",
-                }
-            )
-
-        df = pd.DataFrame(data)
-
-        # Calculate summary
-        positive_count = sum(1 for r in results if r.prediction == "Positive")
-        negative_count = len(results) - positive_count
-        avg_confidence = np.mean([r.confidence for r in results])
-        avg_latency = np.mean([r.latency_ms for r in results])
-
-        log_msg = f"✅ Evaluation Complete\n"
-        log_msg += f"Files evaluated: {len(results)}\n"
-        log_msg += f"Positive detections: {positive_count}\n"
-        log_msg += f"Negative detections: {negative_count}\n"
-        log_msg += f"Avg confidence: {avg_confidence:.2%}\n"
-        log_msg += f"Avg latency: {avg_latency:.2f} ms"
-
-        logger.info(log_msg)
-
-        return df, log_msg
-
-    except WakewordException as e:
-        error_msg = f"❌ Evaluation Error: {str(e)}"
-        logger.error(error_msg)
-        logger.exception(e)
-        return (
-            None,
-            f"{error_msg}\n\nActionable suggestion: Please check your audio files for the following error: {e}",
-        )
+        data = [{"Filename": r.filename, "Prediction": r.prediction, "Confidence": f"{r.confidence:.2%}"} for r in results]
+        return pd.DataFrame(data), f"✅ Evaluation Complete. {len(results)} files evaluated."
     except Exception as e:
-        error_msg = f"❌ Evaluation failed: {str(e)}"
-        logger.error(error_msg)
-        logger.exception(e)
-        return None, error_msg
-
+        return None, str(e)
 
 def export_results_to_csv() -> str:
-    """
-    Export evaluation results to CSV
-
-    Returns:
-        Status message
-    """
     if not eval_state.file_results:
         return "❌ No results to export"
-
     try:
-        # Create exports directory
         export_dir = Path("exports")
         export_dir.mkdir(exist_ok=True)
-
-        # Generate filename
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"evaluation_results_{timestamp}.csv"
-        filepath = export_dir / filename
-
-        # Convert to dataframe and save
-        data = []
-        for result in eval_state.file_results:
-            data.append(
-                {
-                    "filename": result.filename,
-                    "prediction": result.prediction,
-                    "confidence": result.confidence,
-                    "latency_ms": result.latency_ms,
-                }
-            )
-
-        df = pd.DataFrame(data)
-        df.to_csv(filepath, index=False)
-
-        logger.info(f"Results exported to: {filepath}")
-
-        return f"✅ Results exported to: {filepath}"
-
-    except WakewordException as e:
-        error_msg = f"❌ Export Error: {str(e)}"
-        logger.error(error_msg)
-        return error_msg
+        filename = f"evaluation_results_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        pd.DataFrame([r.__dict__ for r in eval_state.file_results]).to_csv(export_dir / filename)
+        return f"✅ Results exported to: {export_dir / filename}"
     except Exception as e:
-        error_msg = f"❌ Export failed: {str(e)}"
-        logger.error(error_msg)
-        return error_msg
+        return str(e)
 
-
-def start_microphone():
-    """Start microphone inference"""
+def start_microphone() -> Tuple[str, float, Optional[Any], str]:
     if eval_state.evaluator is None:
         return "❌ Please load a model first", 0.0, None, ""
-
-    if eval_state.is_mic_recording:
-        return "⚠️ Already recording", 0.0, None, ""
-
     try:
-        logger.info("Starting microphone inference...")
-
-        # Create microphone inference
-        try:
-            mic_inf = MicrophoneInference(
-                model=eval_state.model,
-                sample_rate=eval_state.model_info["config"].data.sample_rate,
-                audio_duration=eval_state.model_info["config"].data.audio_duration,
-                threshold=0.5,
-                device="cuda",
-                feature_type=eval_state.model_info["config"].data.feature_type,
-                n_mels=eval_state.model_info["config"].data.n_mels,
-                n_mfcc=eval_state.model_info["config"].data.n_mfcc,
-                n_fft=eval_state.model_info["config"].data.n_fft,
-                hop_length=eval_state.model_info["config"].data.hop_length,
-            )
-        except ImportError:
-            # Fallback to simulated
-            logger.warning("sounddevice not available, using simulated microphone")
-            mic_inf = SimulatedMicrophoneInference(
-                model=eval_state.model,
-                sample_rate=eval_state.model_info["config"].data.sample_rate,
-                threshold=0.5,
-                device="cuda",
-            )
-
+        mic_inf = MicrophoneInference(
+            model=eval_state.model,
+            sample_rate=eval_state.waveform_sr,
+            audio_duration=eval_state.model_info["config"].data.audio_duration,
+            threshold=0.5,
+            device=eval_state.device,
+        )
         mic_inf.start()
-
         eval_state.mic_inference = mic_inf
         eval_state.is_mic_recording = True
         eval_state.mic_history = []
-
-        return "🟢 Recording... Speak your wakeword!", 0.0, None, ""
-
-    except WakewordException as e:
-        error_msg = f"❌ Microphone Error: {str(e)}"
-        logger.error(error_msg)
-        return (
-            error_msg,
-            0.0,
-            None,
-            f"{error_msg}\n\nActionable suggestion: Please check your microphone for the following error: {e}",
-        )
+        return "🟢 Recording...", 0.0, None, ""
     except Exception as e:
-        error_msg = f"❌ Failed to start microphone: {str(e)}"
-        logger.error(error_msg)
-        return error_msg, 0.0, None, ""
+        return str(e), 0.0, None, ""
 
-
-def stop_microphone():
-    """Stop microphone inference"""
+def stop_microphone() -> Tuple[str, float, Optional[Any], str]:
     if not eval_state.is_mic_recording:
         return "⚠️ Not recording", 0.0, None, ""
-
-    try:
-        logger.info("Stopping microphone inference...")
-
-        if eval_state.mic_inference:
-            eval_state.mic_inference.stop()
-
-        eval_state.is_mic_recording = False
-
-        # Get stats
-        if eval_state.mic_inference:
-            stats = eval_state.mic_inference.get_stats()
-            history_msg = f"\nSession summary:\n"
-            history_msg += f"Total detections: {stats['detection_count']}\n"
-            history_msg += f"False alarms: {stats['false_alarm_count']}"
-
-            eval_state.mic_history.append(history_msg)
-
-        return "🔴 Not Detecting", 0.0, None, "\n".join(eval_state.mic_history)
-
-    except WakewordException as e:
-        error_msg = f"❌ Microphone Error: {str(e)}"
-        logger.error(error_msg)
-        return (
-            error_msg,
-            0.0,
-            None,
-            f"{error_msg}\n\nActionable suggestion: Please check your microphone for the following error: {e}",
-        )
-    except Exception as e:
-        error_msg = f"❌ Failed to stop microphone: {str(e)}"
-        logger.error(error_msg)
-        return error_msg, 0.0, None, ""
-
+    if eval_state.mic_inference:
+        eval_state.mic_inference.stop()
+    eval_state.is_mic_recording = False
+    return "🔴 Stopped", 0.0, None, "\n".join(eval_state.mic_history)
 
 def get_microphone_status() -> Tuple:
-    """Get current microphone status for live updates"""
     if not eval_state.is_mic_recording or eval_state.mic_inference is None:
         return "🔴 Not Detecting", 0.0, None, "\n".join(eval_state.mic_history)
+    result = eval_state.mic_inference.get_latest_result()
+    if result:
+        conf, pos, chunk = result
+        status = "✅ DETECTED!" if pos else "🟢 Listening..."
+        eval_state.mic_history.append(f"[{time.strftime('%H:%M:%S')}] {status} ({conf:.2%})")
+        return status, round(conf * 100, 2), _update_waveform_plot(chunk), "\n".join(eval_state.mic_history[-50:])
+    return "🟢 Listening...", 0.0, None, "\n".join(eval_state.mic_history)
 
+def run_threshold_analysis() -> Tuple[gr.Plot, pd.DataFrame]:
+    if eval_state.threshold_analyzer is None:
+        return None, None
+    results = eval_state.threshold_analyzer.analyze_range(np.linspace(0, 1, 21))
+    df = pd.DataFrame(results)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df['threshold'], y=df['precision'], name='Precision', line=dict(color='cyan')))
+    fig.add_trace(go.Scatter(x=df['threshold'], y=df['recall'], name='Recall', line=dict(color='orange')))
+    fig.update_layout(title="PR vs Threshold", template="plotly_dark", height=400)
+    return fig, df
+
+def run_benchmark_test(num_iterations: int = 10) -> Dict[str, Any]:
+    if eval_state.model is None:
+        return {"error": "No model loaded"}
     try:
-        # Get latest result
-        result = eval_state.mic_inference.get_latest_result()
-
-        if result is not None:
-            confidence, is_positive, audio_chunk = result
-
-            # Update history
-            timestamp = time.strftime("%H:%M:%S")
-            if is_positive:
-                msg = f"[{timestamp}] ✅ WAKEWORD DETECTED! Confidence: {confidence:.2%}"
-                status = f"🟢 WAKEWORD DETECTED! ({confidence:.2%})"
-            else:
-                msg = f"[{timestamp}] Listening... ({confidence:.2%})"
-                status = "🟢 Recording... Speak your wakeword!"
-
-            eval_state.mic_history.append(msg)
-
-            # Keep only last 50 messages
-            if len(eval_state.mic_history) > 50:
-                eval_state.mic_history = eval_state.mic_history[-50:]
-
-            # Create waveform plot
-            fig = _update_waveform_plot(audio_chunk)
-
-            return (
-                status,
-                round(confidence * 100, 2),
-                fig,
-                "\n".join(eval_state.mic_history),
-            )
-
-        return (
-            "🟢 Recording... Speak your wakeword!",
-            0.0,
-            None,
-            "\n".join(eval_state.mic_history),
-        )
-
+        stage = SentryInferenceStage(model=eval_state.model, name=eval_state.model_info["config"].model.architecture, device=eval_state.device)
+        runner = BenchmarkRunner(stage)
+        audio = np.random.randn(int(eval_state.waveform_sr * eval_state.model_info["config"].data.audio_duration)).astype(np.float32)
+        metrics = runner.run_benchmark(audio, num_iterations=num_iterations)
+        return {
+            "Model": metrics["name"], 
+            "Mean Latency": f"{metrics['mean_latency_ms']:.2f} ms", 
+            "RAM Usage": f"{metrics['process_memory_mb']:.2f} MB", 
+            "GPU Usage": f"{metrics.get('gpu_memory_allocated_mb', 0):.2f} MB"
+        }
     except Exception as e:
-        logger.error(f"Microphone status error: {e}")
-        return "🔴 Error", 0.0, None, str(e)
+        return {"error": str(e)}
 
+def collect_false_positives() -> str:
+    if not eval_state.test_results or eval_state.last_labels is None:
+        return "Run evaluation first."
+    eval_state.fp_collector.clear()
+    for r, l in zip(eval_state.test_results, eval_state.last_labels):
+        if r.prediction == "Positive" and l == 0:
+            eval_state.fp_collector.add_sample(r.raw_audio, {"filename": r.filename, "confidence": r.confidence})
+    return generate_fp_gallery_html()
 
-# def create_waveform_plot(audio: np.ndarray) -> plt.Figure:
-# """Create waveform visualization"""
-# fig, ax = plt.subplots(figsize=(10, 3))
+def generate_fp_gallery_html() -> str:
+    samples = eval_state.fp_collector.get_samples()
+    if not samples:
+        return "<p>No samples.</p>"
+    html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px;">'
+    for s in samples:
+        audio_url = f"file/{eval_state.fp_collector.output_dir}/{s['audio_path']}"
+        html += f'<div style="background: #2d2d2d; padding: 10px;"><p>File: {s["metadata"]["filename"]}</p><audio src="{audio_url}" controls></audio></div>'
+    return html + '</div>'
 
-# time_axis = np.arange(len(audio)) / 16000  # Assuming 16kHz
-# ax.plot(time_axis, audio, linewidth=0.5, color='blue')
-# ax.set_xlabel('Time (s)', fontsize=10)
-# ax.set_ylabel('Amplitude', fontsize=10)
-# ax.set_title('Live Audio Waveform', fontsize=12, fontweight='bold')
-# ax.grid(True, alpha=0.3)
-# ax.set_ylim([-1.0, 1.0])
-
-# plt.tight_layout()
-# return fig
-
+def clear_false_positives() -> str:
+    eval_state.fp_collector.clear()
+    return "<p>Cleared.</p>"
 
 def evaluate_test_set(
     data_root: str,
@@ -515,7 +292,7 @@ def evaluate_test_set(
     Returns:
         Tuple of (metrics_dict, confusion_matrix_plot, roc_plot, advanced_metrics_dict)
     """
-    if eval_state.evaluator is None:
+    if eval_state.evaluator is None or eval_state.model_info is None:
         return {"status": "❌ Please load a model first"}, None, None, {}
 
     try:
@@ -536,41 +313,33 @@ def evaluate_test_set(
         logger.info(f"Evaluating test set: {test_path}")
 
         # Load test dataset
-        # Use configured feature type and fallback to raw audio for robustness
-        # Determine dataset root based on provided path to splits/test.json -> ../../
-        # If test_path is "data/splits/test.json", dataset root is "data"
         dataset_root_inferred = test_path.parent.parent
-        
+
         test_dataset = WakewordDataset(
             manifest_path=test_path,
             sample_rate=eval_state.model_info["config"].data.sample_rate,
             audio_duration=eval_state.model_info["config"].data.audio_duration,
             augment=False,
-            device="cuda",
+            device=eval_state.device,
             feature_type=eval_state.model_info["config"].data.feature_type,
             n_mels=eval_state.model_info["config"].data.n_mels,
             n_mfcc=eval_state.model_info["config"].data.n_mfcc,
             n_fft=eval_state.model_info["config"].data.n_fft,
             hop_length=eval_state.model_info["config"].data.hop_length,
-            use_precomputed_features_for_training=eval_state.model_info["config"].data.use_precomputed_features_for_training,
+            use_precomputed_features_for_training=eval_state.model_info[
+                "config"
+            ].data.use_precomputed_features_for_training,
             npy_cache_features=eval_state.model_info["config"].data.npy_cache_features,
-            fallback_to_audio=True, # Enable fallback to prevent crashes
-            # CMVN not typically applied during evaluation unless consistent with training pipeline.
-            # Assuming evaluator handles normalization or model includes it.
-            # If model was trained with CMVN, dataset should apply it?
-            # BUT wait, evaluator.py handles evaluation logic.
-            # Let's check if CMVN path exists
+            fallback_to_audio=True,
             cmvn_path=dataset_root_inferred / "cmvn_stats.json",
             apply_cmvn=True if (dataset_root_inferred / "cmvn_stats.json").exists() else False,
-            return_raw_audio=True, # IMPORTANT: Use GPU pipeline for consistency with training
+            return_raw_audio=True,
         )
 
         logger.info(f"Loaded {len(test_dataset)} test samples")
 
         # Evaluate with basic metrics
-        metrics, results = eval_state.evaluator.evaluate_dataset(
-            test_dataset, threshold=threshold, batch_size=32
-        )
+        metrics, results = eval_state.evaluator.evaluate_dataset(test_dataset, threshold=threshold, batch_size=32)
 
         # Store results
         eval_state.test_metrics = metrics
@@ -596,13 +365,11 @@ def evaluate_test_set(
         advanced_metrics_dict = {}
         if use_advanced_metrics:
             logger.info("Computing advanced production metrics...")
-            total_seconds = (
-                len(test_dataset) * eval_state.model_info["config"].data.audio_duration
-            )
+            sample_duration = eval_state.model_info["config"].data.audio_duration
 
             advanced_metrics = eval_state.evaluator.evaluate_with_advanced_metrics(
                 dataset=test_dataset,
-                total_seconds=total_seconds,
+                total_seconds=sample_duration,
                 target_fah=target_fah,
                 batch_size=32,
             )
@@ -634,6 +401,13 @@ def evaluate_test_set(
 
         logger.info("Test set evaluation complete")
 
+        # Update analysis state
+        all_preds = torch.tensor(np.stack([r.logits for r in results]))
+        all_targs = torch.tensor(np.array([r.label for r in results]))
+        eval_state.last_logits = all_preds
+        eval_state.last_labels = all_targs
+        eval_state.threshold_analyzer = ThresholdAnalyzer(all_preds, all_targs)
+
         return metrics_dict, conf_matrix_plot, roc_plot, advanced_metrics_dict
 
     except WakewordException as e:
@@ -653,7 +427,6 @@ def evaluate_test_set(
         logger.error(error_msg)
         logger.exception(e)
         return {"status": error_msg}, None, None, {}
-
 
 def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
     """Create confusion matrix visualization"""
@@ -700,37 +473,31 @@ def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
     plt.tight_layout()
     return fig
 
-
-def create_roc_curve_plot(test_dataset) -> plt.Figure:
+def create_roc_curve_plot(test_dataset: WakewordDataset) -> plt.Figure:
     """Create ROC curve visualization"""
     try:
+        if eval_state.evaluator is None:
+            return plt.figure()
+
         # Get ROC curve data
-        fpr_array, tpr_array, thresholds = eval_state.evaluator.get_roc_curve_data(
-            test_dataset, batch_size=32
-        )
+        fpr_array, tpr_array, thresholds = eval_state.evaluator.get_roc_curve_data(test_dataset, batch_size=32)
 
         # Remove duplicate points for cleaner curve
-        unique_fpr = []
-        unique_tpr = []
+        unique_fpr: List[float] = []
+        unique_tpr: List[float] = []
         for fpr, tpr in zip(fpr_array, tpr_array):
             if not unique_fpr or (fpr != unique_fpr[-1] or tpr != unique_tpr[-1]):
                 unique_fpr.append(fpr)
                 unique_tpr.append(tpr)
 
-        unique_fpr = np.array(unique_fpr)
-        unique_tpr = np.array(unique_tpr)
+        unique_fpr_arr = np.array(unique_fpr)
+        unique_tpr_arr = np.array(unique_tpr)
 
         # Calculate AUC
-        if len(unique_fpr) >= 2:
-            # Use trapezoidal rule for AUC
-            auc = np.trapz(unique_tpr, unique_fpr)
+        if len(unique_fpr_arr) >= 2:
+            auc = np.trapz(unique_tpr_arr, unique_fpr_arr)
         else:
-            # Fallback: estimate AUC based on single point
-            # If model predicts perfectly, AUC = 1.0
-            if len(unique_tpr) == 1:
-                auc = unique_tpr[0] * (1.0 - unique_fpr[0])
-            else:
-                auc = 0.5  # Random baseline
+            auc = 0.5
 
         # Plot
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -743,7 +510,6 @@ def create_roc_curve_plot(test_dataset) -> plt.Figure:
                 label=f"ROC Curve (AUC = {auc:.3f})",
             )
         else:
-            # Plot single point
             ax.scatter(
                 unique_fpr,
                 unique_tpr,
@@ -751,15 +517,6 @@ def create_roc_curve_plot(test_dataset) -> plt.Figure:
                 c="blue",
                 zorder=3,
                 label=f"Operating Point (AUC ≈ {auc:.3f})",
-            )
-            # Draw connecting lines to show perfect classifier
-            ax.plot(
-                [0, unique_fpr[0], unique_fpr[0], 1],
-                [0, unique_tpr[0], 1, 1],
-                "b--",
-                linewidth=1,
-                alpha=0.5,
-                label="Implied ROC Curve",
             )
 
         ax.plot([0, 1], [0, 1], "k--", linewidth=1, label="Random Classifier")
@@ -777,44 +534,24 @@ def create_roc_curve_plot(test_dataset) -> plt.Figure:
 
     except Exception as e:
         logger.error(f"ROC curve generation failed: {e}")
-        logger.exception(e)
-        # Return empty plot
         fig, ax = plt.subplots(figsize=(8, 6))
-        ax.text(
-            0.5,
-            0.5,
-            f"ROC curve generation failed:\n{str(e)}",
-            ha="center",
-            va="center",
-            transform=ax.transAxes,
-        )
+        ax.text(0.5, 0.5, f"ROC curve generation failed:\n{str(e)}", ha="center", va="center", transform=ax.transAxes)
         return fig
-
 
 def create_evaluation_panel(state: gr.State) -> gr.Blocks:
     """
     Create Panel 4: Model Evaluation
-
-    Args:
-        state: Gradio State containing shared application data (config, etc.)
-
-    Returns:
-        Gradio Blocks interface
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 🎯 Model Evaluation")
-        gr.Markdown(
-            "Test your trained model with audio files, live microphone, or test dataset."
-        )
+        gr.Markdown("Test your trained model with audio files, live microphone, or test dataset.")
 
         with gr.Row():
             model_selector = gr.Dropdown(
                 choices=get_available_models(),
                 label="Select Trained Model",
                 info="Choose a checkpoint to evaluate",
-                value=get_available_models()[0]
-                if get_available_models()[0] != "No models available"
-                else None,
+                value=get_available_models()[0] if get_available_models()[0] != "No models available" else None,
             )
             refresh_models_btn = gr.Button("🔄 Refresh", scale=0)
             load_model_btn = gr.Button("📥 Load Model", variant="primary", scale=1)
@@ -851,9 +588,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         )
 
                         with gr.Row():
-                            evaluate_files_btn = gr.Button(
-                                "🔍 Evaluate Files", variant="primary", scale=2
-                            )
+                            evaluate_files_btn = gr.Button("🔍 Evaluate Files", variant="primary", scale=2)
                             export_results_btn = gr.Button("💾 Export CSV", scale=1)
 
                     with gr.Column():
@@ -863,7 +598,6 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                                 "Filename",
                                 "Prediction",
                                 "Confidence",
-                                "Latency (ms)",
                             ],
                             label="Evaluation Results",
                             interactive=False,
@@ -880,9 +614,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             # Microphone testing
             with gr.TabItem("🎤 Live Microphone Test"):
                 gr.Markdown("### Real-Time Wakeword Detection")
-                gr.Markdown(
-                    "**Note**: Requires microphone access and `sounddevice` package."
-                )
+                gr.Markdown("**Note**: Requires microphone access and `sounddevice` package.")
 
                 with gr.Row():
                     with gr.Column():
@@ -896,12 +628,8 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         )
 
                         with gr.Row():
-                            start_mic_btn = gr.Button(
-                                "🎙️ Start Recording", variant="primary", scale=2
-                            )
-                            stop_mic_btn = gr.Button(
-                                "⏹️ Stop Recording", variant="stop", scale=1
-                            )
+                            start_mic_btn = gr.Button("🎙️ Start Recording", variant="primary", scale=2)
+                            stop_mic_btn = gr.Button("⏹️ Stop Recording", variant="stop", scale=1)
 
                     with gr.Column():
                         gr.Markdown("### Detection Status")
@@ -913,9 +641,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             interactive=False,
                         )
 
-                        confidence_display = gr.Number(
-                            label="Confidence (%)", value=0.0, interactive=False
-                        )
+                        confidence_display = gr.Number(label="Confidence (%)", value=0.0, interactive=False)
 
                         waveform_plot = gr.Plot(label="Live Waveform")
 
@@ -966,9 +692,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             info="Desired false alarm rate for production threshold",
                         )
 
-                evaluate_testset_btn = gr.Button(
-                    "📈 Run Test Evaluation", variant="primary"
-                )
+                evaluate_testset_btn = gr.Button("📈 Run Test Evaluation", variant="primary")
 
                 with gr.Row():
                     with gr.Column():
@@ -983,22 +707,41 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         confusion_matrix = gr.Plot(label="Confusion Matrix")
 
                 with gr.Row():
-                    roc_curve = gr.Plot(
-                        label="ROC Curve (Receiver Operating Characteristic)"
-                    )
+                    roc_curve = gr.Plot(label="ROC Curve (Receiver Operating Characteristic)")
 
                 with gr.Row():
                     with gr.Column():
                         gr.Markdown("### 🎯 Advanced Production Metrics")
                         advanced_metrics = gr.JSON(
                             label="Production Metrics (FAH, EER, pAUC)",
-                            value={
-                                "status": "Enable advanced metrics and run evaluation"
-                            },
+                            value={"status": "Enable advanced metrics and run evaluation"},
                         )
 
+            # Analysis Dashboard
+            with gr.TabItem("🔍 Analysis Dashboard"):
+                gr.Markdown("### Advanced Model Analysis & Debugging")
+                gr.Markdown("Use these tools to deep-dive into model performance and tune thresholds.")
+
+                with gr.Row():
+                    run_analysis_btn = gr.Button("📊 Run Threshold Analysis", variant="primary")
+                    run_bench_btn = gr.Button("⚡ Run Performance Benchmark", variant="secondary")
+
+                with gr.Row():
+                    with gr.Column():
+                        threshold_plot = gr.Plot(label="Threshold Analysis")
+                    with gr.Column():
+                        bench_metrics = gr.JSON(label="Benchmarking Metrics")
+
+                gr.Markdown("---")
+                gr.Markdown("### 🚨 False Positive Inspector")
+                with gr.Row():
+                    collect_fp_btn = gr.Button("📥 Collect False Positives from Test Set", variant="secondary")
+                    clear_fp_btn = gr.Button("🗑️ Clear Collected Samples")
+
+                fp_gallery = gr.HTML(label="False Positive Samples")
+
         # Event handlers
-        def refresh_models_handler():
+        def refresh_models_handler() -> gr.Dropdown:
             models = get_available_models()
             return gr.update(
                 choices=models,
@@ -1006,10 +749,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             )
 
         refresh_models_btn.click(fn=refresh_models_handler, outputs=[model_selector])
-
-        load_model_btn.click(
-            fn=load_model, inputs=[model_selector], outputs=[model_status]
-        )
+        load_model_btn.click(fn=load_model, inputs=[model_selector], outputs=[model_status])
 
         evaluate_files_btn.click(
             fn=evaluate_uploaded_files,
@@ -1040,8 +780,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
         )
 
         # Auto-refresh for microphone updates
-        mic_refresh = gr.Timer(value=0.5, active=True)  # Update every 0.5 seconds
-
+        mic_refresh = gr.Timer(value=0.5, active=True)
         mic_refresh.tick(
             fn=get_microphone_status,
             outputs=[
@@ -1054,9 +793,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
         evaluate_testset_btn.click(
             fn=lambda test_split_path, threshold, target_fah, use_advanced_metrics, config_state: evaluate_test_set(
-                config_state.get("config").data.data_root
-                if config_state.get("config")
-                else "data",
+                config_state.get("config").data.data_root if config_state.get("config") else "data",
                 test_split_path,
                 threshold,
                 target_fah,
@@ -1072,11 +809,9 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             outputs=[test_metrics, confusion_matrix, roc_curve, advanced_metrics],
         )
 
+        run_analysis_btn.click(fn=run_threshold_analysis, outputs=[threshold_plot, gr.State()])
+        run_bench_btn.click(fn=run_benchmark_test, outputs=[bench_metrics])
+        collect_fp_btn.click(fn=collect_false_positives, outputs=[fp_gallery])
+        clear_fp_btn.click(fn=clear_false_positives, outputs=[fp_gallery])
+
     return panel
-
-
-if __name__ == "__main__":
-    # Test the panel
-    demo_state = gr.State(value={"config": None})
-    demo = create_evaluation_panel(demo_state)
-    demo.launch()

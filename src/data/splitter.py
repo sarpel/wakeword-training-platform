@@ -2,16 +2,17 @@
 Dataset Scanner, Validator, and Splitter
 Handles recursive scanning, validation, statistics, and train/test/val splitting
 """
+
 import json
 import multiprocessing
 import shutil
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import structlog
 import soundfile as sf
+import structlog
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -32,9 +33,7 @@ class DatasetScanner:
         "rirs": "rirs",
     }
 
-    def __init__(
-        self, dataset_root: Path, use_cache: bool = True, max_workers: int = None
-    ):
+    def __init__(self, dataset_root: Path, use_cache: bool = True, max_workers: Optional[int] = None) -> None:
         """
         Initialize dataset scanner
 
@@ -45,8 +44,8 @@ class DatasetScanner:
         """
         self.dataset_root = Path(dataset_root)
         self.validator = AudioValidator()
-        self.dataset_info = {}
-        self.statistics = {}
+        self.dataset_info: Dict[str, Any] = {}
+        self.statistics: Dict[str, Any] = {}
         self.use_cache = use_cache
         self.cache = FileCache() if use_cache else None
 
@@ -60,7 +59,7 @@ class DatasetScanner:
         progress_callback: Optional[Callable] = None,
         skip_validation: bool = False,
         exclude_unqualified: bool = True,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Scan all dataset categories
 
@@ -71,14 +70,12 @@ class DatasetScanner:
         Returns:
             Dictionary with scan results
         """
-        logger.info(
-            f"Scanning datasets in: {self.dataset_root} (workers={self.max_workers}, cache={self.use_cache})"
-        )
+        logger.info(f"Scanning datasets in: {self.dataset_root} (workers={self.max_workers}, cache={self.use_cache})")
 
         if not self.dataset_root.exists():
             raise FileNotFoundError(f"Dataset root does not exist: {self.dataset_root}")
 
-        results = {
+        results: Dict[str, Any] = {
             "dataset_root": str(self.dataset_root),
             "categories": {},
             "total_files": 0,
@@ -90,13 +87,7 @@ class DatasetScanner:
         }
 
         # Calculate total files for progress
-        total_categories = len(
-            [
-                f
-                for f in self.CATEGORY_FOLDERS.values()
-                if (self.dataset_root / f).exists()
-            ]
-        )
+        total_categories = len([f for f in self.CATEGORY_FOLDERS.values() if (self.dataset_root / f).exists()])
         current_category = 0
 
         # Scan each category
@@ -113,10 +104,8 @@ class DatasetScanner:
             # Create category progress callback
             if progress_callback:
 
-                def category_progress(current, total, msg=""):
-                    overall_progress = (current_category / total_categories) + (
-                        current / total / total_categories
-                    )
+                def category_progress(current: int, total: int, msg: str = "") -> None:
+                    overall_progress = (current_category / total_categories) + (current / total / total_categories)
                     progress_callback(overall_progress, f"{category_key}: {msg}")
 
                 category_result = self._scan_category(
@@ -146,9 +135,7 @@ class DatasetScanner:
         self.dataset_info = results
         return results
 
-    def move_excluded_files(
-        self, excluded_root: Path = Path("unqualified_datasets")
-    ) -> int:
+    def move_excluded_files(self, excluded_root: Path = Path("unqualified_datasets")) -> int:
         """
         Move excluded files out of the dataset folder to a quarantine folder
 
@@ -192,9 +179,7 @@ class DatasetScanner:
                 # Handle duplicate filenames
                 if dest_path.exists():
                     timestamp = int(src_path.stat().st_mtime)
-                    dest_path = (
-                        dest_dir / f"{src_path.stem}_{timestamp}{src_path.suffix}"
-                    )
+                    dest_path = dest_dir / f"{src_path.stem}_{timestamp}{src_path.suffix}"
 
                 try:
                     # Move file
@@ -207,9 +192,7 @@ class DatasetScanner:
         logger.info(f"Moved {moved_count} files to {excluded_root}")
         return moved_count
 
-    def _validate_file(
-        self, file_path: Path
-    ) -> Tuple[bool, Optional[Dict], Optional[str]]:
+    def _validate_file(self, file_path: Path) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
         Validate a single file (with caching support)
 
@@ -246,7 +229,7 @@ class DatasetScanner:
         progress_callback: Optional[Callable] = None,
         skip_validation: bool = False,
         exclude_unqualified: bool = True,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Scan a single category folder recursively with parallel processing
 
@@ -264,7 +247,7 @@ class DatasetScanner:
 
         logger.info(f"Found {len(audio_files)} audio files in {category_name}")
 
-        result = {
+        result: Dict[str, Any] = {
             "path": str(category_path),
             "total_files": len(audio_files),
             "valid_files": 0,
@@ -282,9 +265,7 @@ class DatasetScanner:
         if skip_validation:
             # Fast mode: just count files
             result["valid_files"] = len(audio_files)
-            result["files"] = [
-                {"path": str(f), "filename": f.name} for f in audio_files
-            ]
+            result["files"] = [{"path": str(f), "filename": f.name} for f in audio_files]
             if progress_callback:
                 progress_callback(len(audio_files), len(audio_files), "Counted files")
             return result
@@ -294,10 +275,7 @@ class DatasetScanner:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all validation tasks
-            future_to_file = {
-                executor.submit(self._validate_file, file_path): file_path
-                for file_path in audio_files
-            }
+            future_to_file = {executor.submit(self._validate_file, file_path): file_path for file_path in audio_files}
 
             # Process completed validations
             for future in as_completed(future_to_file):
@@ -309,20 +287,19 @@ class DatasetScanner:
 
                     if is_valid:
                         # Check quality
+                        # Ensure metadata is not None before passing to check_audio_quality
+                        if metadata is None:
+                            # Should not happen if is_valid is True, but for type safety
+                            raise ValueError("Metadata is None for valid file")
+
                         quality = self.validator.check_audio_quality(metadata)
 
                         if quality.get("should_exclude", False) and exclude_unqualified:
                             # Exclude file
-                            reason = quality.get(
-                                "exclude_reason", "Quality check failed"
-                            )
-                            result["excluded_files"].append(
-                                {"path": str(file_path), "reason": reason}
-                            )
+                            reason = quality.get("exclude_reason", "Quality check failed")
+                            result["excluded_files"].append({"path": str(file_path), "reason": reason})
                             # Print exclusion warning in RED
-                            print(
-                                f"\033[91m[EXCLUDED] {file_path.name}: {reason}\033[0m"
-                            )
+                            print(f"\033[91m[EXCLUDED] {file_path.name}: {reason}\033[0m")
 
                         else:
                             # Valid file
@@ -351,16 +328,12 @@ class DatasetScanner:
                             )
                     else:
                         result["corrupted_files"] += 1
-                        result["corrupted"].append(
-                            {"path": str(file_path), "error": error}
-                        )
+                        result["corrupted"].append({"path": str(file_path), "error": error})
 
                 except Exception as e:
                     logger.error(f"Error validating {file_path}: {e}")
                     result["corrupted_files"] += 1
-                    result["corrupted"].append(
-                        {"path": str(file_path), "error": str(e)}
-                    )
+                    result["corrupted"].append({"path": str(file_path), "error": str(e)})
 
                 # Update progress
                 if progress_callback:
@@ -380,7 +353,7 @@ class DatasetScanner:
 
         return result
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> Dict[str, Any]:
         """
         Get dataset statistics
 
@@ -407,9 +380,7 @@ class DatasetScanner:
                 "file_count": data["valid_files"],
                 "duration_seconds": data["total_duration"],
                 "duration_minutes": data["total_duration"] / 60,
-                "avg_duration": data["total_duration"] / data["valid_files"]
-                if data["valid_files"] > 0
-                else 0,
+                "avg_duration": data["total_duration"] / data["valid_files"] if data["valid_files"] > 0 else 0,
                 "sample_rates": {str(k): v for k, v in data["sample_rates"].items()},
                 "formats": {str(k): v for k, v in data["formats"].items()},
                 "quality_warnings_count": len(data["quality_warnings"]),
@@ -419,9 +390,7 @@ class DatasetScanner:
 
         return stats
 
-    def get_low_quality_folders(
-        self, category: str = "negative", threshold: float = 100.0
-    ) -> list:
+    def get_low_quality_folders(self, category: str = "negative", threshold: float = 100.0) -> List[str]:
         """
         Get list of folders containing low quality files (score < threshold)
 
@@ -453,62 +422,62 @@ class DatasetScanner:
     def move_low_quality_files(self, threshold: float = 100.0) -> int:
         """
         Move low quality files to a 'lowquality' subdirectory within their category folder.
-        
+
         Args:
             threshold: Quality score threshold. Files with score < threshold will be moved.
-            
+
         Returns:
             Number of files moved.
         """
         if not self.dataset_info or "categories" not in self.dataset_info:
             logger.warning("No scan results found. Run scan_datasets() first.")
             return 0
-            
+
         moved_count = 0
-        
+
         for category, data in self.dataset_info["categories"].items():
             if not data:
                 continue
-                
+
             category_path = Path(data["path"])
             low_quality_dir = category_path / "lowquality"
-            
+
             # Collect files to move
             files_to_move = []
-            
+
             # 1. Check valid files with low quality score
             for file_info in data.get("files", []):
                 if file_info.get("quality_score", 100) < threshold:
                     files_to_move.append(Path(file_info["path"]))
-                    
+
             # 2. Check excluded files (if they haven't been moved yet)
             for file_info in data.get("excluded_files", []):
                 files_to_move.append(Path(file_info["path"]))
-                
+
             if not files_to_move:
                 continue
-                
+
             # Create destination directory
             low_quality_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Moving {len(files_to_move)} low quality files to {low_quality_dir}")
-            
+
             for src_path in files_to_move:
                 if not src_path.exists():
                     continue
-                    
+
                 dest_path = low_quality_dir / src_path.name
-                
+
                 # Handle duplicate filenames
                 if dest_path.exists():
                     timestamp = int(src_path.stat().st_mtime)
                     dest_path = low_quality_dir / f"{src_path.stem}_{timestamp}{src_path.suffix}"
-                    
+
                 try:
                     shutil.move(str(src_path), str(dest_path))
                     moved_count += 1
                 except Exception as e:
                     logger.error(f"Failed to move {src_path}: {e}")
-                    
+
         logger.info(f"Total low quality files moved: {moved_count}")
         return moved_count
 
@@ -553,7 +522,7 @@ class DatasetScanner:
         for category, data in self.dataset_info["categories"].items():
             if not data:
                 continue
-            
+
             if category in exclude_categories:
                 logger.info(f"Skipping excluded category: {category}")
                 continue
@@ -570,7 +539,7 @@ class DatasetScanner:
 
             for file_info in tqdm(files, desc=f"Trimming {category}"):
                 src_path = Path(file_info["path"])
-                
+
                 # Determine destination path
                 if overwrite:
                     dest_path = src_path
@@ -580,21 +549,21 @@ class DatasetScanner:
                 try:
                     # Load audio
                     audio, sr = AudioValidator.load_audio(src_path, mono=True)
-                    
+
                     # Trim silence
                     trimmed_audio = AudioProcessor.trim_silence(audio, top_db=top_db)
-                    
+
                     # Save
                     sf.write(str(dest_path), trimmed_audio, sr)
                     processed_count += 1
-                    
+
                 except Exception as e:
                     logger.error(f"Failed to process {src_path}: {e}")
 
         logger.info(f"Trimmed {processed_count} files.")
         return processed_count
 
-    def save_manifest(self, output_path: Path):
+    def save_manifest(self, output_path: Path) -> None:
         """
         Save dataset manifest to JSON
 
@@ -612,7 +581,7 @@ class DatasetScanner:
 class DatasetSplitter:
     """Splits datasets into train/validation/test sets"""
 
-    def __init__(self, dataset_info: Dict):
+    def __init__(self, dataset_info: Dict[str, Any]) -> None:
         """
         Initialize dataset splitter
 
@@ -620,16 +589,16 @@ class DatasetSplitter:
             dataset_info: Dataset information from scanner
         """
         self.dataset_info = dataset_info
-        self.splits = {}
-        self.npy_index = {} # O(1) lookup index
+        self.splits: Dict[str, Any] = {}
+        self.npy_index: Dict[str, Path] = {}  # O(1) lookup index
 
     def _build_npy_index(self, npy_dir: Path) -> Dict[str, Path]:
         """Pre-build index of all .npy files for O(1) lookup"""
         logger.info(f"Indexing .npy files in {npy_dir}")
-        index = {}
+        index: Dict[str, Path] = {}
         if not npy_dir.exists():
             return index
-            
+
         # Walk through npy_dir
         # Expected structure: npy_dir / category / ... / filename.npy
         for npy_file in npy_dir.rglob("*.npy"):
@@ -642,7 +611,7 @@ class DatasetSplitter:
                     index[key] = npy_file
             except Exception:
                 continue
-                
+
         logger.info(f"Indexed {len(index)} .npy files")
         return index
 
@@ -658,23 +627,23 @@ class DatasetSplitter:
             Path to .npy file or None if not found
         """
         filename_stem = audio_path.stem
-        
+
         # Try to find category from audio path
         category = None
         for part in audio_path.parts:
             if part in ["positive", "negative", "hard_negative"]:
                 category = part
                 break
-        
+
         if category:
             key = f"{category}/{filename_stem}"
             if key in self.npy_index:
                 return str(self.npy_index[key])
-                
+
         # Fallback: legacy lookup (slow) if index empty or miss
         # (Only if index is empty, otherwise index should have covered it)
         if not self.npy_index:
-             # Fast path: Try direct category-based matching first
+            # Fast path: Try direct category-based matching first
             try:
                 parts = audio_path.parts
                 if len(parts) >= 2:
@@ -699,7 +668,7 @@ class DatasetSplitter:
         stratify: bool = True,
         npy_source_dir: Path = Path("data") / "raw" / "npy",
         npy_output_dir: Path = Path("data") / "npy",
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Split datasets into train/val/test and organize NPY files
 
@@ -726,11 +695,9 @@ class DatasetSplitter:
         if abs(total - 1.0) > 0.01:
             raise ValueError(f"Ratios must sum to 1.0, got {total}")
 
-        logger.info(
-            f"Splitting datasets: train={train_ratio}, val={val_ratio}, test={test_ratio}"
-        )
+        logger.info(f"Splitting datasets: train={train_ratio}, val={val_ratio}, test={test_ratio}")
 
-        splits = {
+        splits: Dict[str, Any] = {
             "train": {"files": [], "categories": defaultdict(int)},
             "val": {"files": [], "categories": defaultdict(int)},
             "test": {"files": [], "categories": defaultdict(int)},
@@ -745,9 +712,7 @@ class DatasetSplitter:
             # Skip augmentation categories (background, rirs)
             # These are used for augmentation, not as direct training samples
             if category in ["background", "rirs"]:
-                logger.info(
-                    f"Skipping augmentation category '{category}' for splitting"
-                )
+                logger.info(f"Skipping augmentation category '{category}' for splitting")
                 continue
 
             files = data["files"]
@@ -767,9 +732,7 @@ class DatasetSplitter:
             # Second split: val vs test
             if len(temp_files) > 1:
                 val_size = val_ratio / (val_ratio + test_ratio)
-                val_files, test_files = train_test_split(
-                    temp_files, test_size=(1 - val_size), random_state=random_seed
-                )
+                val_files, test_files = train_test_split(temp_files, test_size=(1 - val_size), random_state=random_seed)
             else:
                 val_files = temp_files
                 test_files = []
@@ -788,9 +751,7 @@ class DatasetSplitter:
                 }
                 # Find and map NPY file only for training categories
                 if should_find_npy:
-                    npy_path = self._find_npy_path(
-                        Path(file_info["path"]), npy_source_dir
-                    )
+                    npy_path = self._find_npy_path(Path(file_info["path"]), npy_source_dir)
                     if npy_path:
                         file_entry["npy_path"] = npy_path
                 splits["train"]["files"].append(file_entry)
@@ -804,9 +765,7 @@ class DatasetSplitter:
                     "sample_rate": file_info.get("sample_rate", 16000),
                 }
                 if should_find_npy:
-                    npy_path = self._find_npy_path(
-                        Path(file_info["path"]), npy_source_dir
-                    )
+                    npy_path = self._find_npy_path(Path(file_info["path"]), npy_source_dir)
                     if npy_path:
                         file_entry["npy_path"] = npy_path
                 splits["val"]["files"].append(file_entry)
@@ -820,9 +779,7 @@ class DatasetSplitter:
                     "sample_rate": file_info.get("sample_rate", 16000),
                 }
                 if should_find_npy:
-                    npy_path = self._find_npy_path(
-                        Path(file_info["path"]), npy_source_dir
-                    )
+                    npy_path = self._find_npy_path(Path(file_info["path"]), npy_source_dir)
                     if npy_path:
                         file_entry["npy_path"] = npy_path
                 splits["test"]["files"].append(file_entry)
@@ -830,8 +787,9 @@ class DatasetSplitter:
 
         # Convert defaultdicts to regular dicts
         for split_name in splits:
-            splits[split_name]["categories"] = dict(splits[split_name]["categories"])
-            splits[split_name]["total_files"] = len(splits[split_name]["files"])
+            split_dict: Dict[str, Any] = splits[split_name]
+            split_dict["categories"] = dict(split_dict["categories"])
+            split_dict["total_files"] = len(split_dict["files"])
 
         self.splits = splits
 
@@ -842,10 +800,7 @@ class DatasetSplitter:
 
         # Count how many files have NPY paths mapped
         npy_mapped_count = sum(
-            1
-            for split_data in splits.values()
-            for file_info in split_data["files"]
-            if file_info.get("npy_path")
+            1 for split_data in splits.values() for file_info in split_data["files"] if file_info.get("npy_path")
         )
         logger.info(
             f"NPY paths mapped: {npy_mapped_count} out of {sum(len(s['files']) for s in splits.values())} files"
@@ -866,16 +821,12 @@ class DatasetSplitter:
         if npy_mapped_count > 0:
             logger.info(f"NPY files linked in manifest (no copying needed)")
         else:
-            logger.warning(
-                f"No NPY files found in {npy_source_dir}. Skipping NPY mapping."
-            )
-            logger.warning(
-                "If you want to use precomputed features, run batch extraction first."
-            )
+            logger.warning(f"No NPY files found in {npy_source_dir}. Skipping NPY mapping.")
+            logger.warning("If you want to use precomputed features, run batch extraction first.")
 
         return splits
 
-    def save_splits(self, output_dir: Path):
+    def save_splits(self, output_dir: Path) -> None:
         """
         Save split manifests to JSON files
 
@@ -917,7 +868,7 @@ class DatasetSplitter:
 
     def copy_npy_files_to_splits(
         self, output_npy_dir: Path, preserve_structure: bool = True
-    ):
+    ) -> Dict[str, Dict[str, int]]:
         """
         Physically copy NPY files into train/val/test directory structure
 
@@ -961,13 +912,9 @@ class DatasetSplitter:
             split_dir = output_npy_dir / split_name
 
             # Filter files to only include categories that have NPY files
-            files_with_npy = [
-                f for f in split_data["files"] if f.get("category") in npy_categories
-            ]
+            files_with_npy = [f for f in split_data["files"] if f.get("category") in npy_categories]
 
-            for file_info in tqdm(
-                files_with_npy, desc=f"Copying {split_name} NPY files"
-            ):
+            for file_info in tqdm(files_with_npy, desc=f"Copying {split_name} NPY files"):
                 # Check if NPY path exists
                 npy_path = file_info.get("npy_path")
                 if not npy_path:
@@ -1007,9 +954,7 @@ class DatasetSplitter:
         # Log statistics
         logger.info("NPY file copy statistics:")
         for split_name, split_stats in stats.items():
-            logger.info(
-                f"  {split_name}: {split_stats['copied']} copied, {split_stats['missing']} missing"
-            )
+            logger.info(f"  {split_name}: {split_stats['copied']} copied, {split_stats['missing']} missing")
 
         total_copied = sum(s["copied"] for s in stats.values())
         total_missing = sum(s["missing"] for s in stats.values())
@@ -1017,7 +962,7 @@ class DatasetSplitter:
 
         return stats
 
-    def get_split_statistics(self) -> Dict:
+    def get_split_statistics(self) -> Dict[str, Any]:
         """
         Get statistics about the splits
 
@@ -1043,9 +988,7 @@ class DatasetSplitter:
         total_all = sum(s["total_files"] for s in stats.values())
         for split_name in stats:
             if total_all > 0:
-                stats[split_name]["percentage"] = (
-                    stats[split_name]["total_files"] / total_all
-                ) * 100
+                stats[split_name]["percentage"] = (stats[split_name]["total_files"] / total_all) * 100
 
         return stats
 

@@ -1,318 +1,529 @@
-# CLAUDE.md
+# 🏭 CODE GENERATION PROTOCOL (CLAUDE.md)
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 🎯 CORE PHILOSOPHY & OBJECTIVES
 
-## Project Overview
+### Mission
 
-**Wakeword Training Platform** - A production-ready, GPU-accelerated platform for training custom wakeword detection models (e.g., "Hey Siri", "Alexa"). Built with PyTorch and Gradio, featuring advanced training optimizations (CMVN, EMA, Mixed Precision) and production-grade metrics (FAH, EER).
+This project adopts the **"Zero Defect Manufacturing"** philosophy.
+Just like in a high-precision automotive factory, every step is controlled, every component is verified, and every output is tested before integration.
 
-**Version**: 2.0.0
-**Python**: 3.8+
-**CUDA**: 11.8+ (strict GPU requirement)
-
-## Quick Start Commands
-
-### Launch Application
-```bash
-python run.py
-```
-Opens Gradio web interface at `http://localhost:7860`
-
-### Install Dependencies
-```bash
-# For CUDA 11.8 (GPU - Recommended)
-pip install torch==2.1.2+cu118 torchaudio==2.1.2+cu118 torchvision==0.16.2+cu118 --index-url https://download.pytorch.org/whl/cu118
-pip install -r requirements.txt
-
-# For CPU only (slow, not recommended)
-pip install -r requirements.txt
-```
-
-### Run Tests
-No test suite exists. When modifying core logic, create standalone verification scripts in `docs/examples/` or temporary test files.
-
-## Architecture
-
-### High-Level System Design
-
-**Entry Point**: `run.py` → `src/ui/app.py` (Gradio interface)
-
-**6-Panel Workflow**:
-1. **Dataset** → Scan audio, split data, precompute features
-2. **Configuration** → Model selection, hyperparameters, feature toggles
-3. **Training** → GPU-accelerated training loop with real-time metrics
-4. **Evaluation** → File/microphone testing, advanced metrics (FAH, EER)
-5. **Export** → ONNX/TorchScript/Quantized model export
-6. **Documentation** → In-app help and guides
-
-### Core Module Structure
+### Fundamental Principles
 
 ```
-src/
-├── config/          # Pydantic-based configuration management
-│   ├── defaults.py         # Default hyperparameters (START HERE for configs)
-│   ├── pydantic_validator.py  # Strict validation schemas
-│   └── validator.py        # Legacy config handler
-│
-├── data/            # Data pipeline (audio → features → batches)
-│   ├── dataset.py          # WakewordDataset: audio loading, caching
-│   ├── cmvn.py             # Cepstral Mean Variance Normalization
-│   ├── augmentation.py     # Time stretch, pitch shift, noise, RIR
-│   ├── feature_extraction.py  # Mel spectrogram extraction
-│   ├── file_cache.py       # LRU caching for .npy features
-│   └── balanced_sampler.py # Maintain class ratios in batches
-│
-├── models/          # Model architectures
-│   ├── architectures.py    # ResNet18/34, MobileNetV3, LSTM, GRU, TCN
-│   ├── losses.py           # Focal Loss, Label Smoothing, ArcFace
-│   └── temperature_scaling.py  # Post-training calibration
-│
-├── training/        # Training loop and optimizations
-│   ├── trainer.py          # Main training loop (AMP, Gradient Clipping)
-│   ├── training_loop.py    # Epoch/batch iteration logic
-│   ├── ema.py              # Exponential Moving Average for weights
-│   ├── lr_finder.py        # Automated learning rate discovery
-│   ├── optimizer_factory.py # AdamW, SGD, AdaBound creation
-│   ├── metrics.py          # Accuracy, Precision, Recall, F1
-│   └── checkpoint_manager.py # Save/load best models
-│
-├── evaluation/      # Inference and metrics
-│   ├── evaluator.py        # Basic metrics (accuracy, F1)
-│   ├── advanced_evaluator.py  # FAH, EER, pAUC, ROC curves
-│   ├── streaming_detector.py  # Real-time detection with voting
-│   └── inference.py        # Single-file inference
-│
-├── export/          # Model deployment
-│   └── onnx_exporter.py    # ONNX/TorchScript/Quantized export
-│
-└── ui/              # Gradio interface (pure presentation layer)
-    ├── app.py              # Main interface assembly
-    ├── panel_dataset.py    # Dataset management panel
-    ├── panel_config.py     # Configuration panel
-    ├── panel_training.py   # Training panel with live plots
-    ├── panel_evaluation.py # Evaluation panel
-    └── panel_export.py     # Export panel
-```
-
-### Data Flow
+┌─────────────────────────────────────────────────────────────────┐
+│  1. PLAN  →  2. RESEARCH  →  3. EXECUTE  →  4. TEST  →  5. AUDIT    │
+│      ↑                                                        ↓     │
+│      └────────────── IF ERROR, ROLLBACK & REVISE ─────────────┘     │
+└─────────────────────────────────────────────────────────────────┘
 
 ```
-Raw Audio (data/raw/)
-  → Feature Extraction (Mel spectrogram)
-  → CMVN Normalization
-  → Augmentation (train only)
-  → Batching (Balanced Sampler)
-  → GPU Training
-  → EMA Weight Update
-  → Checkpoint (best_model.pt)
-  → ONNX Export
+
+| Principle | Description | Why It Matters? |
+| --- | --- | --- |
+| **Plan First** | Never write code without a blueprint | Unplanned code = Technical Debt |
+| **Verify Before Use** | Verify every API/Library before implementation | Prevention of Hallucinations |
+| **Test Everything** | Untested code is not production code | Regression Prevention |
+| **Explain Everything** | Every line must be educational | Sustainability & Maintainability |
+
+---
+
+## 🚨 CRITICAL RULES (NON-NEGOTIABLE)
+
+Violating these rules is strictly prohibited. Each rule is designed to prevent a catastrophic failure scenario.
+
+### Rule 1: NO HALLUCINATIONS
+
+```
+❌ WRONG: "I think this library has a .parse() method."
+✅ RIGHT: Verify with Context7 → Read Documentation → Implement.
+
 ```
 
-### Configuration Management
+**Reason:** Incorrect API calls lead to runtime errors, security vulnerabilities, and data corruption.
 
-**Critical Pattern**: Always use `src.config` classes. **DO NOT hardcode hyperparameters.**
+### Rule 2: NEVER COMPROMISE TYPE SAFETY
+
+```typescript
+❌ WRONG: const data: any = response.json();
+✅ RIGHT:
+interface ApiResponse {
+  users: User[];
+  pagination: Pagination;
+}
+const data: ApiResponse = await response.json();
+
+```
+
+**Reason:** The `any` type disables the compiler's safety net.
+
+### Rule 3: NO SILENT FAILURES
 
 ```python
-# ✓ CORRECT
-from src.config.defaults import get_default_config
-config = get_default_config()
-lr = config.training.learning_rate
+# ❌ WRONG: Error swallowed, debugging impossible
+try:
+    process_data()
+except:
+    pass
 
-# ✗ WRONG
-lr = 0.001  # Hardcoded value
+# ✅ RIGHT: Error logged, context preserved
+try:
+    process_data()
+except Exception as e:
+    logger.error(f"process_data failed: {e}", exc_info=True)
+    raise  # or handle gracefully
+
 ```
 
-**Configuration Files**:
-- `src/config/defaults.py` - Default values (DataConfig, TrainingConfig, ModelConfig, etc.)
-- `src/config/pydantic_validator.py` - Pydantic schemas for validation
-- `configs/*.yaml` - User-saved configurations (generated via UI)
+### Rule 4: NO APPROVAL WITHOUT TESTING
 
-### Key Technical Concepts
+```
+Code Written → Test PASS → Code Review → APPROVE
+      ↓             ↓
+   [CONTINUE]   [ERROR: LOOP BACK]
 
-#### CMVN (Cepstral Mean Variance Normalization)
-- **Purpose**: Normalize features across dataset for consistent acoustic representations
-- **Location**: `src/data/cmvn.py`
-- **Impact**: +2-4% accuracy, better cross-device performance
-- **Stats Storage**: `data/cmvn_stats.json`
-- **When to Use**: Always enabled for production models
-- **See**: `TECHNICAL_FEATURES.md` Section 1.1
-
-#### EMA (Exponential Moving Average)
-- **Purpose**: Create smoother, more stable model by averaging weights over time
-- **Location**: `src/training/ema.py`
-- **Impact**: +1-2% validation accuracy, more consistent predictions
-- **Decay**: 0.999 (default)
-- **Integration**: Automatically applied in `Trainer` if `config.training.use_ema=True`
-
-#### Balanced Sampling
-- **Purpose**: Handle class imbalance (typically 2-5× more negatives)
-- **Location**: `src/data/balanced_sampler.py`
-- **Impact**: 20-30% faster convergence, 5-15% reduction in false positives
-- **When to Use**: Enable when negatives > 2× positives
-
-#### FAH (False Alarms per Hour)
-- **Purpose**: Production metric for user experience
-- **Location**: `src/evaluation/advanced_evaluator.py`
-- **Formula**: `FAH = (FP / total_seconds) × 3600`
-- **Target**: ≤1.0 for balanced use cases
-- **See**: `TECHNICAL_FEATURES.md` Section 4.2
-
-#### LR Finder
-- **Purpose**: Automatically find optimal learning rate
-- **Location**: `src/training/lr_finder.py`
-- **Algorithm**: Exponential range test (Leslie Smith)
-- **When to Use**: First training or significant data changes
-- **Time Cost**: 2-5 minutes
-
-## Development Guidelines
-
-### Coding Conventions
-
-1. **Type Hinting**: Enforce strict type hints, especially for Pydantic models
-   ```python
-   from pathlib import Path
-   from typing import Optional, Tuple
-
-   def load_audio(path: Path) -> Tuple[np.ndarray, int]:
-       ...
-   ```
-
-2. **Path Handling**: Use `pathlib.Path` for ALL file operations
-   ```python
-   # ✓ CORRECT
-   from pathlib import Path
-   data_dir = Path("data/raw")
-   audio_file = data_dir / "positive" / "sample.wav"
-
-   # ✗ WRONG
-   audio_file = "data/raw/positive/sample.wav"
-   ```
-
-3. **Logging**: Use structured logger, not print()
-   ```python
-   from src.config.logger import setup_logger
-   logger = setup_logger(__name__)
-
-   logger.info("Training started", epoch=1, lr=0.001)
-   logger.error("Failed to load audio", path=str(audio_path), exc_info=True)
-   ```
-
-4. **GPU Optimizations**: Respect configuration flags
-   ```python
-   # Mixed Precision
-   if config.optimizer.mixed_precision:
-       with torch.cuda.amp.autocast():
-           output = model(input)
-
-   # EMA Updates
-   if config.training.use_ema and self.ema is not None:
-       self.ema.update()
-   ```
-
-### Critical Implementation Patterns
-
-#### Loading Trained Models
-```python
-# Load checkpoint with proper device mapping
-checkpoint = torch.load("models/checkpoints/best_model.pt", map_location="cuda")
-model.load_state_dict(checkpoint["model_state_dict"])
-
-# If EMA was used during training
-if "ema_state_dict" in checkpoint:
-    model.load_state_dict(checkpoint["ema_state_dict"])  # Use EMA weights
 ```
 
-#### Dataset Structure
+### Rule 5: NO DIRECT FILE READING (LARGE PROJECTS)
+
 ```
-data/
-├── raw/                    # User-provided audio files
-│   ├── positive/          # Wakeword samples (500-2000)
-│   └── negative/          # Non-wakeword samples (1000-5000)
-├── splits/                # Auto-generated train/val/test manifests
-│   └── split_*.json
-├── npy/                   # Precomputed features (optional cache)
-└── cmvn_stats.json       # CMVN normalization stats
+❌ WRONG: grep -r "functionName" .  (Slow, context-blind)
+✅ RIGHT: Search symbol via Serena LSP (Fast, semantic)
+
 ```
 
-#### Feature Extraction Pipeline
-```python
-# CPU-based extraction → GPU-based training
-from src.data.feature_extraction import FeatureExtractor
+---
 
-extractor = FeatureExtractor(
-    feature_type="mel",
-    sample_rate=16000,
-    n_fft=512,
-    hop_length=160,
-    n_mels=128
-)
-features = extractor.extract(audio)  # Shape: (n_mels, time_steps)
+## 🛠️ MCP TOOL ECOSYSTEM
+
+Every tool solves a specific problem. Correct Tool + Correct Timing = Efficiency.
+
+### 📊 Tool Selection Matrix
+
+| Tool | Primary Task | When to Use? | Alternative |
+| --- | --- | --- | --- |
+| **Claude Task Master** | Task Planning | Project start, PRD Analysis | Sequential Thinking |
+| **Claude-Flow** | Memory & Coordination | Multi-step workflows, Context switching | - |
+| **Serena (LSP)** | Code Navigation | Symbol search, Definition lookup | grep (last resort) |
+| **Context7** | API Documentation | Before using any library | Web search |
+| **TestSprite** | Automated Testing | After code implementation | Manual test |
+| **CodeRabbit** | Security Audit | Before PR, Delivery | SonarQube |
+| **Sequential Thinking** | Complex Analysis | Multi-step reasoning | Task Master |
+| **Tavily** | Web Research | Best practices, Error research | Web search |
+
+---
+
+### 🔧 TOOL 1: Claude Task Master
+
+**Role:** Strategic Planner
+**Analogy:** The Chief Engineer of a construction project; plans every step from foundation to roof.
+
+#### When to Use
+
+* [ ] Starting a new feature development
+* [ ] Analyzing a PRD (Product Requirements Document)
+* [ ] Planning a complex refactor
+* [ ] Sprint planning
+
+#### Usage Pattern
+
+```
+1. Receive PRD or Requirement
+2. Send to Task Master
+3. Generate tasks.json output
+4. Create Dependency Map
+5. Process tasks sequentially
+
 ```
 
-### Common Pitfalls
+#### Critical Warning
 
-1. **DO NOT** modify `.npy` files directly - regenerate via UI or `src/data/npy_extractor.py`
-2. **DO NOT** train without CMVN enabled for production models
-3. **DO NOT** use `fit()` method on models - use `Trainer` class
-4. **DO NOT** hardcode paths - use `config.paths.*`
-5. **DO NOT** assume CPU/MPS training support - **CUDA ONLY**
+⚠️ **NEVER** skip Task Master. Projects started without a plan accumulate technical debt 80% of the time.
 
-### Testing Strategy
+---
 
-**No formal test suite exists.** When modifying core components:
+### 🧠 TOOL 2: Claude-Flow (Memory & Coordination)
 
-1. Create standalone reproduction script:
-   ```python
-   # docs/examples/test_my_feature.py
-   from src.training.trainer import Trainer
-   from src.config.defaults import get_default_config
+**Role:** Project Memory & Orchestrator
+**Analogy:** The Film Producer; coordinates the crew and ensures continuity.
 
-   config = get_default_config()
-   trainer = Trainer(model, config)
-   # ... test logic
-   ```
+#### When to Use
 
-2. Test via UI for integration checks:
-   - Dataset panel: Verify data loading
-   - Training panel: Run 2-3 epochs with small data
-   - Evaluation panel: Check metrics computation
+* [ ] To prevent context loss between tasks
+* [ ] To reference previous decisions
+* [ ] Managing multi-step, parallel jobs
+* [ ] Querying past logic chains from the ReasoningBank
 
-3. Visual inspection of outputs (plots, logs, checkpoints)
+#### Concept Structure
 
-## Important Files
+```
+┌─────────────────────────────────────────────────────────┐
+│                   CLAUDE-FLOW                           │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐   │
+│  │ MEMORY      │  │ COORDINATION │  │ REASONING     │   │
+│  │             │  │              │  │               │   │
+│  │ • Decisions │  │ • Sub-agents │  │ • Why X?      │   │
+│  │ • Context   │  │ • Workflow   │  │ • Alt?        │   │
+│  │ • History   │  │ • Ordering   │  │ • Trade-offs  │   │
+│  └─────────────┘  └──────────────┘  └───────────────┘   │
+└─────────────────────────────────────────────────────────┘
 
-- **`TECHNICAL_FEATURES.md`**: **MUST READ** for understanding CMVN, EMA, FAH math/logic
-- **`README.md`**: User-facing quick start guide
-- **`.github/copilot-instructions.md`**: Additional AI agent guidelines (imported above)
-- **`src/config/defaults.py`**: Single source of truth for default hyperparameters
-- **`src/training/trainer.py`**: Main training logic (150+ lines)
-- **`src/evaluation/advanced_evaluator.py`**: Production metrics implementation
-
-## Known Issues & Constraints
-
-1. **GPU Requirement**: Strict NVIDIA CUDA requirement. No CPU/MPS training support.
-2. **"God Object" Classes**: `Trainer` and `Dataset` classes need refactoring (see `docs/IMPROVEMENT_PLAN.md`)
-3. **No Formal Tests**: Rely on manual testing and UI validation
-4. **Pydantic Migration**: Partially complete - some modules still use legacy config
-5. **Dataset Logic**: Dynamic label mapping and fallback logic needs refactoring (see `TECHNICAL_DESIGN_DATA_REFACTOR.md`)
-
-## Deployment Notes
-
-**Model Export**: Use `src/export/onnx_exporter.py` for production deployment
-```bash
-# Via UI: Panel 5 → Export Model
-# Formats: ONNX (universal), TorchScript (PyTorch), INT8 (quantized)
 ```
 
-**Production Checklist**:
-- ✓ CMVN enabled during training
-- ✓ EMA used for final weights
-- ✓ Temperature scaling applied (Panel 4)
-- ✓ Streaming detection with voting (not single-frame)
-- ✓ Target FAH ≤ 1.0 validated on test set
+---
 
-## Additional Resources
+### 🔍 TOOL 3: Serena (LSP - Language Server Protocol)
 
-- **Serena Memory**: `project_context` memory contains development roadmap
-- **SuperClaude Framework**: See `~/.claude/superclaude/` for custom AI agent instructions
-- **Experiment Tracking**: WandB integration available (see `src/training/wandb_callback.py`)
+**Role:** Code Navigator & Symbol Detective
+**Analogy:** The Librarian; finds exactly what you are looking for instantly.
+
+#### When to Use
+
+* [ ] Finding a function definition
+* [ ] Finding all usages of a variable
+* [ ] Verifying import paths
+* [ ] Impact analysis before refactoring
+
+#### Why Serena over grep?
+
+| Feature | grep | Serena (LSP) |
+| --- | --- | --- |
+| Speed (Large Projects) | Slow | Fast (Indexed) |
+| Semantic Understanding | No | Yes |
+| Type Information | No | Yes |
+| Go to Definition | Manual | Automatic |
+| Find References | Incomplete | Comprehensive |
+
+---
+
+### 📚 TOOL 4: Context7 (API Documentation)
+
+**Role:** Library & Framework Expert
+**Analogy:** The Official Manual – what the manufacturer says is always true.
+
+#### When to Use
+
+* [ ] Before using a new library
+* [ ] Verifying API parameters
+* [ ] Checking for breaking changes
+* [ ] Learning best practices
+
+#### Mandatory Workflow
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│        MANDATORY STEPS BEFORE LIBRARY USAGE                  │
+│                                                              │
+│  1. resolve-library-id   →  Find correct library ID          │
+│            ↓                                                 │
+│  2. get-library-docs     →  Fetch current API docs           │
+│            ↓                                                 │
+│  3. Implement Usage      →  Apply verified pattern           │
+└──────────────────────────────────────────────────────────────┘
+
+```
+
+#### Critical Warning
+
+⚠️ **NEVER** guess APIs. Do not write code without a Context7 result.
+⚠️ Pay attention to framework versions (e.g., Next.js 13 vs 14 differences).
+
+---
+
+### 🧪 TOOL 5: TestSprite (Automated Testing)
+
+**Role:** Quality Assurance Engineer
+**Analogy:** Quality Control Unit; prevents defective products from shipping.
+
+#### When to Use
+
+* [ ] Upon writing a new function
+* [ ] When modifying existing code (refactoring)
+* [ ] For regression testing after bug fixes
+* [ ] Running the full test suite before PR
+
+#### Test Pyramid Strategy
+
+* **Unit Tests:** 80% coverage (Function logic)
+* **Integration Tests:** 60% coverage (API endpoints)
+* **E2E Tests:** Critical flows only (Login, Checkout)
+
+#### Critical Warning
+
+⚠️ Do not proceed without **100% PASS**.
+⚠️ Never drop test coverage below 80%.
+⚠️ Fix flaky tests immediately.
+
+---
+
+### 🛡️ TOOL 6: CodeRabbit (Security Audit)
+
+**Role:** Security Auditor & Code Quality Gatekeeper
+**Analogy:** Building Inspector; detects structural issues before occupancy.
+
+#### When to Use
+
+* [ ] Before opening a Pull Request
+* [ ] Before confirming task completion
+* [ ] For regular security scans
+* [ ] During code review
+
+#### Audit Layers
+
+* **🔴 CRITICAL SECURITY:** SQL Injection, XSS, CSRF, Hardcoded Credentials.
+* **🟡 CODE QUALITY:** Anti-patterns, DRY violations, Complexity.
+* **🟢 BEST PRACTICES:** Naming conventions, Error handling, Documentation.
+
+#### Critical Warning
+
+⚠️ **🔴 CRITICAL** findings must be fixed before merging.
+⚠️ Run CodeRabbit for every PR.
+
+---
+
+### 🧩 TOOL 7: Sequential Thinking (Deep Analysis)
+
+**Role:** Strategic Thought Partner
+**Analogy:** The Grandmaster Chess Player; thinks several moves ahead.
+
+#### When to Use
+
+* [ ] Complex architectural decisions
+* [ ] Trade-off analysis
+* [ ] Multi-step problem solving
+* [ ] Defining refactoring strategies
+
+#### Thinking Process Structure
+
+1. **Define Problem:** Identify the core issue.
+2. **List Alternatives:** Option A vs Option B vs Option C.
+3. **Trade-off Analysis:** Speed vs Complexity vs Scalability.
+4. **Context Evaluation:** Current infrastructure, team capacity.
+5. **Decision & Rationale:** Final choice with "Why".
+
+---
+
+### 🌐 TOOL 8: Tavily (Web Research)
+
+**Role:** Research Assistant
+**Analogy:** The Archivist; finds the most relevant external resources.
+
+#### When to Use
+
+* [ ] Best practices research (Current Year)
+* [ ] Resolving obscure error messages
+* [ ] Investigating community consensus
+* [ ] Security vulnerability research (CVE)
+
+#### Critical Warning
+
+⚠️ Verify search results with Context7 where possible.
+⚠️ Check dates on Stack Overflow/GitHub discussions.
+
+---
+
+## 🚀 MASTER WORKFLOW
+
+This workflow applies to **every task**. No steps may be skipped.
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          MASTER WORKFLOW                                   │
+│                                                                            │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐   │
+│  │  PLAN   │───▶│  DOCS   │───▶│   NAV   │───▶│  CODE   │───▶│  TEST   │   │
+│  │         │    │         │    │         │    │         │    │         │   │
+│  │ Task    │    │Context7 │    │ Serena  │    │Implement│    │TestSprite│   │
+│  │ Master  │    │ Tavily  │    │         │    │         │    │         │   │
+│  └─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘   │
+│       │                                                           │    │   │
+│       │               ┌─────────┐    ┌─────────┐                  │    │   │
+│       │               │  AUDIT  │◀───│  FAIL?  │◀─────────────────┘    │   │
+│       │               │         │    │         │                       │   │
+│       │               │CodeRabbit│    │  Y / N  │                       │   │
+│       │               └────┬────┘    └────┬────┘                       │   │
+│       │                    │              │                            │   │
+│       │                    ▼              │ Y                          │   │
+│       │               ┌─────────┐         │                            │   │
+│       │               │  DONE   │◀────────┘ (N: Test Pass)             │   │
+│       │               └─────────┘                                      │   │
+│       │                                                                │   │
+│       └─────────── Claude-Flow (Memory & Coordination) ────────────────▶   │
+│                        Active throughout process                       │   │
+└────────────────────────────────────────────────────────────────────────────┘
+
+```
+
+### STEP 1: PLAN (Mandatory Start)
+
+**Tool:** Claude Task Master
+**Goal:** Break task into atomic units.
+**Output Criteria:** `tasks.json` created, dependencies mapped.
+
+### STEP 2: DOCS (Research)
+
+**Tools:** Context7, Tavily
+**Goal:** Verify technologies and APIs.
+**Output Criteria:** All APIs verified, code examples noted.
+
+### STEP 3: NAV (Navigation)
+
+**Tool:** Serena (LSP)
+**Goal:** Understand the existing codebase.
+**Output Criteria:** Inventory of existing patterns and component structures.
+
+### STEP 4: CODE (Implementation)
+
+**Principles:**
+
+1. Write comments first (Explain intent).
+2. Write code second.
+3. Every block must be educational.
+
+### STEP 5: TEST (QA)
+
+**Tool:** TestSprite
+**Goal:** 100% Test Success.
+**Output Criteria:** All tests PASS, Coverage > 80%.
+
+### STEP 6: AUDIT (Security)
+
+**Tool:** CodeRabbit
+**Goal:** Security and Quality Approval.
+**Output Criteria:** No Critical findings, Review Approved.
+
+### STEP 7: DONE (Completion)
+
+**Checklist:** Task marked completed, Logic saved to Claude-Flow, Code committed.
+
+---
+
+## 🌳 TOOL SELECTION DECISION TREE
+
+Use this tree to determine the correct tool for any situation:
+
+```
+                              ┌─────────────┐
+                              │  THE TASK?  │
+                              └──────┬──────┘
+                                     │
+              ┌──────────────────────┼──────────────────────┐
+              │                      │                      │
+              ▼                      ▼                      ▼
+       ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
+       │ New Feature  │       │   Bug Fix    │       │ Refactoring  │
+       └──────┬───────┘       └──────┬───────┘       └──────┬───────┘
+              │                      │                      │
+              ▼                      ▼                      ▼
+       ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
+       │ Task Master  │       │    Serena    │       │  Sequential  │
+       │   (Plan)     │       │    (Find)    │       │   Thinking   │
+       └──────┬───────┘       └──────┬───────┘       └──────┬───────┘
+              │                      │                      │
+              ▼                      ▼                      ▼
+       ┌──────────────────────────────────────────────────────────┐
+       │             IS A LIBRARY/API INVOLVED?                   │
+       └───────────────────────────┬──────────────────────────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    │ YES          │ NO           │
+                    ▼              │              │
+             ┌──────────────┐      │              │
+             │   Context7   │      │              │
+             │  (Verify)    │      │              │
+             └──────┬───────┘      │              │
+                    │              │              │
+                    ▼              ▼              │
+       ┌──────────────────────────────────────────────────────────┐
+       │           NEED TO UNDERSTAND EXISTING CODE?              │
+       └───────────────────────────┬──────────────────────────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    │ YES          │ NO           │
+                    ▼              │              │
+             ┌──────────────┐      │              │
+             │    Serena    │      │              │
+             │  (Navigate)  │      │              │
+             └──────┬───────┘      │              │
+                    │              │              │
+                    ▼              ▼              ▼
+       ┌──────────────────────────────────────────────────────────┐
+       │                      WRITE CODE                          │
+       └───────────────────────────┬──────────────────────────────┘
+                                   ▼
+                             TestSprite (Test)
+                                   ▼
+                             CodeRabbit (Audit)
+                                   ▼
+                                DONE ✅
+
+```
+
+---
+
+## 🔄 ERROR RECOVERY PROTOCOL
+
+Systematic approach when things go wrong.
+
+1. **Build Error:** Read error → Serena (find file) → Context7 (check syntax) → Fix.
+2. **Runtime Error:** Analyze Stack Trace → Tavily (search error) → Serena (find logic) → Fix + Regression Test.
+3. **Test Error:** Compare Expected vs Actual → Determine if Code or Test is wrong → Fix → Retest.
+4. **API Error:** Check Status Code → Log Body → Context7 (Verify Spec) → Fix.
+
+---
+
+## 📏 CODE QUALITY STANDARDS
+
+### Naming Conventions
+
+| Type | Format | Example |
+| --- | --- | --- |
+| Variable | camelCase | `userName`, `isLoading` |
+| Function | camelCase | `getUserById`, `validateEmail` |
+| Class/Interface | PascalCase | `UserService`, `IUserRepository` |
+| Constant | SCREAMING_SNAKE | `MAX_RETRY_COUNT` |
+| Component | PascalCase | `ProfileCard.tsx` |
+
+### Documentation Mandate (ELI15)
+
+**"Explain Like I'm 15"** - Explain complex concepts simply.
+
+```typescript
+// ✅ GOOD: Detailed explanation
+/**
+ * CONCEPT: Debounce
+ * PROBLEM: We don't want to call the API on every keystroke (too many requests).
+ * SOLUTION: Wait for a pause (e.g., 300ms) after the last keystroke before calling.
+ * ANALOGY: Like an elevator door. It waits for people to stop entering before closing.
+ */
+const debounce = (fn, delay) => { ... }
+
+```
+
+### Syntax Decoding
+
+Always explain new or complex syntax (e.g., `??`, `?.`, `as const`) in comments immediately preceding usage.
+
+---
+
+## 🔐 SECURITY & PERFORMANCE CHECKLIST
+
+Before every PR, verify:
+
+* [ ] **Input Validation:** Are all inputs sanitized?
+* [ ] **Auth:** Are sensitive endpoints protected?
+* [ ] **Data Exposure:** Is sensitive data stripped from logs/responses?
+* [ ] **SQL/XSS/CSRF:** Are standard protections active?
+* [ ] **Dependencies:** Are packages up to date (`npm audit`)?
+* [ ] **Bundle Size:** Is code splitting/tree shaking active?
+* [ ] **Renders:** Are unnecessary re-renders prevented (memoization)?
+* [ ] **Database:** Are N+1 queries avoided?
+
+---
+
+## ⚠️ FINAL WARNINGS
+
+1. **Follow this file explicitly.** No steps are optional.
+2. **No Hallucinations.** Context7 + Serena = Truth.
+3. **No Approval without Tests.** 100% PASS = Proceed.
+4. **Educate.** Every line of code is a lesson.
+5. **Security First.** One vulnerability = Failure.
