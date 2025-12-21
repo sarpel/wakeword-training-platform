@@ -43,8 +43,8 @@ class CascadeInferenceEngine(InferenceEngine):
         """
         Execute the cascade inference.
         
-        Currently follows a sequential pipeline where each stage can 
-        potentially trigger the next or stop the process.
+        Follows a sequential pipeline where each stage only runs if 
+        the previous stage detected a potential wakeword.
         """
         results = []
         for stage in self.stages:
@@ -54,8 +54,10 @@ class CascadeInferenceEngine(InferenceEngine):
                 "result": stage_result
             })
             
-            # Logic for cascade handoff could be added here
-            # e.g., if stage_result['confidence'] < threshold: break
+            # Cascade handoff: stop if not detected
+            if not stage_result.get("detected", True):
+                logger.info(f"Cascade stopped at {stage.name} (no detection)")
+                break
             
         return results
 

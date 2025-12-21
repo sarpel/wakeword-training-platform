@@ -99,3 +99,48 @@ def test_judge_inference_stage():
     
     assert "confidence" in result
     assert 0 <= result["confidence"] <= 1.0
+
+def test_cascade_handoff_logic():
+    """Test that CascadeInferenceEngine correctly stops if a stage doesn't detect."""
+    engine = CascadeInferenceEngine()
+    
+    class MockStageCustom(StageBase):
+        def __init__(self, name, detect):
+            self._name = name
+            self.detect = detect
+        def predict(self, audio):
+            return {"detected": self.detect, "confidence": 1.0 if self.detect else 0.0}
+        @property
+        def name(self): return self._name
+
+    stage1 = MockStageCustom("stage1", False)
+    stage2 = MockStageCustom("stage2", True)
+    
+    engine.add_stage(stage1)
+    engine.add_stage(stage2)
+    
+    audio = np.array([0.1])
+    results = engine.run(audio)
+    
+    # Should stop after stage1 because it didn't detect
+    assert len(results) == 1
+    assert results[0]["stage"] == "stage1"
+
+def test_full_sentry_judge_cascade():
+    """Test a full Sentry -> Judge cascade."""
+    s_model = MobileNetV3Wakeword(num_classes=2)
+    j_model = Wav2VecWakeword(num_classes=2, pretrained=False)
+    
+    s_stage = SentryInferenceStage(s_model, threshold=0.0) # Always detect for test
+    j_stage = JudgeInferenceStage(j_model, threshold=0.0) # Always detect for test
+    
+    engine = CascadeInferenceEngine()
+    engine.add_stage(s_stage)
+    engine.add_stage(j_stage)
+    
+    audio = np.random.randn(16000)
+    results = engine.run(audio)
+    
+    assert len(results) == 2
+    assert results[0]["stage"] == "sentry"
+    assert results[1]["stage"] == "judge"
