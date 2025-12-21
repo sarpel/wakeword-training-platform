@@ -25,9 +25,9 @@
 ## Phase 3: Observability & Integration
 *Goal: Integrate benchmarking metrics and polish the experience.*
 
-- [ ] Task: Update UI to display real-time latency and memory metrics during inference
-    - [ ] Write Tests
-    - [ ] Implement Feature
+- [x] Task: Update UI to display real-time latency and memory metrics during inference (97deb1b)
+    - [x] Write Tests
+    - [x] Implement Feature
 - [ ] Task: Final end-to-end validation of the debugging suite
     - [ ] Write Tests
     - [ ] Implement Feature
