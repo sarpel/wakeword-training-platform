@@ -3,7 +3,7 @@
 ## Phase 1: Backend Analysis Engine
 *Goal: Create the logic for threshold analysis and data collection.*
 
-- [ ] Task: Implement `ThresholdAnalyzer` in `src/evaluation/advanced_evaluator.py` to compute metrics for varying thresholds
+- [x] Task: Implement `ThresholdAnalyzer` in `src/evaluation/advanced_evaluator.py` to compute metrics for varying thresholds (f1da0ae)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Create a utility to collect and serialize False Positive samples for UI consumption
