@@ -22,7 +22,7 @@
     - [ ] Implement Feature
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Interactive UI Components' (Protocol in workflow.md)
 
-## Phase 3: Observability & Integration
+## Phase 3: Observability & Integration [checkpoint: 56aebce]
 *Goal: Integrate benchmarking metrics and polish the experience.*
 
 - [x] Task: Update UI to display real-time latency and memory metrics during inference (97deb1b)
