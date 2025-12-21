@@ -21,7 +21,8 @@ matplotlib.use("Agg")
 import structlog
 
 from src.data.dataset import WakewordDataset
-from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
+from src.evaluation.advanced_evaluator import ModelEvaluator, load_model_for_evaluation, ThresholdAnalyzer
+from src.evaluation.data_collector import FalsePositiveCollector
 from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
 from src.evaluation.types import EvaluationResult
 from src.exceptions import WakewordException
@@ -55,6 +56,11 @@ class EvaluationState:
         self.waveform_line: Optional[Any] = None
         self.waveform_sr = 16000  # modelden set edilecek
         self.window_sec = 1.0  # ekranda gösterilecek süre
+
+        # Analysis Data
+        self.last_logits: Optional[torch.Tensor] = None
+        self.last_labels: Optional[torch.Tensor] = None
+        self.threshold_analyzer: Optional[ThresholdAnalyzer] = None
 
 
 # Global state
@@ -498,6 +504,35 @@ def get_microphone_status() -> Tuple:
 # return fig
 
 
+import plotly.graph_objects as go
+
+def run_threshold_analysis() -> Tuple[gr.Plot, pd.DataFrame]:
+    """
+    Run threshold analysis on the last evaluated test set.
+    """
+    if eval_state.threshold_analyzer is None:
+        return None, None
+        
+    thresholds = np.linspace(0, 1, 21)
+    results = eval_state.threshold_analyzer.analyze_range(thresholds)
+    
+    df = pd.DataFrame(results)
+    
+    # Create Plotly figure
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df['threshold'], y=df['precision'], name='Precision', line=dict(color='cyan')))
+    fig.add_trace(go.Scatter(x=df['threshold'], y=df['recall'], name='Recall', line=dict(color='amber')))
+    
+    fig.update_layout(
+        title="Precision-Recall vs Threshold",
+        xaxis_title="Threshold",
+        yaxis_title="Metric Value",
+        template="plotly_dark",
+        height=400
+    )
+    
+    return fig, df
+
 def evaluate_test_set(
     data_root: str,
     test_split_path: str,
@@ -636,6 +671,11 @@ def evaluate_test_set(
         roc_plot = create_roc_curve_plot(test_dataset)
 
         logger.info("Test set evaluation complete")
+
+        # Update analysis state
+        eval_state.last_logits = all_preds
+        eval_state.last_labels = all_targs
+        eval_state.threshold_analyzer = ThresholdAnalyzer(all_preds, all_targs)
 
         return metrics_dict, conf_matrix_plot, roc_plot, advanced_metrics_dict
 
@@ -981,6 +1021,28 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             value={"status": "Enable advanced metrics and run evaluation"},
                         )
 
+            # Analysis Dashboard
+            with gr.TabItem("🔍 Analysis Dashboard"):
+                gr.Markdown("### Advanced Model Analysis & Debugging")
+                gr.Markdown("Use these tools to deep-dive into model performance and tune thresholds.")
+                
+                with gr.Row():
+                    run_analysis_btn = gr.Button("📊 Run Threshold Analysis", variant="primary")
+                    
+                with gr.Row():
+                    with gr.Column():
+                        threshold_plot = gr.Plot(label="Threshold Analysis")
+                    with gr.Column():
+                        threshold_table = gr.Dataframe(label="Threshold Metrics")
+                
+                gr.Markdown("---")
+                gr.Markdown("### 🚨 False Positive Inspector")
+                with gr.Row():
+                    collect_fp_btn = gr.Button("📥 Collect False Positives from Test Set", variant="secondary")
+                    clear_fp_btn = gr.Button("🗑️ Clear Collected Samples")
+                
+                fp_gallery = gr.HTML(label="False Positive Samples", value="<p>No samples collected yet. Run 'Collect False Positives' to see results.</p>")
+
         # Event handlers
         def refresh_models_handler() -> gr.Dropdown:
             models = get_available_models()
@@ -1050,6 +1112,11 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                 state,
             ],
             outputs=[test_metrics, confusion_matrix, roc_curve, advanced_metrics],
+        )
+
+        run_analysis_btn.click(
+            fn=run_threshold_analysis,
+            outputs=[threshold_plot, threshold_table]
         )
 
     return panel
