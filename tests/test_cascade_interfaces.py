@@ -63,3 +63,20 @@ def test_cascade_inference_engine_real():
     assert len(results) > 0
     assert results[0]["stage"] == "mock_stage"
     assert "confidence" in results[0]["result"]
+
+from src.evaluation.stages import SentryInferenceStage
+from src.models.architectures import MobileNetV3Wakeword
+
+def test_sentry_inference_stage():
+    """Test SentryInferenceStage with a real MobileNetV3 model."""
+    model = MobileNetV3Wakeword(num_classes=2)
+    model.eval()
+    
+    stage = SentryInferenceStage(model=model, name="sentry")
+    assert stage.name == "sentry"
+    
+    audio = np.random.randn(16000)
+    result = stage.predict(audio)
+    
+    assert "confidence" in result
+    assert 0 <= result["confidence"] <= 1.0
