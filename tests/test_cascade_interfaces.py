@@ -80,3 +80,22 @@ def test_sentry_inference_stage():
     
     assert "confidence" in result
     assert 0 <= result["confidence"] <= 1.0
+
+from src.evaluation.stages import JudgeInferenceStage
+from src.models.huggingface import Wav2VecWakeword
+
+def test_judge_inference_stage():
+    """Test JudgeInferenceStage with a Wav2VecWakeword model."""
+    # Using a small config to avoid heavy downloads if possible, 
+    # but here we'll just test the modularity
+    model = Wav2VecWakeword(num_classes=2, pretrained=False)
+    model.eval()
+    
+    stage = JudgeInferenceStage(model=model, name="judge")
+    assert stage.name == "judge"
+    
+    audio = np.random.randn(16000)
+    result = stage.predict(audio)
+    
+    assert "confidence" in result
+    assert 0 <= result["confidence"] <= 1.0

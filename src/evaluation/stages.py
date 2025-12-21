@@ -69,3 +69,49 @@ class SentryInferenceStage(StageBase):
             "confidence": confidence,
             "detected": confidence >= self.threshold
         }
+
+class JudgeInferenceStage(StageBase):
+    """
+    Judge Stage: Local server false positive rejection (Wav2Vec 2.0).
+    """
+    
+    def __init__(
+        self, 
+        model: nn.Module, 
+        name: str = "judge",
+        threshold: float = 0.5,
+        device: str = "cpu"
+    ):
+        self.model = model.to(device)
+        self.model.eval()
+        self._name = name
+        self.threshold = threshold
+        self.device = device
+            
+    @property
+    def name(self) -> str:
+        return self._name
+        
+    def predict(self, audio: np.ndarray) -> Dict[str, Any]:
+        """
+        Run Judge prediction.
+        
+        Args:
+            audio: 1D numpy array of audio samples.
+            
+        Returns:
+            Dictionary with confidence and detection status.
+        """
+        # Convert to tensor (batch, samples)
+        waveform = torch.from_numpy(audio).float().to(self.device).unsqueeze(0)
+        
+        # Model inference
+        with torch.no_grad():
+            logits = self.model(waveform)
+            probs = torch.softmax(logits, dim=1)
+            confidence = probs[0, 1].item() # Assuming class 1 is positive
+            
+        return {
+            "confidence": confidence,
+            "detected": confidence >= self.threshold
+        }
