@@ -1,6 +1,6 @@
 # Plan: Visual Analysis & Debugging Suite
 
-## Phase 1: Backend Analysis Engine
+## Phase 1: Backend Analysis Engine [checkpoint: 88614ee]
 *Goal: Create the logic for threshold analysis and data collection.*
 
 - [x] Task: Implement `ThresholdAnalyzer` in `src/evaluation/advanced_evaluator.py` to compute metrics for varying thresholds (f1da0ae)
