@@ -3,7 +3,7 @@
 ## Phase 1: Foundation and Interfaces
 *Goal: Define the abstract interfaces and project structure for modular inference.*
 
-- [ ] Task: Define `InferenceEngine` and `StageBase` abstract classes in `src/evaluation/types.py`
+- [x] Task: Define `InferenceEngine` and `StageBase` abstract classes in `src/evaluation/types.py` (61c6257)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Refactor `src/evaluation/streaming_detector.py` to use the new interfaces
