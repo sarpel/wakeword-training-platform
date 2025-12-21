@@ -38,3 +38,4 @@ class EvaluationResult:
     confidence: float
     latency_ms: float
     logits: np.ndarray
+    raw_audio: Optional[np.ndarray] = None

@@ -61,6 +61,7 @@ class EvaluationState:
         self.last_logits: Optional[torch.Tensor] = None
         self.last_labels: Optional[torch.Tensor] = None
         self.threshold_analyzer: Optional[ThresholdAnalyzer] = None
+        self.fp_collector = FalsePositiveCollector()
 
 
 # Global state
@@ -532,6 +533,60 @@ def run_threshold_analysis() -> Tuple[gr.Plot, pd.DataFrame]:
     )
     
     return fig, df
+
+def collect_false_positives() -> str:
+    """
+    Collect false positive samples from the last evaluation.
+    """
+    if not eval_state.test_results or eval_state.last_labels is None:
+        return "<p>No evaluation results available. Run 'Test Set Evaluation' first.</p>"
+        
+    eval_state.fp_collector.clear()
+    
+    fp_count = 0
+    for result, label in zip(eval_state.test_results, eval_state.last_labels):
+        if result.prediction == "Positive" and label == 0:
+            if result.raw_audio is not None:
+                metadata = {
+                    "filename": result.filename,
+                    "confidence": result.confidence,
+                    "latency_ms": result.latency_ms
+                }
+                eval_state.fp_collector.add_sample(result.raw_audio, metadata)
+                fp_count += 1
+                
+    if fp_count == 0:
+        return "<p>No false positives found in the last evaluation! 🎉</p>"
+        
+    return generate_fp_gallery_html()
+
+def clear_false_positives() -> str:
+    """Clear the FP collector and update UI."""
+    eval_state.fp_collector.clear()
+    return "<p>Gallery cleared.</p>"
+
+def generate_fp_gallery_html() -> str:
+    """Generate HTML for the FP gallery."""
+    samples = eval_state.fp_collector.get_samples()
+    if not samples:
+        return "<p>No samples collected.</p>"
+        
+    html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; max-height: 600px; overflow-y: auto;">'
+    
+    for s in samples:
+        audio_url = f"file/{eval_state.fp_collector.output_dir}/{s['audio_path']}"
+        html += f"""
+        <div style="background: #2d2d2d; padding: 15px; border-radius: 8px; border: 1px solid #444;">
+            <p style="margin: 0 0 10px 0; color: #ff4b4b; font-weight: bold;">False Positive</p>
+            <p style="margin: 5px 0; font-size: 0.9em; color: #aaa;">File: {s['metadata']['filename']}</p>
+            <p style="margin: 5px 0; font-size: 0.9em;">Confidence: <span style="color: cyan;">{s['metadata']['confidence']:.2%}</span></p>
+            <audio controls style="width: 100%; margin-top: 10px;">
+                <source src="{audio_url}" type="audio/wav">
+            </audio>
+        </div>
+        """
+    html += '</div>'
+    return html
 
 def evaluate_test_set(
     data_root: str,
@@ -1117,6 +1172,16 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
         run_analysis_btn.click(
             fn=run_threshold_analysis,
             outputs=[threshold_plot, threshold_table]
+        )
+
+        collect_fp_btn.click(
+            fn=collect_false_positives,
+            outputs=[fp_gallery]
+        )
+
+        clear_fp_btn.click(
+            fn=clear_false_positives,
+            outputs=[fp_gallery]
         )
 
     return panel

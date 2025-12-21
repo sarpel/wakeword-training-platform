@@ -97,8 +97,8 @@ def evaluate_dataset(
             confidences = probabilities[:, 1].cpu().numpy()
             predicted_classes = (confidences >= threshold).astype(int)
 
-            for i, (confidence, pred_class, logit, meta) in enumerate(
-                zip(confidences, predicted_classes, logits.cpu().numpy(), metadata)
+            for i, (confidence, pred_class, logit, meta, audio) in enumerate(
+                zip(confidences, predicted_classes, logits.cpu().numpy(), metadata, inputs.cpu().numpy())
             ):
                 results.append(
                     EvaluationResult(
@@ -107,6 +107,7 @@ def evaluate_dataset(
                         confidence=float(confidence),
                         latency_ms=batch_latency,
                         logits=logit,
+                        raw_audio=audio.squeeze() if audio.ndim > 1 else audio
                     )
                 )
 
