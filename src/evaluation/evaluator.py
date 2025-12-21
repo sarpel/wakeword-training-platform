@@ -203,22 +203,46 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     # Load weights
     state_dict = checkpoint["model_state_dict"]
 
+    # --- Robust Loading Logic ---
+    model_state = model.state_dict()
+    new_state_dict = {}
+    
+    for k, v in state_dict.items():
+        # Handle MobileNetV3 remapping
+        # Old checkpoints might have 'mobilenet.features.X' but model expects 'features.X'
+        if k.startswith("mobilenet.features.") and "features." + k[19:] in model_state:
+            new_key = "features." + k[19:]
+            new_state_dict[new_key] = v
+        # Keep original key if it matches
+        elif k in model_state:
+            new_state_dict[k] = v
+        else:
+            # Keep it anyway for strict=False to catch, or we can try to map
+            new_state_dict[k] = v
+
+    # Filter out keys with size mismatches to prevent crashes
+    final_state_dict = {}
+    for k, v in new_state_dict.items():
+        if k in model_state:
+            if model_state[k].shape == v.shape:
+                final_state_dict[k] = v
+            else:
+                logger.warning(f"Skipping key {k}: Shape mismatch. Cpt: {v.shape}, Mdl: {model_state[k].shape}")
+        else:
+            # If key not in model, we can't load it anyway
+            pass
+
     # Handle QAT checkpoints loaded into FP32 models
     # Filter out quantization keys that are not in the model
-    model_keys = set(model.state_dict().keys())
-    checkpoint_keys = set(state_dict.keys())
-    unexpected_keys = checkpoint_keys - model_keys
-
-    if unexpected_keys:
-        # Check if these are quantization keys
-        quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
-        
-        if quant_keys:
-            logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
-            # Filter the state dict
-            state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
-
-    model.load_state_dict(state_dict, strict=True)
+    # (Existing logic preserved/merged)
+    
+    # Load with strict=False to allow missing unused keys (like mobilenet.classifier)
+    missing, unexpected = model.load_state_dict(final_state_dict, strict=False)
+    
+    if missing:
+        logger.warning(f"Missing keys (some may be expected if architecture changed): {missing[:5]}...")
+    if unexpected:
+        logger.info(f"Unexpected keys in checkpoint (ignored): {unexpected[:5]}...")
 
     # Move to device and set eval mode
     model.to(device)

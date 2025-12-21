@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from typing import List, Optional
 import numpy as np
 
 class StageBase(ABC):
@@ -38,4 +39,5 @@ class EvaluationResult:
     confidence: float
     latency_ms: float
     logits: np.ndarray
+    label: Optional[int] = None
     raw_audio: Optional[np.ndarray] = None

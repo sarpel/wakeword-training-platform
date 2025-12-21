@@ -56,8 +56,8 @@ def evaluate_dataset(
         collate_fn=collate_fn,
     )
 
-    all_predictions = []
-    all_targets = []
+    all_preds = []
+    all_targs = []
     all_logits = []
     results = []
 
@@ -88,8 +88,8 @@ def evaluate_dataset(
             batch_latency = (time.time() - start_time) * 1000 / len(inputs)
 
             # Collect for metrics
-            all_predictions.append(logits.cpu())
-            all_targets.append(targets.cpu())
+            all_preds.append(logits.cpu())
+            all_targs.append(targets.cpu())
             all_logits.append(logits.cpu())
 
             # Create individual results
@@ -97,8 +97,8 @@ def evaluate_dataset(
             confidences = probabilities[:, 1].cpu().numpy()
             predicted_classes = (confidences >= threshold).astype(int)
 
-            for i, (confidence, pred_class, logit, meta, audio) in enumerate(
-                zip(confidences, predicted_classes, logits.cpu().numpy(), metadata, inputs.cpu().numpy())
+            for i, (confidence, pred_class, logit, meta, audio, target) in enumerate(
+                zip(confidences, predicted_classes, logits.cpu().numpy(), metadata, inputs.cpu().numpy(), targets.cpu().numpy())
             ):
                 results.append(
                     EvaluationResult(
@@ -107,13 +107,14 @@ def evaluate_dataset(
                         confidence=float(confidence),
                         latency_ms=batch_latency,
                         logits=logit,
+                        label=int(target),
                         raw_audio=audio.squeeze() if audio.ndim > 1 else audio
                     )
                 )
 
     # Calculate overall metrics
-    all_preds = torch.cat(all_predictions, dim=0)
-    all_targs = torch.cat(all_targets, dim=0)
+    all_preds = torch.cat(all_preds, dim=0)
+    all_targs = torch.cat(all_targs, dim=0)
 
     metrics = evaluator.metrics_calculator.calculate(all_preds, all_targs, threshold=threshold)
 
