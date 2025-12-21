@@ -11,7 +11,7 @@
     - [ ] Implement Feature
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Foundation and Interfaces' (Protocol in workflow.md)
 
-## Phase 2: Stage Implementation
+## Phase 2: Stage Implementation [checkpoint: 9ef8b1a]
 *Goal: Refactor existing Sentry and Judge logic into the new modular components.*
 
 - [x] Task: Implement `SentryInferenceStage` (MobileNetV3) as a modular component (dceff7c)
