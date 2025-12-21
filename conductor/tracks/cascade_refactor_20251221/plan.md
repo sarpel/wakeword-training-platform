@@ -22,7 +22,7 @@
     - [ ] Implement Feature
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Stage Implementation' (Protocol in workflow.md)
 
-## Phase 3: Benchmarking and Validation
+## Phase 3: Benchmarking and Validation [checkpoint: b15b1a4]
 *Goal: Implement performance measurement tools and verify the refactor.*
 
 - [x] Task: Create `src/evaluation/benchmarking.py` for latency and memory profiling (14b5ebe)
