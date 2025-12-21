@@ -18,6 +18,7 @@ The Wakeword Training Platform is designed to democratize high-quality, producti
 ## Key Features
 *   **One-Click Export:** Seamlessly convert trained models to TFLite and ONNX formats, ready for integration into edge hardware.
 *   **Visual Analysis & Debugging:** Comprehensive tools for visualizing model performance, analyzing false positives, and tuning detection thresholds.
+*   **Standardized Benchmarking:** Built-in profiling tools to measure latency and memory usage across all stages of the distributed cascade.
 *   **Automated Data Excellence:** Built-in dataset health checks, automated balancing, and sophisticated noise augmentation to ensure model robustness.
 
 ## User Experience Goals
