@@ -6,7 +6,7 @@
 - [x] Task: Implement `ThresholdAnalyzer` in `src/evaluation/advanced_evaluator.py` to compute metrics for varying thresholds (f1da0ae)
     - [ ] Write Tests
     - [ ] Implement Feature
-- [ ] Task: Create a utility to collect and serialize False Positive samples for UI consumption
+- [x] Task: Create a utility to collect and serialize False Positive samples for UI consumption (eeffcf6)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Backend Analysis Engine' (Protocol in workflow.md)
