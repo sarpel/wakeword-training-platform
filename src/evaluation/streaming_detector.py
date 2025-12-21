@@ -17,8 +17,47 @@ import numpy as np  # For numerical operations on audio arrays
 import structlog  # For structured logging
 import torch  # For PyTorch model inference
 
+from src.evaluation.types import InferenceEngine, StageBase
+
 # Initialize logger for this module
 logger = structlog.get_logger(__name__)
+
+
+class CascadeInferenceEngine(InferenceEngine):
+    """
+    Orchestration engine for distributed cascade inference.
+    
+    Manages multiple inference stages (e.g., Sentry, Judge) and handles
+    the logic for passing results between them.
+    """
+    
+    def __init__(self):
+        self.stages: List[StageBase] = []
+        
+    def add_stage(self, stage: StageBase):
+        """Add an inference stage to the cascade"""
+        self.stages.append(stage)
+        logger.info(f"Added stage to cascade: {stage.name}")
+        
+    def run(self, audio: np.ndarray) -> List[dict]:
+        """
+        Execute the cascade inference.
+        
+        Currently follows a sequential pipeline where each stage can 
+        potentially trigger the next or stop the process.
+        """
+        results = []
+        for stage in self.stages:
+            stage_result = stage.predict(audio)
+            results.append({
+                "stage": stage.name,
+                "result": stage_result
+            })
+            
+            # Logic for cascade handoff could be added here
+            # e.g., if stage_result['confidence'] < threshold: break
+            
+        return results
 
 
 class StreamingDetector:

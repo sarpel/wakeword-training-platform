@@ -48,3 +48,18 @@ def test_engine_implementation():
     results = engine.run(np.array([0.1, 0.2]))
     assert len(results) == 1
     assert results[0]["confidence"] == 0.9
+
+from src.evaluation.streaming_detector import CascadeInferenceEngine
+
+def test_cascade_inference_engine_real():
+    """Test the actual CascadeInferenceEngine implementation."""
+    engine = CascadeInferenceEngine()
+    stage = MockStage()
+    engine.add_stage(stage)
+    
+    audio = np.random.randn(16000) # 1 second
+    results = engine.run(audio)
+    
+    assert len(results) > 0
+    assert results[0]["stage"] == "mock_stage"
+    assert "confidence" in results[0]["result"]
