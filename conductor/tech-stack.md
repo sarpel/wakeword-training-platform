@@ -28,3 +28,4 @@
 ## Infrastructure & Logging
 *   **Structlog**: Structured, machine-readable logging for better observability.
 *   **Psutil**: System resource monitoring (CPU/GPU/RAM), used in benchmarking to profile memory usage.
+*   **Psutil**: System resource monitoring (CPU/GPU/RAM), used in benchmarking to profile memory usage.
