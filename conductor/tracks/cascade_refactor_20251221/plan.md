@@ -6,7 +6,7 @@
 - [x] Task: Define `InferenceEngine` and `StageBase` abstract classes in `src/evaluation/types.py` (61c6257)
     - [ ] Write Tests
     - [ ] Implement Feature
-- [ ] Task: Refactor `src/evaluation/streaming_detector.py` to use the new interfaces
+- [x] Task: Refactor `src/evaluation/streaming_detector.py` to use the new interfaces (41b4cda)
     - [ ] Write Tests
     - [ ] Implement Feature
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Foundation and Interfaces' (Protocol in workflow.md)
