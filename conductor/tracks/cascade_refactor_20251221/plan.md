@@ -1,6 +1,6 @@
 # Plan: Refactor and Standardize Distributed Cascade Inference
 
-## Phase 1: Foundation and Interfaces
+## Phase 1: Foundation and Interfaces [checkpoint: fd1df77]
 *Goal: Define the abstract interfaces and project structure for modular inference.*
 
 - [x] Task: Define `InferenceEngine` and `StageBase` abstract classes in `src/evaluation/types.py` (61c6257)
