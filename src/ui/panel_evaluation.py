@@ -575,7 +575,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         audio_files = gr.File(
                             label="Upload Audio Files (.wav, .mp3, .flac)",
                             file_count="multiple",
-                            file_types="[.wav, .mp3, .flac, .ogg]",
+                            file_types=[".wav", ".mp3", ".flac", ".ogg"],
                         )
 
                         threshold_slider = gr.Slider(
