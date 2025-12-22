@@ -173,6 +173,9 @@ class WakewordDataset(Dataset):
                 device="cpu",  # Audio augmentation always on CPU
                 time_stretch_range=aug_config.get("time_stretch_range", (0.9, 1.1)),
                 pitch_shift_range=aug_config.get("pitch_shift_range", (-2, 2)),
+                # Time Shift
+                time_shift_prob=aug_config.get("time_shift_prob", 0.5),
+                time_shift_range_ms=aug_config.get("time_shift_range_ms", (-100, 100)),
                 background_noise_prob=aug_config.get("background_noise_prob", 0.5),
                 noise_snr_range=aug_config.get("noise_snr_range", (5.0, 20.0)),
                 rir_prob=aug_config.get("rir_prob", 0.25),
