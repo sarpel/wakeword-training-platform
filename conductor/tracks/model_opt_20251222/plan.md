@@ -29,7 +29,7 @@ Implement the Teacher-Student training flow to boost edge model performance.
 - [x] Task: Verify the distilled student outperforms the baseline student [36bedb3]
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Knowledge Distillation' (Protocol in workflow.md)
 
-## Phase 4: Hard Negative Mining & Streaming Refinement [checkpoint: PLACEHOLDER_SHA]
+## Phase 4: Hard Negative Mining & Streaming Refinement [checkpoint: f0f39e8]
 Close the loop on false alarms and stabilize real-time detection.
 
 - [x] Task: Create a utility script to extract high-confidence False Positives from evaluation logs [6485130]
