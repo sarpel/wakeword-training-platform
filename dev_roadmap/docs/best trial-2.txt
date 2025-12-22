@@ -1,0 +1,50 @@
+2025-12-01T13:54:52.593549Z [info     ] Epoch 20 [Train]: Loss=0.0026, Accuracy: 0.9950 | Precision: 0.9888 | Recall: 0.9600 | F1: 0.9742 | FPR: 0.0012 | FNR: 0.0400 [src.training.training_loop]
+2025-12-01T13:54:54.466239Z [info     ] Epoch 20 [Val]: Loss=0.0020, Accuracy: 0.9986 | Precision: 0.9900 | Recall: 0.9962 | F1: 0.9931 | FPR: 0.0011 | FNR: 0.0038 [src.training.training_loop]
+2025-12-01T13:54:54.635041Z [info     ] Saved best model: C:\Users\Sarpel\AppData\Local\Temp\tmpf3ia2fv4\best_model.pt (F1: 0.9931) [src.training.checkpoint_manager]
+2025-12-01T13:54:54.772944Z [info     ] Saved checkpoint: C:\Users\Sarpel\AppData\Local\Temp\tmpf3ia2fv4\checkpoint_epoch_020.pt [src.training.checkpoint_manager]
+2025-12-01T13:54:54.982027Z [info     ] Only 5 checkpoints, no cleanup needed [src.training.checkpoint_manager] 
+2025-12-01T13:54:54.983027Z [info     ] Epoch 20/20                    [src.training.trainer] 
+2025-12-01T13:54:54.983531Z [info     ]   Train: Loss=0.0026, Acc=0.9950 [src.training.trainer]
+2025-12-01T13:54:54.983531Z [info     ]   Val:   Loss=0.0020, Acc=0.9986, F1=0.9931, FPR=0.0011, FNR=0.0038 [src.training.trainer]
+2025-12-01T13:54:54.983531Z [info     ]   LR: 0.001202                 [src.training.trainer]
+2025-12-01T13:54:54.983531Z [info     ]   ✅ New best model (improvement detected) [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ] ================================================================================ [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ] Training complete              [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ]   Total time: 0.41 hours       [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ]   Best val loss: 0.0015        [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ]   Best val F1: 0.9931          [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ]   Best val FPR: 0.0008         [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ] ================================================================================ [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ]
+Best F1 Score: 0.9931 (Epoch 20) [src.training.trainer]
+2025-12-01T13:54:54.984033Z [info     ] Best FPR: 0.0000 (Epoch 1)     [src.training.trainer]
+2025-12-01T13:54:55.054975Z [info     ] 🏆 New best HPO model saved to models\hpo_best_model.pt (F1: 0.9931) [src.training.hpo]
+🏆 New best HPO model saved to models\hpo_best_model.pt (F1: 0.9931)
+2025-12-01T13:54:55.054975Z [info     ] Trial 31 finished. F1: 0.9931  [src.training.hpo]
+Trial 31 finished. F1: 0.9931
+
+[I 2025-12-01 16:54:58,645] 
+Trial 31 finished with value: 0.9930870083432659 and parameters: 
+{'learning_rate': 0.0035986881475931496, 
+'weight_decay': 7.6646887715562e-06, 
+'optimizer': 'adamw', 
+'batch_size': 64, 
+'dropout': 0.17878302584548036, 
+'background_noise_prob': 0.7422566759097302, 
+'rir_prob': 0.5652861424416435, 
+'time_stretch_min': 0.8801678986432888, 
+'time_stretch_max': 1.1426403975309722, 
+'freq_mask_param': 13, 
+'time_mask_param': 22, 
+'n_mels': 40, 
+'loss_function': 'focal_loss', 
+'focal_gamma': 1.0004198889873082}.
+
+Best is trial 31 with value: 0.9930870083432659.
+
+
+
+2025-12-01T13:54:58.672284Z [info     ] Trial 32 started. Params: {'learning_rate': 0.0031782145863660373, 'weight_decay': 7.2372264362702e-06, 'optimizer': 'adamw', 'batch_size': 64, 'dropout': 0.18485236091481053, 'background_noise_prob': 0.7069434368810625, 'rir_prob': 0.5583103792317404, 'time_stretch_min': 0.8753837637124523, 'time_stretch_max': 1.1437280679870543, 'freq_mask_param': 12, 'time_mask_param': 22, 'n_mels': 40, 'loss_function': 'focal_loss', 'focal_gamma': 1.0334292399726475} [src.training.hpo]
+Trial 32 started. Params: {'learning_rate': 0.0031782145863660373, 'weight_decay': 7.2372264362702e-06, 'optimizer': 'adamw', 'batch_size': 64, 'dropout': 0.18485236091481053, 'background_noise_prob': 0.7069434368810625, 'rir_prob': 0.5583103792317404, 'time_stretch_min': 0.8753837637124523, 'time_stretch_max': 1.1437280679870543, 'freq_mask_param': 12, 'time_mask_param': 22, 'n_mels': 40, 'loss_function': 'focal_loss', 'focal_gamma': 1.0334292399726475}
+2025-12-01T13:54:58.672284Z [info     ] Checkpoint manager initialized: C:\Users\Sarpel\AppData\Local\Temp\tmpe6hgt5yu [src.training.checkpoint_manager]
+✅ CUDA validated successfully. 1 GPU(s) available.
