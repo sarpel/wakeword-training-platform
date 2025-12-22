@@ -229,9 +229,19 @@ class DistillationConfig:
     log_memory_usage: bool = False
     
     # Distillation parameters
-    teacher_architecture: str = "wav2vec2"
+    teacher_architecture: str = "wav2vec2" # wav2vec2, conformer, dual
+    secondary_teacher_architecture: str = "conformer"
+    secondary_teacher_model_path: str = ""
+    
     temperature: float = 2.0
+    temperature_scheduler: str = "fixed" # fixed, linear_decay, exponential_decay
     alpha: float = 0.5
+    
+    # Feature Alignment (Intermediate Matching)
+    feature_alignment_enabled: bool = False
+    feature_alignment_weight: float = 0.1
+    # Indices of layers to match (implementation dependent)
+    alignment_layers: List[int] = field(default_factory=lambda: [1, 2, 3])
 
     def __post_init__(self):
         """Validate parameters after initialization"""
@@ -253,7 +263,7 @@ class DistillationConfig:
             )
         self.alpha = float(self.alpha)
 
-        valid_architectures = ["wav2vec2"]
+        valid_architectures = ["wav2vec2", "conformer", "dual"]
         if self.teacher_architecture not in valid_architectures:
             raise ValueError(
                 f"teacher_architecture must be one of {valid_architectures}, got '{self.teacher_architecture}'"

@@ -858,6 +858,130 @@ class CDDNNWakeword(nn.Module):
         return x
 
 
+class ConformerWakeword(nn.Module):
+    """
+    Simplified Conformer-style architecture for wakeword detection.
+    Combines Convolutional blocks with Transformer blocks.
+    """
+
+    def __init__(
+        self,
+        input_size: int = 40,
+        num_classes: int = 2,
+        encoder_dim: int = 144,
+        num_layers: int = 4,
+        num_heads: int = 4,
+        kernel_size: int = 31,
+        dropout: float = 0.1,
+        **kwargs: Any
+    ):
+        """
+        Initialize Conformer-style model.
+
+        Args:
+            input_size: Input feature dimension
+            num_classes: Number of output classes
+            encoder_dim: Dimension of the encoder blocks
+            num_layers: Number of encoder layers
+            num_heads: Number of attention heads
+            kernel_size: Kernel size for convolutional blocks
+            dropout: Dropout rate
+        """
+        super().__init__()
+
+        self.input_size = input_size
+        self.encoder_dim = encoder_dim
+
+        # Input projection
+        self.input_proj = nn.Sequential(
+            nn.Linear(input_size, encoder_dim),
+            nn.LayerNorm(encoder_dim),
+            nn.Dropout(dropout)
+        )
+
+        # Transformer blocks with convolutional modules
+        # For simplicity, we use standard Transformer layers but could wrap them
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=encoder_dim,
+            nhead=num_heads,
+            dim_feedforward=encoder_dim * 4,
+            dropout=dropout,
+            activation='gelu',
+            batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        # Convolutional module (applied after transformer or as part of it)
+        # Here we add it as a separate block for "Conformer" feel
+        self.conv_norm = nn.LayerNorm(encoder_dim)
+        self.conv_module = nn.Sequential(
+            nn.Conv1d(encoder_dim, encoder_dim, kernel_size=kernel_size, padding=kernel_size // 2, groups=encoder_dim),
+            nn.BatchNorm1d(encoder_dim),
+            nn.GELU(),
+            nn.Conv1d(encoder_dim, encoder_dim, kernel_size=1),
+            nn.Dropout(dropout)
+        )
+
+        # Classifier
+        self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool1d(1),
+            nn.Flatten(),
+            nn.Linear(encoder_dim, num_classes)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass.
+        Expects (batch, time, features) or (batch, 1, freq, time)
+        """
+        if x.dim() == 4:
+            if x.size(1) == 1:
+                x = x.squeeze(1)
+            if x.size(1) == self.input_size:
+                x = x.transpose(1, 2)
+        
+        # Project to encoder dim
+        x = self.input_proj(x) # (B, T, D)
+        
+        # Transformer blocks
+        x = self.transformer(x) # (B, T, D)
+        
+        # Conv module (needs B, D, T for convolutions, but LayerNorm needs B, T, D)
+        residual = x
+        x = self.conv_norm(x)
+        x = x.transpose(1, 2)
+        x = self.conv_module(x)
+        x = x.transpose(1, 2) + residual # Residual in (B, T, D)
+        
+        # Classify (pool needs B, D, T)
+        x = x.transpose(1, 2)
+        logits = self.classifier(x)
+        
+        return logits
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Get embeddings"""
+        if x.dim() == 4:
+            if x.size(1) == 1:
+                x = x.squeeze(1)
+            if x.size(1) == self.input_size:
+                x = x.transpose(1, 2)
+        
+        x = self.input_proj(x)
+        x = self.transformer(x)
+        
+        residual = x
+        x = self.conv_norm(x)
+        x = x.transpose(1, 2)
+        x = self.conv_module(x)
+        x = x.transpose(1, 2) + residual
+        
+        x = x.transpose(1, 2)
+        # Pool to get fixed size embedding
+        embedding = F.adaptive_avg_pool1d(x, 1).flatten(1)
+        return embedding
+
+
 def create_model(architecture: str, num_classes: int = 2, pretrained: bool = False, **kwargs: Any) -> nn.Module:
     """
     Factory function to create models
@@ -918,6 +1042,12 @@ def create_model(architecture: str, num_classes: int = 2, pretrained: bool = Fal
         return CDDNNWakeword(
             num_classes=num_classes,
             **kwargs  # Pass all kwargs to model
+        )
+
+    elif architecture == "conformer":
+        return ConformerWakeword(
+            num_classes=num_classes,
+            **kwargs
         )
 
     else:

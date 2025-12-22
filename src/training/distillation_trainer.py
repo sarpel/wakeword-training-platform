@@ -8,9 +8,11 @@ import logging
 from typing import Any, Optional
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from src.models.huggingface import Wav2VecWakeword
+from src.models.architectures import create_model
 from src.training.trainer import Trainer
 
 logger = logging.getLogger(__name__)
@@ -108,64 +110,68 @@ class DistillationTrainer(Trainer):
         return checkpoint
 
     def _init_teacher(self) -> None:
-        """Initialize the teacher model."""
+        """Initialize the teacher model(s)."""
         dist_config = self.config.distillation
+        self.teachers = nn.ModuleList()
+        self.teacher_devices = []
 
-        # TODO: Support loading from checkpoint path
-        # For now, we initialize a pretrained Wav2VecWakeword
-        logger.info(f"Loading teacher model: {dist_config.teacher_architecture}")
+        logger.info(f"Loading teacher architecture: {dist_config.teacher_architecture}")
 
-        if dist_config.teacher_architecture == "wav2vec2":
-            self.teacher = Wav2VecWakeword(
-                num_classes=self.config.model.num_classes, pretrained=True, freeze_feature_extractor=True
-            )
+        def load_one_teacher(arch, path):
+            if arch == "wav2vec2":
+                t = Wav2VecWakeword(
+                    num_classes=self.config.model.num_classes, pretrained=True, freeze_feature_extractor=True
+                )
+            else:
+                # Use standard factory for other architectures (e.g. conformer)
+                t = create_model(arch, num_classes=self.config.model.num_classes)
+            
+            if path:
+                logger.info(f"Loading weights for {arch} from {path}")
+                checkpoint = self._load_teacher_checkpoint(path)
+                if "model_state_dict" in checkpoint:
+                    t.load_state_dict(checkpoint["model_state_dict"])
+                else:
+                    t.load_state_dict(checkpoint)
+            
+            t.eval()
+            for param in t.parameters():
+                param.requires_grad = False
+            
+            # Device placement
+            if dist_config.teacher_on_cpu:
+                t.to("cpu")
+                dev = torch.device("cpu")
+            else:
+                t.to(self.device)
+                # self.device might be a string or torch.device
+                dev = torch.device(self.device) if isinstance(self.device, str) else self.device
+            
+            if dist_config.teacher_mixed_precision and dev.type == "cuda":
+                t.half()
+            
+            return t, dev
+
+        if dist_config.teacher_architecture == "dual":
+            # Primary teacher
+            t1, d1 = load_one_teacher("wav2vec2", dist_config.teacher_model_path)
+            self.teachers.append(t1)
+            self.teacher_devices.append(d1)
+            
+            # Secondary teacher
+            t2, d2 = load_one_teacher(dist_config.secondary_teacher_architecture, dist_config.secondary_teacher_model_path)
+            self.teachers.append(t2)
+            self.teacher_devices.append(d2)
         else:
-            # Fallback or other architectures
-            logger.warning(f"Unknown teacher architecture: {dist_config.teacher_architecture}. Using Wav2Vec2.")
-            self.teacher = Wav2VecWakeword(num_classes=self.config.model.num_classes)
+            t, d = load_one_teacher(dist_config.teacher_architecture, dist_config.teacher_model_path)
+            self.teachers.append(t)
+            self.teacher_devices.append(d)
 
-        # Load weights if path provided
-        if dist_config.teacher_model_path:
-            logger.info(f"Loading teacher weights from {dist_config.teacher_model_path}")
-            
-            # Secure loading
-            checkpoint = self._load_teacher_checkpoint(dist_config.teacher_model_path)
-            
-            if "model_state_dict" in checkpoint:
-                self.teacher.load_state_dict(checkpoint["model_state_dict"])
-            else:
-                self.teacher.load_state_dict(checkpoint)
+        # For backward compatibility
+        self.teacher = self.teachers[0]
+        self.teacher_device = self.teacher_devices[0]
 
-        if self.teacher:
-            # Memory-efficient placement
-            if hasattr(dist_config, "teacher_on_cpu") and dist_config.teacher_on_cpu:
-                logger.info("Keeping teacher on CPU to save VRAM")
-                self.teacher.to("cpu")
-                self.teacher_device = torch.device("cpu")
-            else:
-                self.teacher.to(self.device)
-                self.teacher_device = self.device
-            
-            self.teacher.eval()
-
-        # Freeze teacher parameters
-        for param in self.teacher.parameters():
-            param.requires_grad = False
-
-        # Enable mixed precision for teacher if requested
-        device_type = self.device.type if isinstance(self.device, torch.device) else self.device
-        
-        if hasattr(dist_config, "teacher_mixed_precision") and dist_config.teacher_mixed_precision and device_type == "cuda":
-            logger.info("Using FP16 for teacher inference")
-            self.teacher.half()  # Convert to FP16
-
-        # Log memory usage
-        if hasattr(dist_config, "log_memory_usage") and dist_config.log_memory_usage and device_type == "cuda":
-            allocated = torch.cuda.memory_allocated() / 1e9
-            reserved = torch.cuda.memory_reserved() / 1e9
-            logger.info(f"VRAM after teacher init: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
-
-        logger.info("Teacher model initialized and frozen")
+        logger.info(f"Initialized {len(self.teachers)} teacher(s)")
 
     def compute_loss(
         self,
@@ -176,87 +182,97 @@ class DistillationTrainer(Trainer):
         is_hard_negative: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Compute loss with distillation component.
-
-        Loss = (1 - alpha) * StudentLoss + alpha * KL(Student || Teacher)
-
-        Args:
-            outputs: Student model predictions (logits)
-            targets: Ground truth labels
-            inputs: Raw audio waveform (for teacher model)
-            processed_inputs: Processed features (for embedding extraction)
-            is_hard_negative: Tensor indicating hard negative samples
-
-        Returns:
-            Combined loss (student + distillation)
+        Compute loss with multi-teacher distillation and feature alignment.
         """
-        # Compute student loss with hard negative weighting
         student_loss = super().compute_loss(outputs, targets, inputs, processed_inputs, is_hard_negative)
 
-        if not self.distillation_enabled or self.teacher is None:
+        if not self.distillation_enabled or not self.teachers:
             return student_loss
 
         if inputs is None:
-            # Should not happen if training_loop is correct
-            logger.warning("Inputs not provided to compute_loss, skipping distillation")
             return student_loss
 
-        # Check if inputs are raw audio (2D: batch, time)
-        # If inputs are spectrograms (3D or 4D), we cannot use the teacher (which expects raw audio)
-        if inputs.dim() > 2:
-            return student_loss
+        dist_config = self.config.distillation
+        
+        # Temperature scheduling
+        T = float(dist_config.temperature)
+        if dist_config.temperature_scheduler == "linear_decay":
+            # Simple linear decay from T to 1.0
+            progress = self.state.epoch / self.config.training.epochs
+            T = T - (T - 1.0) * progress
+        T = max(1.0, T)
 
-        # Teacher forward pass
-        with torch.no_grad():
-            # Teacher expects raw audio. 'inputs' should contain raw audio.
-            # Move inputs to teacher device (CPU or GPU)
-            teacher_device = getattr(self, "teacher_device", self.device)
-            inputs_teacher = inputs.to(teacher_device)
+        # Distillation from all teachers
+        all_teacher_logits = []
+        feature_alignment_loss = torch.tensor(0.0, device=self.device)
 
-            # Mixed precision context if enabled
-            use_mixed = (
-                hasattr(self.config.distillation, "teacher_mixed_precision") 
-                and self.config.distillation.teacher_mixed_precision
-            )
-            
-            teacher_device_type = teacher_device.type if isinstance(teacher_device, torch.device) else teacher_device
-            
-            if use_mixed and teacher_device_type == 'cuda':
-                with torch.cuda.amp.autocast():
-                    teacher_outputs = self.teacher(inputs_teacher)
-            else:
-                teacher_outputs = self.teacher(inputs_teacher)
-
-            # Get logits (handle different return types from teacher model)
-            if isinstance(teacher_outputs, dict):
-                teacher_logits = teacher_outputs.get("logits", teacher_outputs)
-            elif isinstance(teacher_outputs, tuple):
-                teacher_logits = teacher_outputs[0]
-            else:
-                teacher_logits = teacher_outputs
+        for i, (teacher, teacher_device) in enumerate(zip(self.teachers, self.teacher_devices)):
+            with torch.no_grad():
+                # Prepare inputs for this specific teacher
+                # Wav2Vec2 needs raw audio, Conformer/others might need raw or features
+                # For now, we assume teachers take 'inputs' (raw audio if dim=2)
+                # But if teacher is standard CNN, it might need features.
+                # Heuristic: if input dim is 2 and teacher is not wav2vec2, it might need processing.
                 
-            # Move teacher outputs back to student device
-            teacher_logits = teacher_logits.to(self.device)
+                inputs_teacher = inputs.to(teacher_device)
+                
+                # Check if we need to extract features for non-wav2vec teachers
+                if inputs_teacher.dim() == 2 and not isinstance(teacher, Wav2VecWakeword):
+                    # Use student's audio processor but on teacher's device
+                    # Actually, we should probably have a processor for the teacher if it differs
+                    # For now, let's assume all teachers except wav2vec2 take features
+                    # Or just run them through the student's processor
+                    self.audio_processor.to(teacher_device)
+                    inputs_teacher = self.audio_processor(inputs_teacher)
+                
+                with torch.cuda.amp.autocast(enabled=dist_config.teacher_mixed_precision and teacher_device.type == 'cuda'):
+                    teacher_out = teacher(inputs_teacher)
+                
+                if isinstance(teacher_out, dict):
+                    logits = teacher_out.get("logits", teacher_out)
+                elif isinstance(teacher_out, tuple):
+                    logits = teacher_out[0]
+                else:
+                    logits = teacher_out
+                
+                all_teacher_logits.append(logits.to(self.device))
 
-        # Numerical stability check
-        if torch.any(torch.isnan(teacher_logits)) or torch.any(torch.isinf(teacher_logits)):
-            logger.warning("Teacher logits contain invalid values (NaN/Inf), skipping distillation for this batch")
+                # Feature alignment (optional)
+                if dist_config.feature_alignment_enabled and processed_inputs is not None:
+                    # Align student features with teacher's intermediate features
+                    # This is complex as dimensions must match. 
+                    # We'll use student.embed() and teacher.embed() for alignment.
+                    with torch.cuda.amp.autocast(enabled=dist_config.teacher_mixed_precision and teacher_device.type == 'cuda'):
+                        teacher_features = teacher.embed(inputs_teacher) if hasattr(teacher, "embed") else None
+                    
+                    if teacher_features is not None:
+                        student_features = self.model.embed(processed_inputs)
+                        # Project student features if dimensions differ
+                        # For simplicity, we use MSE on pooled features
+                        teacher_features = teacher_features.to(self.device)
+                        if student_features.shape == teacher_features.shape:
+                            feature_alignment_loss += F.mse_loss(student_features, teacher_features)
+                        else:
+                            # Use adaptive pooling to match if only spatial dims differ
+                            # But if channel dim differs, we skip for now (would need a projector)
+                            pass
+
+        if not all_teacher_logits:
             return student_loss
 
-        # Distillation Loss (KL Divergence)
-        T = max(1.0, float(self.config.distillation.temperature)) # Clamp temperature
-        alpha = self.config.distillation.alpha
+        # Average logits from all teachers (Ensemble Distillation)
+        mean_teacher_logits = torch.stack(all_teacher_logits).mean(dim=0)
 
-        # Soft targets from teacher
-        soft_targets = F.log_softmax(teacher_logits / T, dim=1)
-        # Soft probabilities from student
+        # Distillation Loss (KL)
+        soft_targets = F.log_softmax(mean_teacher_logits / T, dim=1)
         soft_prob = F.log_softmax(outputs / T, dim=1)
+        dist_loss = F.kl_div(soft_prob, soft_targets, reduction="batchmean", log_target=True) * (T**2)
 
-        # KLDivLoss expects input in log-space.
-        # If log_target=True, target should also be in log-space.
-        distillation_loss = F.kl_div(soft_prob, soft_targets, reduction="batchmean", log_target=True) * (T**2)
-
-        # Combined loss
-        total_loss = (1 - alpha) * student_loss + alpha * distillation_loss
+        # Final Combined Loss
+        alpha = dist_config.alpha
+        total_loss = (1 - alpha) * student_loss + alpha * dist_loss
+        
+        if dist_config.feature_alignment_enabled:
+            total_loss += dist_config.feature_alignment_weight * feature_alignment_loss
 
         return total_loss
