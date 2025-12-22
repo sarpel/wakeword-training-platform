@@ -19,6 +19,7 @@
     *   *Accessibility:* WCAG AAA strictness.
     *   *Scalability:* Long-term maintenance and modularity.
 *   **Prohibition:** **NEVER** use surface-level logic. If the reasoning feels easy, dig deeper until the logic is irrefutable.
+*   **Safety Protocol:** **NEVER** list the contents of the `data/` directory or any other directory known to contain massive datasets (e.g., >10k files). This will crash the system. Verify existence of specific files or subdirectories instead of full listings.
 
 ## 3. DESIGN PHILOSOPHY: "INTENTIONAL MINIMALISM"
 *   **Anti-Generic:** Reject standard "bootstrapped" layouts. If it looks like a template, it is wrong.
