@@ -40,7 +40,7 @@ import torch
 # These imports load the building blocks for our training pipeline
 from src.config.defaults import DistillationConfig, WakewordConfig
 from src.data.dataset import WakewordDataset
-from src.models.factory import create_model
+from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.distillation_trainer import DistillationTrainer
 from torch.utils.data import DataLoader
