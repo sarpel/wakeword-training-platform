@@ -55,6 +55,9 @@ class WakewordDataset(Dataset):
         class_mapping: Optional[Dict[str, int]] = None,
         # NEW: GPU Pipeline support
         return_raw_audio: bool = False,
+        # NEW: Hard Negative Mining support
+        include_mined_negatives: bool = False,
+        mined_negatives_dir: str = "data/mined_negatives",
     ) -> None:
         """
         Initialize wakeword dataset
@@ -114,6 +117,19 @@ class WakewordDataset(Dataset):
 
         self.files: List[Dict[str, Any]] = manifest["files"]
         self.categories: Dict[str, Any] = manifest["categories"]
+
+        # NEW: Include mined negatives if requested
+        if include_mined_negatives:
+            mined_path = Path(mined_negatives_dir)
+            if mined_path.exists():
+                mined_files = list(mined_path.glob("*.wav")) + list(mined_path.glob("*.mp3"))
+                logger.info(f"Adding {len(mined_files)} mined negatives to dataset")
+                for f in mined_files:
+                    self.files.append({
+                        "path": str(f),
+                        "category": "hard_negative",
+                        "label": 0
+                    })
 
         # Create label mapping
         self.label_map = self._create_label_map(class_mapping)
@@ -497,6 +513,8 @@ def load_dataset_splits(
     class_mapping: Optional[Dict[str, int]] = None,
     # NEW: GPU Pipeline support
     return_raw_audio: bool = False,
+    # NEW: Hard Negative Mining support
+    include_mined_negatives: bool = False,
 ) -> Tuple[WakewordDataset, WakewordDataset, WakewordDataset]:
     """
     Load train, validation, and test datasets
@@ -555,6 +573,7 @@ def load_dataset_splits(
         apply_cmvn=apply_cmvn,
         class_mapping=class_mapping,
         return_raw_audio=return_raw_audio,
+        include_mined_negatives=include_mined_negatives,
     )
 
     val_dataset = WakewordDataset(

@@ -41,3 +41,4 @@ class EvaluationResult:
     logits: np.ndarray
     label: Optional[int] = None
     raw_audio: Optional[np.ndarray] = None
+    full_path: Optional[str] = None

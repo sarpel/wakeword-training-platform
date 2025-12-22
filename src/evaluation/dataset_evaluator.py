@@ -108,7 +108,8 @@ def evaluate_dataset(
                         latency_ms=batch_latency,
                         logits=logit,
                         label=int(target),
-                        raw_audio=audio.squeeze() if audio.ndim > 1 else audio
+                        raw_audio=audio.squeeze() if audio.ndim > 1 else audio,
+                        full_path=str(meta["path"]) if "path" in meta else None
                     )
                 )
 

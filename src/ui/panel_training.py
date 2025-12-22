@@ -384,6 +384,7 @@ def start_training(
     loss_smoothing: float,
     focal_gamma: float,
     focal_alpha: float,
+    include_mined_negatives: bool,
     hard_neg_weight: float,
     wandb_api_key: str = "",
     resume_checkpoint: Optional[str] = None,
@@ -566,6 +567,7 @@ def start_training(
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
             return_raw_audio=True,  # NEW: Use GPU pipeline
+            include_mined_negatives=include_mined_negatives,
         )
 
         val_ds = WakewordDataset(
@@ -934,6 +936,7 @@ def hpo_worker(config: WakewordConfig, n_trials: int, study_name: str) -> None:
             cmvn_path=paths.DATA / "cmvn_stats.json",
             apply_cmvn=True,
             return_raw_audio=True,  # NEW: Use GPU pipeline for HPO
+            include_mined_negatives=True,
         )
 
         # Optimize config for GPU pipeline
@@ -1043,6 +1046,7 @@ def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, para
                     cmvn_path=cmvn_path,
                     apply_cmvn=True,
                     return_raw_audio=True,
+                    include_mined_negatives=True,
                 )
 
                 # Create loaders
@@ -1442,6 +1446,11 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     )
                 with gr.Column():
                     gr.Markdown("#### 🧱 Mining")
+                    include_mined_negatives = gr.Checkbox(
+                        label="Include Mined Negatives",
+                        value=True,
+                        info="Load verified hard negatives from data/mined_negatives",
+                    )
                     hard_negative_weight = gr.Slider(
                         minimum=1.0,
                         maximum=5.0,
@@ -1613,6 +1622,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 label_smoothing,
                 focal_gamma,
                 focal_alpha,
+                include_mined_negatives,
                 hard_negative_weight,
                 wandb_api_key,
                 resume_training,

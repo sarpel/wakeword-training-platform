@@ -33,6 +33,7 @@ from src.training.metrics import MetricResults
 from src.evaluation.benchmarking import BenchmarkRunner
 from src.evaluation.stages import SentryInferenceStage
 from src.config.cuda_utils import get_cuda_validator
+from src.evaluation.mining import HardNegativeMiner
 
 logger = structlog.get_logger(__name__)
 
@@ -73,6 +74,7 @@ class EvaluationState:
         self.last_labels: Optional[torch.Tensor] = None
         self.threshold_analyzer: Optional[ThresholdAnalyzer] = None
         self.fp_collector = FalsePositiveCollector()
+        self.miner = HardNegativeMiner()
 
 
 # Global state
@@ -272,6 +274,68 @@ def generate_fp_gallery_html() -> str:
 def clear_false_positives() -> str:
     eval_state.fp_collector.clear()
     return "<p>Cleared.</p>"
+
+def mine_hard_negatives_handler() -> str:
+    if not eval_state.test_results:
+        return "❌ Run test set evaluation first."
+    
+    count = eval_state.miner.mine_from_results(eval_state.test_results)
+    return f"✅ Mined {count} new potential hard negatives. Check the 'Mining Queue' tab."
+
+def get_mining_gallery_html() -> str:
+    pending = eval_state.miner.get_pending()
+    if not pending:
+        return "<p style='text-align: center; padding: 20px;'>Queue is empty. Use the 'Mine Hard Negatives' button in evaluation results.</p>"
+    
+    html = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">'
+    for item in pending:
+        # We assume files are accessible via Gradio or absolute path (if local)
+        # For simplicity, we just display the info and path for now
+        html += f'''
+        <div style="background: #2d2d2d; border-radius: 8px; padding: 15px; border: 1px solid #444; display: flex; justify-content: space-between; align-items: center;">
+            <div style="flex: 1;">
+                <p style="margin: 0; font-weight: bold;">{item["filename"]}</p>
+                <p style="margin: 5px 0; font-size: 0.85em; color: #aaa;">Confidence: {item["confidence"]:.2%}</p>
+                <p style="margin: 0; font-size: 0.7em; color: #888;">Path: {item["full_path"]}</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="confirmSample('{item["full_path"]}')" style="background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">✅ Confirm</button>
+                <button onclick="discardSample('{item["full_path"]}')" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">❌ Discard</button>
+            </div>
+        </div>
+        '''
+    html += '</div>'
+    
+    # Add JS for buttons
+    html += '''
+    <script>
+    function confirmSample(path) {
+        let pathEl = document.querySelector("#mining_verify_path input");
+        let statusEl = document.querySelector("#mining_verify_status input");
+        pathEl.value = path;
+        pathEl.dispatchEvent(new Event('input', { bubbles: true }));
+        statusEl.value = "confirmed";
+        statusEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    function discardSample(path) {
+        let pathEl = document.querySelector("#mining_verify_path input");
+        let statusEl = document.querySelector("#mining_verify_status input");
+        pathEl.value = path;
+        pathEl.dispatchEvent(new Event('input', { bubbles: true }));
+        statusEl.value = "discarded";
+        statusEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    </script>
+    '''
+    return html
+
+def verify_sample_handler(path: str, status: str) -> str:
+    eval_state.miner.update_status(path, status)
+    return get_mining_gallery_html()
+
+def inject_mined_samples_handler() -> str:
+    count = eval_state.miner.inject_to_dataset()
+    return f"✅ Injected {count} confirmed negatives into training data."
 
 def evaluate_test_set(
     data_root: str,
@@ -708,6 +772,8 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             label="Test Set Metrics",
                             value={"status": "Click 'Run Test Evaluation' to start"},
                         )
+                        mine_fp_btn = gr.Button("⛏️ Mine Hard Negatives", variant="secondary")
+                        mining_status = gr.Markdown("")
 
                     with gr.Column():
                         gr.Markdown("### Confusion Matrix")
@@ -723,6 +789,23 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             label="Production Metrics (FAH, EER, pAUC)",
                             value={"status": "Enable advanced metrics and run evaluation"},
                         )
+
+            # Mining Queue Tab
+            with gr.TabItem("⛏️ Mining Queue"):
+                gr.Markdown("### Hard Negative Verification Queue")
+                gr.Markdown("Review mined false positives and confirm them for the next training run.")
+                
+                with gr.Row():
+                    refresh_queue_btn = gr.Button("🔄 Refresh Queue")
+                    inject_mined_btn = gr.Button("💉 Inject Confirmed to Dataset", variant="primary")
+                
+                injection_status = gr.Markdown("")
+                
+                mining_queue_html = gr.HTML(value=get_mining_gallery_html(), label="Verification Queue")
+                
+                # Hidden state for verifying samples via JS
+                verify_path = gr.Textbox(visible=False, elem_id="mining_verify_path")
+                verify_status = gr.Textbox(visible=False, elem_id="mining_verify_status")
 
             # Analysis Dashboard
             with gr.TabItem("🔍 Analysis Dashboard"):
@@ -820,5 +903,20 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
         run_bench_btn.click(fn=run_benchmark_test, outputs=[bench_metrics])
         collect_fp_btn.click(fn=collect_false_positives, outputs=[fp_gallery])
         clear_fp_btn.click(fn=clear_false_positives, outputs=[fp_gallery])
+
+        # Mining handlers
+        mine_fp_btn.click(fn=mine_hard_negatives_handler, outputs=[mining_status])
+        refresh_queue_btn.click(fn=get_mining_gallery_html, outputs=[mining_queue_html])
+        inject_mined_btn.click(fn=inject_mined_samples_handler, outputs=[injection_status])
+        
+        # JS bridge for verification
+        def js_bridge_verify(path, status):
+            return verify_sample_handler(path, status)
+            
+        # We need a way to trigger verification from JS.
+        # Gradio doesn't easily allow arbitrary JS -> Python calls without a hidden component.
+        # I'll use a hidden button or similar if needed, but for now I'll just refresh.
+        # Actually, let's use the hidden textboxes.
+        verify_status.change(fn=js_bridge_verify, inputs=[verify_path, verify_status], outputs=[mining_queue_html])
 
     return panel
