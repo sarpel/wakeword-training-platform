@@ -6,9 +6,9 @@ This plan follows a TDD-driven approach to implement advanced optimization techn
 **Goal:** Implement pAUC as a primary metric and configure the sequential multi-objective HPO engine.
 
 - [x] Task: Implementation of the Partial AUC (pAUC) metric calculator in `src/evaluation/metrics.py`. e4f1073
-- [ ] Task: Update the training loop to report pAUC and Latency to the HPO tracker.
-- [ ] Task: Configure Optuna with `MOTPE` or `NSGA-II` for sequential multi-objective optimization (Accuracy vs. Latency).
-- [ ] Task: Implement the "Exploit-and-Explore" mutation logic for HPO trial hyperparameter forks.
+- [x] Task: Update the training loop to report pAUC and Latency to the HPO tracker. d6ef1f4
+- [x] Task: Configure Optuna with `MOTPE` or `NSGA-II` for sequential multi-objective optimization (Accuracy vs. Latency). d6ef1f4
+- [x] Task: Implement the "Exploit-and-Explore" mutation logic for HPO trial hyperparameter forks. d6ef1f4
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Metrics & HPO' (Protocol in workflow.md)
 
 ## Phase 2: Dual-Teacher Knowledge Distillation
