@@ -379,6 +379,11 @@ def start_training(
     run_lr_finder: bool,
     use_wandb: bool,
     wandb_project: str,
+    loss_func_name: str,
+    loss_smoothing: float,
+    focal_gamma: float,
+    focal_alpha: float,
+    hard_neg_weight: float,
     wandb_api_key: str = "",
     resume_checkpoint: Optional[str] = None,
 ) -> Tuple:
@@ -432,6 +437,13 @@ def start_training(
             )
 
         config = config_state["config"]
+        # Update loss config
+        config.loss.loss_function = loss_func_name
+        config.loss.label_smoothing = loss_smoothing
+        config.loss.focal_gamma = focal_gamma
+        config.loss.focal_alpha = focal_alpha
+        config.loss.hard_negative_weight = hard_neg_weight
+        
         training_state.config = config
         training_state.total_epochs = config.training.epochs
 
@@ -1354,6 +1366,51 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         info="Found in W&B Settings > API Keys. Leave empty if already logged in via CLI.",
                     )
 
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("#### 📉 Loss Configuration")
+                    loss_function = gr.Dropdown(
+                        label="Loss Function",
+                        choices=["cross_entropy", "focal_loss", "triplet_loss"],
+                        value="cross_entropy",
+                        info="Objective function for optimization",
+                    )
+                    label_smoothing = gr.Slider(
+                        minimum=0.0,
+                        maximum=0.5,
+                        value=0.05,
+                        step=0.01,
+                        label="Label Smoothing",
+                    )
+                with gr.Column():
+                    gr.Markdown("#### 🎯 Focal Loss Params")
+                    focal_gamma = gr.Slider(
+                        minimum=0.0,
+                        maximum=5.0,
+                        value=2.0,
+                        step=0.1,
+                        label="Focal Gamma",
+                        info="Focus on hard examples (Higher = more focus)",
+                    )
+                    focal_alpha = gr.Slider(
+                        minimum=0.0,
+                        maximum=1.0,
+                        value=0.25,
+                        step=0.05,
+                        label="Focal Alpha",
+                        info="Balance for positive class",
+                    )
+                with gr.Column():
+                    gr.Markdown("#### 🧱 Mining")
+                    hard_negative_weight = gr.Slider(
+                        minimum=1.0,
+                        maximum=5.0,
+                        value=1.5,
+                        step=0.1,
+                        label="Hard Negative Weight",
+                        info="Penalty multiplier for hard negatives",
+                    )
+
         gr.Markdown("---")
 
         with gr.Tabs():
@@ -1500,6 +1557,11 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 run_lr_finder,
                 use_wandb,
                 wandb_project,
+                loss_function,
+                label_smoothing,
+                focal_gamma,
+                focal_alpha,
+                hard_negative_weight,
                 wandb_api_key,
                 resume_training,
                 checkpoint_dropdown,
