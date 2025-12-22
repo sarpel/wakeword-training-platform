@@ -1,0 +1,38 @@
+# Implementation Plan: Production Readiness & Model Optimization
+
+This plan follows the Test-Driven Development (TDD) methodology and the specific phase completion protocols defined in `conductor/workflow.md`.
+
+## Phase 1: Advanced Data Augmentation & Robustness
+Focus on improving the model's ability to handle real-world acoustic environments.
+
+- [x] Task: Write tests for RIR, pitch, and speed perturbation in `tests/test_augmentation_advanced.py` [667554f]
+- [ ] Task: Implement RIR (Room Impulse Response) simulation in `src/data/augmentation.py`
+- [ ] Task: Implement Pitch and Speed perturbation in `src/data/augmentation.py`
+- [ ] Task: Update dataset loading to support these new augmentation types
+- [ ] Task: Conductor - User Manual Verification 'Phase 1: Advanced Augmentation' (Protocol in workflow.md)
+
+## Phase 2: Specialized Loss Functions & Class Imbalance
+Optimize the training objective to handle the 90% negative class imbalance.
+
+- [ ] Task: Write tests for Focal Loss and Weighted Cross-Entropy in `tests/test_losses_advanced.py`
+- [ ] Task: Implement Focal Loss in `src/training/losses.py`
+- [ ] Task: Implement Weighted Cross-Entropy support in `src/training/trainer.py`
+- [ ] Task: Integrate loss selection into the training configuration and UI
+- [ ] Task: Conductor - User Manual Verification 'Phase 2: Loss Optimization' (Protocol in workflow.md)
+
+## Phase 3: Knowledge Distillation Pipeline
+Implement the Teacher-Student training flow to boost edge model performance.
+
+- [ ] Task: Write tests for Teacher-Student logit matching in `tests/test_distillation_pipeline.py`
+- [ ] Task: Refine the `Teacher` model loading and inference logic in `src/models/distillation.py`
+- [ ] Task: Implement the distillation training loop (Kullback-Leibler divergence on soft labels)
+- [ ] Task: Verify the distilled student outperforms the baseline student
+- [ ] Task: Conductor - User Manual Verification 'Phase 3: Knowledge Distillation' (Protocol in workflow.md)
+
+## Phase 4: Hard Negative Mining & Streaming Refinement
+Close the loop on false alarms and stabilize real-time detection.
+
+- [ ] Task: Create a utility script to extract high-confidence False Positives from evaluation logs
+- [ ] Task: Implement temporal smoothing logic (N-of-M frames) in the streaming detector
+- [ ] Task: Conduct a final end-to-end evaluation to verify FNR reduction and FAH maintenance
+- [ ] Task: Conductor - User Manual Verification 'Phase 4: Final Production Tuning' (Protocol in workflow.md)
