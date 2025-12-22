@@ -12,6 +12,7 @@ import torch.nn as nn
 
 from src.data.cmvn import CMVN
 from src.data.feature_extraction import FeatureExtractor
+from src.data.augmentation import AudioAugmentation, SpecAugment
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,20 @@ class AudioProcessor(nn.Module):
             n_fft=config.data.n_fft,
             hop_length=config.data.hop_length,
             device=device,
+        )
+
+        # Augmentation (GPU-based)
+        from src.config.paths import paths
+        self.augmentation = AudioAugmentation(
+            sample_rate=config.data.sample_rate,
+            device=device,
+            time_stretch_range=(config.augmentation.time_stretch_min, config.augmentation.time_stretch_max),
+            pitch_shift_range=(config.augmentation.pitch_shift_min, config.augmentation.pitch_shift_max),
+            background_noise_prob=config.augmentation.background_noise_prob,
+            noise_snr_range=(config.augmentation.noise_snr_min, config.augmentation.noise_snr_max),
+            rir_prob=config.augmentation.rir_prob,
+            background_noise_files=list(paths.BACKGROUND_NOISE.rglob("*.wav")) if paths.BACKGROUND_NOISE.exists() else None,
+            rir_files=list(paths.RIRS.rglob("*.wav")) if paths.RIRS.exists() else None,
         )
 
         # CMVN
@@ -82,10 +97,8 @@ class AudioProcessor(nn.Module):
 
         if inputs.ndim <= 3:
             # Raw audio processing pipeline
-
-            # 1. Resample if needed (handled by torchaudio.transforms.Resample usually,
-            # but here we assume inputs are already at target_sr or we rely on augmentation)
-            # Actually, AudioProcessor usually expects raw audio and does feature extraction.
+            if self.training:
+                inputs = self.augmentation(inputs)
 
             # Ensure (Batch, 1, Samples)
             if inputs.ndim == 2:

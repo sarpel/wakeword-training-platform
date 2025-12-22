@@ -147,7 +147,9 @@ class Trainer:
         ).to(device)
 
         # Create optimizer and scheduler (self.model ile kur)
-        self.optimizer, self.scheduler = create_optimizer_and_scheduler(self.model, config)  # CHANGE
+        self.optimizer, self.scheduler = create_optimizer_and_scheduler(
+            self.model, config, steps_per_epoch=len(train_loader)
+        )
 
         # Mixed precision training (Only on CUDA)
         self.use_mixed_precision = config.optimizer.mixed_precision and device == "cuda"
@@ -263,6 +265,10 @@ class Trainer:
             for epoch in range(start_epoch, self.config.training.epochs):
                 self.state.epoch = epoch
                 self._call_callbacks("on_epoch_start", epoch)
+                
+                # Update augmentation schedule
+                if hasattr(self.audio_processor, "augmentation"):
+                    self.audio_processor.augmentation.set_epoch(epoch, self.config.training.epochs)
 
                 train_loss, train_acc = train_epoch(self, epoch)
                 val_loss, val_metrics = validate_epoch(self, epoch)

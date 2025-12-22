@@ -184,28 +184,12 @@ def create_scheduler(
     patience: int = 5,
     factor: float = 0.5,
     min_lr: float = 1e-6,
+    steps_per_epoch: int = 1,
     **kwargs: Any,
-) -> Optional[Union[WarmupScheduler, CosineAnnealingLR, StepLR, ReduceLROnPlateau]]:
+) -> Optional[Union[WarmupScheduler, CosineAnnealingLR, StepLR, ReduceLROnPlateau, optim.lr_scheduler.OneCycleLR]]:
     """
-    Create learning rate scheduler from configuration
-
-    Args:
-        optimizer: PyTorch optimizer
-        scheduler_name: Scheduler type ('cosine', 'step', 'plateau', 'none')
-        epochs: Total number of training epochs
-        warmup_epochs: Number of warmup epochs
-        step_size: Step size for StepLR
-        gamma: Multiplicative factor for StepLR
-        patience: Patience for ReduceLROnPlateau
-        factor: Factor for ReduceLROnPlateau
-        min_lr: Minimum learning rate
-        **kwargs: Additional scheduler-specific parameters
-
-    Returns:
-        Learning rate scheduler (or None if scheduler_name is 'none')
-
-    Raises:
-        ValueError: If scheduler_name is not recognized
+    Create learning rate scheduler from configuration.
+    Added support for OneCycleLR.
     """
     scheduler_name = scheduler_name.lower()
 
@@ -216,7 +200,7 @@ def create_scheduler(
     logger.info(f"Creating scheduler: {scheduler_name}")
 
     # Create base scheduler
-    base_scheduler: Optional[Union[CosineAnnealingLR, StepLR, ReduceLROnPlateau]] = None
+    base_scheduler: Optional[Any] = None
 
     if scheduler_name == "cosine":
         # Cosine annealing
@@ -241,8 +225,25 @@ def create_scheduler(
         )
         logger.info(f"  Reduce on plateau: patience={patience}, factor={factor}, min_lr={min_lr}")
 
+    elif scheduler_name == "onecycle":
+        # OneCycle LR
+        # We need max_lr, which we'll take from current optimizer lr
+        max_lr = [group["lr"] for group in optimizer.param_groups]
+        base_scheduler = optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=max_lr,
+            epochs=epochs,
+            steps_per_epoch=steps_per_epoch,
+            pct_start=0.3,
+            anneal_strategy='cos',
+            div_factor=25.0,
+            final_div_factor=10000.0,
+            **kwargs
+        )
+        logger.info(f"  OneCycleLR: epochs={epochs}, steps_per_epoch={steps_per_epoch}")
+
     else:
-        raise ValueError(f"Unknown scheduler: {scheduler_name}. " f"Supported: cosine, step, plateau, none")
+        raise ValueError(f"Unknown scheduler: {scheduler_name}. " f"Supported: cosine, step, plateau, onecycle, none")
 
     # Wrap with warmup if needed
     scheduler: Union[WarmupScheduler, CosineAnnealingLR, StepLR, ReduceLROnPlateau]
@@ -258,16 +259,10 @@ def create_scheduler(
 from src.config.defaults import WakewordConfig
 
 
-def create_optimizer_and_scheduler(model: nn.Module, config: WakewordConfig) -> Tuple[optim.Optimizer, Optional[Any]]:
+def create_optimizer_and_scheduler(model: nn.Module, config: WakewordConfig, steps_per_epoch: int = 1) -> Tuple[optim.Optimizer, Optional[Any]]:
     """
-    Create optimizer and scheduler from configuration object
-
-    Args:
-        model: PyTorch model
-        config: Configuration object (WakewordConfig)
-
-    Returns:
-        Tuple of (optimizer, scheduler)
+    Create optimizer and scheduler from configuration object.
+    Supports steps_per_epoch for OneCycleLR.
     """
     # Create optimizer
     optimizer = create_optimizer(
@@ -290,6 +285,7 @@ def create_optimizer_and_scheduler(model: nn.Module, config: WakewordConfig) -> 
         patience=config.optimizer.patience,
         factor=config.optimizer.factor,
         min_lr=config.optimizer.min_lr,
+        steps_per_epoch=steps_per_epoch,
     )
 
     return optimizer, scheduler

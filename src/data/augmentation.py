@@ -61,10 +61,12 @@ class AudioAugmentation(nn.Module):
         self.rir_dry_wet_min = rir_dry_wet_min
         self.rir_dry_wet_max = rir_dry_wet_max
 
-        # Buffers for noises and RIRs
-        # We initialize them as empty buffers. If files are provided, we load them.
         self.register_buffer("background_noises", torch.empty(0))
         self.register_buffer("rirs", torch.empty(0))
+        
+        # NEW: Epoch tracking for scheduling
+        self.current_epoch = 0
+        self.total_epochs = 100
 
         if background_noise_files:
             self._load_background_noises(background_noise_files)
@@ -211,12 +213,30 @@ class AudioAugmentation(nn.Module):
         shift_samples = int(shift_ms * self.sample_rate / 1000)
         return torch.roll(waveform, shifts=shift_samples, dims=-1)
 
+    def set_epoch(self, epoch: int, total_epochs: int):
+        self.current_epoch = epoch
+        self.total_epochs = total_epochs
+
     def add_background_noise(self, waveform: torch.Tensor) -> torch.Tensor:
-        """Add background noise to batch"""
+        """
+        Add background noise with SNR scheduling.
+        As training progresses, SNR range becomes more challenging (lower SNR).
+        """
         if self.background_noises.numel() == 0:
             return waveform + torch.randn_like(waveform) * 0.01
 
         batch_size, _, samples = waveform.shape
+
+        # SNR scheduling: Start with easy SNR (20-30dB), end with hard (0-15dB)
+        progress = self.current_epoch / self.total_epochs
+        
+        # Initial range (easy)
+        easy_min, easy_max = 15.0, 30.0
+        # Target range (hard)
+        hard_min, hard_max = self.noise_snr_range
+        
+        curr_min = easy_min - (easy_min - hard_min) * progress
+        curr_max = easy_max - (easy_max - hard_max) * progress
 
         # Select random noises for each element in batch
         indices = torch.randint(0, len(self.background_noises), (batch_size,), device=self.background_noises.device)
@@ -233,7 +253,7 @@ class AudioAugmentation(nn.Module):
             noises = noises.repeat(1, 1, repeats)[..., :samples]
 
         # Random SNRs
-        snrs = torch.empty(batch_size, 1, 1, device=waveform.device).uniform_(*self.noise_snr_range)
+        snrs = torch.empty(batch_size, 1, 1, device=waveform.device).uniform_(curr_min, curr_max)
         snr_linear = 10 ** (snrs / 10)
 
         # Calculate scaling
@@ -338,7 +358,8 @@ class AudioAugmentation(nn.Module):
 # SpecAugment remains mostly the same, ensuring T.FrequencyMasking works on GPU tensors
 class SpecAugment(nn.Module):
     """
-    SpecAugment for spectrograms (frequency and time masking)
+    Refined SpecAugment for spectrograms.
+    Adjusts masking parameters based on input shape.
     """
 
     def __init__(
@@ -349,23 +370,30 @@ class SpecAugment(nn.Module):
         n_time_masks: int = 2,
     ) -> None:
         super().__init__()
-        # torchaudio.transforms.FrequencyMasking is already nn.Module
-        self.freq_mask = T.FrequencyMasking(freq_mask_param)
-        self.time_mask = T.TimeMasking(time_mask_param)
+        self.freq_mask_param = freq_mask_param
+        self.time_mask_param = time_mask_param
         self.n_freq_masks = n_freq_masks
         self.n_time_masks = n_time_masks
 
     def forward(self, spectrogram: torch.Tensor) -> torch.Tensor:
         """
         Apply SpecAugment
+        spectrogram: (B, C, F, T)
         """
+        # Adaptive masking: don't mask more than 20% of time/freq
+        f_max = int(spectrogram.size(-2) * 0.2)
+        t_max = int(spectrogram.size(-1) * 0.2)
+        
+        f_param = min(self.freq_mask_param, f_max)
+        t_param = min(self.time_mask_param, t_max)
+        
         # Apply frequency masking
         for _ in range(self.n_freq_masks):
-            spectrogram = self.freq_mask(spectrogram)
+            spectrogram = T.FrequencyMasking(f_param)(spectrogram)
 
         # Apply time masking
         for _ in range(self.n_time_masks):
-            spectrogram = self.time_mask(spectrogram)
+            spectrogram = T.TimeMasking(t_param)(spectrogram)
 
         return spectrogram
 
