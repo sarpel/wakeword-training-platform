@@ -2,7 +2,7 @@
 
 This plan follows the Test-Driven Development (TDD) methodology and the specific phase completion protocols defined in `conductor/workflow.md`.
 
-## Phase 1: Advanced Data Augmentation & Robustness [checkpoint: PLACEHOLDER_SHA]
+## Phase 1: Advanced Data Augmentation & Robustness [checkpoint: 4c20346]
 Focus on improving the model's ability to handle real-world acoustic environments.
 
 - [x] Task: Write tests for RIR, pitch, and speed perturbation in `tests/test_augmentation_advanced.py` [1685694]
@@ -11,14 +11,14 @@ Focus on improving the model's ability to handle real-world acoustic environment
 - [x] Task: Update dataset loading to support these new augmentation types [2a40fd3]
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Advanced Augmentation' (Protocol in workflow.md)
 
-## Phase 2: Specialized Loss Functions & Class Imbalance
+## Phase 2: Specialized Loss Functions & Class Imbalance [checkpoint: PLACEHOLDER_SHA]
 Optimize the training objective to handle the 90% negative class imbalance.
 
-- [ ] Task: Write tests for Focal Loss and Weighted Cross-Entropy in `tests/test_losses_advanced.py`
-- [ ] Task: Implement Focal Loss in `src/training/losses.py`
-- [ ] Task: Implement Weighted Cross-Entropy support in `src/training/trainer.py`
-- [ ] Task: Integrate loss selection into the training configuration and UI
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Loss Optimization' (Protocol in workflow.md)
+- [x] Task: Write tests for Focal Loss and Weighted Cross-Entropy in `tests/test_losses_advanced.py` [8f5a806]
+- [x] Task: Implement Focal Loss in `src/training/losses.py` [8f5a806]
+- [x] Task: Implement Weighted Cross-Entropy support in `src/training/trainer.py` [463678b]
+- [x] Task: Integrate loss selection into the training configuration and UI [536d84d]
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Loss Optimization' (Protocol in workflow.md)
 
 ## Phase 3: Knowledge Distillation Pipeline
 Implement the Teacher-Student training flow to boost edge model performance.
