@@ -11,13 +11,13 @@ This plan follows a TDD-driven approach to implement advanced optimization techn
 - [x] Task: Implement the "Exploit-and-Explore" mutation logic for HPO trial hyperparameter forks. d6ef1f4
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Metrics & HPO' (Protocol in workflow.md)
 
-## Phase 2: Dual-Teacher Knowledge Distillation
+## Phase 2: Dual-Teacher Knowledge Distillation [checkpoint: 8af3b1d]
 **Goal:** Integrate a second teacher model and implement intermediate feature matching.
 
-- [ ] Task: Implement the secondary teacher architecture (Conformer/CNN-Transformer) and its loading logic.
-- [ ] Task: Create the `DualTeacherDistiller` wrapper to aggregate signals from Wav2Vec2 and the new teacher.
-- [ ] Task: Implement Feature Map Alignment loss (e.g., MSE on projector-aligned student/teacher features).
-- [ ] Task: Implement dynamic temperature scaling logic (scheduler) for the distillation loss.
+- [x] Task: Implement the secondary teacher architecture (Conformer/CNN-Transformer) and its loading logic. 8af3b1d
+- [x] Task: Create the `DualTeacherDistiller` wrapper to aggregate signals from Wav2Vec2 and the new teacher. 8af3b1d
+- [x] Task: Implement Feature Map Alignment loss (e.g., MSE on projector-aligned student/teacher features). 8af3b1d
+- [x] Task: Implement dynamic temperature scaling logic (scheduler) for the distillation loss. 8af3b1d
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Dual-Teacher Distillation' (Protocol in workflow.md)
 
 ## Phase 3: Interactive Hard Negative Mining
