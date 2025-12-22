@@ -11,7 +11,7 @@ Focus on improving the model's ability to handle real-world acoustic environment
 - [x] Task: Update dataset loading to support these new augmentation types [2a40fd3]
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Advanced Augmentation' (Protocol in workflow.md)
 
-## Phase 2: Specialized Loss Functions & Class Imbalance [checkpoint: PLACEHOLDER_SHA]
+## Phase 2: Specialized Loss Functions & Class Imbalance [checkpoint: a4503fb]
 Optimize the training objective to handle the 90% negative class imbalance.
 
 - [x] Task: Write tests for Focal Loss and Weighted Cross-Entropy in `tests/test_losses_advanced.py` [8f5a806]
@@ -20,14 +20,14 @@ Optimize the training objective to handle the 90% negative class imbalance.
 - [x] Task: Integrate loss selection into the training configuration and UI [536d84d]
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Loss Optimization' (Protocol in workflow.md)
 
-## Phase 3: Knowledge Distillation Pipeline
+## Phase 3: Knowledge Distillation Pipeline [checkpoint: PLACEHOLDER_SHA]
 Implement the Teacher-Student training flow to boost edge model performance.
 
-- [ ] Task: Write tests for Teacher-Student logit matching in `tests/test_distillation_pipeline.py`
-- [ ] Task: Refine the `Teacher` model loading and inference logic in `src/models/distillation.py`
-- [ ] Task: Implement the distillation training loop (Kullback-Leibler divergence on soft labels)
-- [ ] Task: Verify the distilled student outperforms the baseline student
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Knowledge Distillation' (Protocol in workflow.md)
+- [x] Task: Write tests for Teacher-Student logit matching in `tests/test_distillation_pipeline.py` [3bbf12b]
+- [x] Task: Refine the `Teacher` model loading and inference logic in `src/models/distillation.py` [3bbf12b]
+- [x] Task: Implement the distillation training loop (Kullback-Leibler divergence on soft labels) [3bbf12b]
+- [x] Task: Verify the distilled student outperforms the baseline student [36bedb3]
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Knowledge Distillation' (Protocol in workflow.md)
 
 ## Phase 4: Hard Negative Mining & Streaming Refinement
 Close the loop on false alarms and stabilize real-time detection.
