@@ -2,7 +2,7 @@
 
 This plan follows a TDD-driven approach to implement advanced optimization techniques, dual-teacher distillation, and hard-negative mining for the wakeword platform.
 
-## Phase 1: Advanced Metrics & Multi-Objective HPO
+## Phase 1: Advanced Metrics & Multi-Objective HPO [checkpoint: f64cb06]
 **Goal:** Implement pAUC as a primary metric and configure the sequential multi-objective HPO engine.
 
 - [x] Task: Implementation of the Partial AUC (pAUC) metric calculator in `src/evaluation/metrics.py`. e4f1073
