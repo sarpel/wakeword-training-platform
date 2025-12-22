@@ -426,15 +426,13 @@ def get_fast_training_preset() -> WakewordConfig:
     )
 
 
-# Preset registry
+# Preset registry - Simplified to 3 main target platforms
 PRESETS: Dict[str, Callable[[], WakewordConfig]] = {
-    "Default": get_default_preset,
-    "Production: Home Assistant / Wyoming": get_ha_wyoming_preset,
-    "Production: ESP32-S3 (PSRAM)": get_esp32s3_production_preset,
-    "Production: RPi Zero 2W Satellite": get_rpi_zero2w_preset,
-    "Production: MCU (No-PSRAM)": get_mcu_tiny_production_preset,
-    "Production: Server (High Accuracy Judge)": get_server_judge_preset,
-    "Production: x86_64 (Ultimate Accuracy)": get_ultimate_accuracy_preset,
+    # === MAIN PRODUCTION PROFILES ===
+    "MCU (ESP32-S3 No-PSRAM)": get_mcu_tiny_production_preset,
+    "RPI (Raspberry Pi / Wyoming Satellite)": get_rpi_zero2w_preset,
+    "x86_64 (Desktop / Server)": get_ultimate_accuracy_preset,
+    # === UTILITY PROFILES ===
     "Utility: Small Dataset (<10k)": get_small_dataset_preset,
     "Utility: Fast Training (Prototyping)": get_fast_training_preset,
 }

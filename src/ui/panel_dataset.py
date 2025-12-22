@@ -91,6 +91,12 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     info="If ticked, move files with quality issues to 'unqualified_datasets' folder. If unticked, keep them in place.",
                 )
 
+                move_quality_warning_checkbox = gr.Checkbox(
+                    label="Move Quality Warning Files",
+                    value=False,
+                    info="Move files with quality warnings (score < 0.8) to 'quality_warning_dataset' folder for review.",
+                )
+
                 scan_button = gr.Button("🔍 Scan Datasets", variant="primary")
                 scan_status = gr.Textbox(
                     label="Scan Status",
@@ -295,7 +301,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
 
         # Event handlers with full implementation
         def scan_datasets_handler(
-            root_path: str, skip_val: bool, move_unqualified: bool, progress: gr.Progress = gr.Progress()
+            root_path: str, skip_val: bool, move_unqualified: bool, move_quality_warning: bool = False, progress: gr.Progress = gr.Progress()
         ) -> Tuple[dict, str, str]:
             """Scan datasets and return statistics and health report"""
             global _current_scanner, _current_dataset_info
@@ -349,6 +355,14 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 else:
                     logger.info("Skipping move of excluded files (option disabled)")
 
+                # Move quality warning files
+                warning_moved_count = 0
+                if move_quality_warning and not skip_val:
+                    progress(0.92, desc="Moving quality warning files...")
+                    warning_moved_count = scanner.move_quality_warning_files()
+                elif move_quality_warning and skip_val:
+                    logger.warning("Cannot move quality warning files in fast scan mode (validation required)")
+
                 # Generate health report
                 progress(0.95, desc="Generating health report...")
                 health_checker = DatasetHealthChecker(stats)
@@ -372,6 +386,8 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 moved_msg = ""
                 if moved_count > 0:
                     moved_msg = f"\n\nMoved {moved_count} low-quality files to 'unqualified_datasets' folder."
+                if warning_moved_count > 0:
+                    moved_msg += f"\nMoved {warning_moved_count} warning files to 'quality_warning_dataset' folder."
 
                 mode_msg = " (fast scan)" if skip_val else ""
 
@@ -921,7 +937,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 # 1. Scan Datasets
                 progress(0.0, desc="Step 1/5: Scanning Datasets...")
                 log("--- STEP 1: SCANNING DATASETS ---")
-                stats, scan_msg, _ = scan_datasets_handler(root_path, skip_val, move_unqualified)
+                stats, scan_msg, _ = scan_datasets_handler(root_path, skip_val, move_unqualified, False)
                 if "error" in stats:
                     return log(f"❌ Scan Failed: {stats['error']}")
                 log(scan_msg)
@@ -1029,7 +1045,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
         # Connect event handlers
         scan_button.click(
             fn=scan_datasets_handler,
-            inputs=[dataset_root, skip_validation, move_unqualified_checkbox],
+            inputs=[dataset_root, skip_validation, move_unqualified_checkbox, move_quality_warning_checkbox],
             outputs=[stats_display, scan_status, health_report],
         )
 

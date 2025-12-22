@@ -1,12 +1,25 @@
 """
 HuggingFace Model Wrappers for Wakeword Detection
+
+Teacher models are automatically downloaded from HuggingFace Hub on first use.
+Default cache location: models/teachers/
 """
 
 import logging
+import os
+from pathlib import Path
 from typing import Optional, cast
 
 import torch
 import torch.nn as nn
+
+# Set default teacher model cache directory
+TEACHER_CACHE_DIR = Path("models/teachers")
+TEACHER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Set HuggingFace cache to our directory
+os.environ.setdefault("TRANSFORMERS_CACHE", str(TEACHER_CACHE_DIR))
+os.environ.setdefault("HF_HOME", str(TEACHER_CACHE_DIR))
 
 try:
     from transformers import Wav2Vec2Config, Wav2Vec2Model
@@ -20,10 +33,45 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
+def get_teacher_cache_dir() -> Path:
+    """Get the teacher model cache directory."""
+    return TEACHER_CACHE_DIR
+
+
+def ensure_teacher_model_downloaded(model_id: str = "facebook/wav2vec2-base-960h") -> Path:
+    """
+    Ensure teacher model is downloaded and cached.
+    
+    Args:
+        model_id: HuggingFace model ID
+        
+    Returns:
+        Path to cached model directory
+    """
+    if Wav2Vec2Model is None:
+        raise ImportError(
+            "transformers library required. Install with: pip install transformers"
+        )
+    
+    cache_path = TEACHER_CACHE_DIR / model_id.replace("/", "--")
+    
+    if not cache_path.exists():
+        logger.info(f"Downloading teacher model {model_id} to {TEACHER_CACHE_DIR}...")
+        # This will download and cache the model
+        _ = Wav2Vec2Model.from_pretrained(model_id, cache_dir=str(TEACHER_CACHE_DIR))
+        logger.info(f"Teacher model downloaded successfully")
+    else:
+        logger.info(f"Teacher model already cached at {cache_path}")
+    
+    return cache_path
+
+
 class Wav2VecWakeword(nn.Module):
     """
     Wav2Vec 2.0 wrapper for Wakeword Detection.
     Uses the transformer as a feature extractor and adds a classification head.
+    
+    Teacher model is automatically downloaded on first use to models/teachers/
     """
 
     def __init__(
@@ -42,11 +90,19 @@ class Wav2VecWakeword(nn.Module):
             )
 
         logger.info(f"Initializing Wav2VecWakeword with {model_id}")
+        logger.info(f"Teacher models cached at: {TEACHER_CACHE_DIR}")
 
         if pretrained:
-            self.wav2vec2 = Wav2Vec2Model.from_pretrained(model_id)
+            # Model will be downloaded to TEACHER_CACHE_DIR on first use
+            self.wav2vec2 = Wav2Vec2Model.from_pretrained(
+                model_id, 
+                cache_dir=str(TEACHER_CACHE_DIR)
+            )
         else:
-            config = Wav2Vec2Config.from_pretrained(model_id)
+            config = Wav2Vec2Config.from_pretrained(
+                model_id,
+                cache_dir=str(TEACHER_CACHE_DIR)
+            )
             self.wav2vec2 = Wav2Vec2Model(config)
 
         if freeze_feature_extractor:
@@ -61,7 +117,13 @@ class Wav2VecWakeword(nn.Module):
 
         # Classification head
         # Wav2Vec2 base output dim is 768
-        self.classifier = nn.Sequential(nn.Linear(768, 256), nn.ReLU(), nn.Dropout(0.1), nn.Linear(256, num_classes))
+        self.hidden_size = 768
+        self.classifier = nn.Sequential(
+            nn.Linear(self.hidden_size, 256), 
+            nn.ReLU(), 
+            nn.Dropout(0.1), 
+            nn.Linear(256, num_classes)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -71,13 +133,29 @@ class Wav2VecWakeword(nn.Module):
         Returns:
             Logits of shape (batch, num_classes)
         """
+        # Get embeddings first
+        pooled_output = self.embed(x)
+        
+        # Classification
+        logits = self.classifier(pooled_output)
+
+        return cast(torch.Tensor, logits)
+    
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Extract embeddings (for distillation feature alignment).
+        
+        Args:
+            x: Input audio tensor of shape (batch, samples) or (batch, 1, samples)
+            
+        Returns:
+            Embeddings of shape (batch, hidden_size=768)
+        """
         # Ensure input is 2D (batch, samples)
         if x.ndim == 3:
             x = x.squeeze(1)
 
         # Wav2Vec2 expects normalized audio
-        # We assume input is already normalized by DataLoader
-
         outputs = self.wav2vec2(x)
 
         # Get hidden state from the last layer
@@ -88,7 +166,4 @@ class Wav2VecWakeword(nn.Module):
         # shape: (batch, hidden_size)
         pooled_output = torch.mean(last_hidden_state, dim=1)
 
-        # Classification
-        logits = self.classifier(pooled_output)
-
-        return cast(torch.Tensor, logits)
+        return cast(torch.Tensor, pooled_output)

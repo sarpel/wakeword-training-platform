@@ -70,6 +70,9 @@ class TrainingState:
             "val_f1": [],
             "val_fpr": [],
             "val_fnr": [],
+            "val_eer": [],  # NEW: Equal Error Rate
+            "val_fah": [],  # NEW: False Alarms per Hour
+            "learning_rate": [],  # NEW: LR tracking
             "epochs": [],
         }
 
@@ -84,6 +87,10 @@ class TrainingState:
         self.current_val_acc = 0.0
         self.current_fpr = 0.0
         self.current_fnr = 0.0
+        self.current_eer = 0.0  # NEW
+        self.current_fah = 0.0  # NEW
+        self.current_lr = 0.0  # NEW
+        self.current_gpu_mem = 0.0  # NEW: GPU memory in GB
         self.current_speed = 0.0
         self.eta_seconds = 0
 
@@ -298,6 +305,22 @@ def training_worker() -> None:
                 training_state.current_val_acc = val_metrics.accuracy
                 training_state.current_fpr = val_metrics.fpr
                 training_state.current_fnr = val_metrics.fnr
+                
+                # NEW: Update EER and FAH if available
+                training_state.current_eer = getattr(val_metrics, 'eer', 0.0)
+                training_state.current_fah = getattr(val_metrics, 'fah', 0.0)
+                
+                # NEW: Get current learning rate from optimizer
+                if trainer.optimizer:
+                    training_state.current_lr = trainer.optimizer.param_groups[0]['lr']
+                
+                # NEW: Get GPU memory usage
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        training_state.current_gpu_mem = torch.cuda.memory_allocated() / (1024**3)  # GB
+                except Exception:
+                    pass
 
                 # Update history
                 training_state.history["epochs"].append(epoch + 1)
@@ -308,6 +331,9 @@ def training_worker() -> None:
                 training_state.history["val_f1"].append(val_metrics.f1_score)
                 training_state.history["val_fpr"].append(val_metrics.fpr)
                 training_state.history["val_fnr"].append(val_metrics.fnr)
+                training_state.history["val_eer"].append(training_state.current_eer)
+                training_state.history["val_fah"].append(training_state.current_fah)
+                training_state.history["learning_rate"].append(training_state.current_lr)
 
                 # Update best metrics
                 if val_loss < training_state.best_val_loss:
@@ -321,12 +347,13 @@ def training_worker() -> None:
                 if val_metrics.accuracy > training_state.best_val_acc:
                     training_state.best_val_acc = val_metrics.accuracy
 
-                # Log
+                # Log with more metrics
                 training_state.add_log(
                     f"Epoch {epoch+1}/{training_state.total_epochs} - "
                     f"Loss: {train_loss:.4f}/{val_loss:.4f} - "
                     f"Acc: {training_state.current_train_acc:.2%}/{val_metrics.accuracy:.2%} - "
-                    f"FPR: {val_metrics.fpr:.2%} - FNR: {val_metrics.fnr:.2%}"
+                    f"FPR: {val_metrics.fpr:.2%} - FNR: {val_metrics.fnr:.2%} - "
+                    f"LR: {training_state.current_lr:.2e}"
                 )
 
             def on_batch_end(self, batch_idx: int, loss: float, acc: float, **kwargs: Any) -> None:
@@ -892,8 +919,12 @@ def get_training_status() -> Tuple:
         round(training_state.current_val_acc * 100, 2),
         round(training_state.current_fpr * 100, 2),
         round(training_state.current_fnr * 100, 2),
+        round(training_state.current_eer * 100, 2),  # NEW: EER
+        round(training_state.current_fah, 2),  # NEW: FAH
         round(training_state.current_speed, 1),
         round(gpu_percent, 1),
+        training_state.current_lr,  # NEW: Current LR
+        round(training_state.current_gpu_mem, 2),  # NEW: GPU Mem
         format_time(training_state.eta_seconds),
         logs,
         create_loss_plot(),
@@ -1345,7 +1376,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         )
                         sampler_ratio_neg = gr.Number(
                             label="Negative",
-                            value=1,
+                            value=2,
                             precision=0,
                             minimum=1,
                             info="Ratio of negative samples",
@@ -1394,7 +1425,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     gr.Markdown("#### 📈 Experiment Tracking (Weights & Biases)")
                     use_wandb = gr.Checkbox(
                         label="Enable W&B Logging",
-                        value=False,
+                        value=True,
                         info="Log metrics, parameters, and model artifacts to Weights & Biases.",
                     )
                     wandb_project = gr.Textbox(
@@ -1539,8 +1570,16 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     fnr = gr.Number(label="FNR (%)", value=0.0, interactive=False)
 
                 with gr.Row():
+                    eer_display = gr.Number(label="EER (%)", value=0.0, interactive=False)
+                    fah_display = gr.Number(label="FAH (per hour)", value=0.0, interactive=False)
+
+                with gr.Row():
                     speed = gr.Number(label="Speed (samples/sec)", value=0.0, interactive=False)
                     gpu_util = gr.Number(label="GPU Util (%)", value=0.0, interactive=False)
+
+                with gr.Row():
+                    current_lr_display = gr.Number(label="Learning Rate", value=0.0, interactive=False, precision=6)
+                    gpu_mem_display = gr.Number(label="GPU Mem (GB)", value=0.0, interactive=False, precision=2)
 
                 eta = gr.Textbox(label="ETA", value="--:--:--", interactive=False)
 
@@ -1686,8 +1725,12 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 val_acc,
                 fpr,
                 fnr,
+                eer_display,
+                fah_display,
                 speed,
                 gpu_util,
+                current_lr_display,
+                gpu_mem_display,
                 eta,
                 training_log,
                 loss_plot,

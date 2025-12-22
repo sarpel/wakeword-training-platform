@@ -265,10 +265,6 @@ class Trainer:
             for epoch in range(start_epoch, self.config.training.epochs):
                 self.state.epoch = epoch
                 self._call_callbacks("on_epoch_start", epoch)
-                
-                # Update augmentation schedule
-                if hasattr(self.audio_processor, "augmentation"):
-                    self.audio_processor.augmentation.set_epoch(epoch, self.config.training.epochs)
 
                 train_loss, train_acc = train_epoch(self, epoch)
                 val_loss, val_metrics = validate_epoch(self, epoch)

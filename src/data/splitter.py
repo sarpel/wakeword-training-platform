@@ -192,6 +192,69 @@ class DatasetScanner:
         logger.info(f"Moved {moved_count} files to {excluded_root}")
         return moved_count
 
+    def move_quality_warning_files(self, warning_root: Path = Path("quality_warning_dataset")) -> int:
+        """
+        Move files with quality warnings (but not excluded) to a separate folder
+        for review. These files are usable but may have issues.
+
+        Args:
+            warning_root: Directory to move warning files to
+
+        Returns:
+            Number of files moved
+        """
+        if not self.dataset_info or "categories" not in self.dataset_info:
+            logger.warning("No scan results found. Run scan_datasets() first.")
+            return 0
+
+        warning_root = Path(warning_root)
+        warning_root.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Moving quality warning files to: {warning_root}")
+
+        moved_count = 0
+
+        # Iterate through all categories
+        for category, data in self.dataset_info["categories"].items():
+            files_with_warnings = []
+            
+            # Find files that have quality warnings
+            for file_info in data.get("files", []):
+                quality_score = file_info.get("quality_score", 1.0)
+                # Files with quality_score < 0.8 are considered to have warnings
+                if quality_score < 0.8:
+                    files_with_warnings.append(file_info)
+            
+            if not files_with_warnings:
+                continue
+
+            for file_info in files_with_warnings:
+                src_path = Path(file_info["path"])
+
+                if not src_path.exists():
+                    logger.warning(f"File not found for moving: {src_path}")
+                    continue
+
+                # Create destination path preserving category structure
+                dest_dir = warning_root / category
+                dest_dir.mkdir(parents=True, exist_ok=True)
+
+                dest_path = dest_dir / src_path.name
+
+                # Handle duplicate filenames
+                if dest_path.exists():
+                    timestamp = int(src_path.stat().st_mtime)
+                    dest_path = dest_dir / f"{src_path.stem}_{timestamp}{src_path.suffix}"
+
+                try:
+                    shutil.move(str(src_path), str(dest_path))
+                    moved_count += 1
+                    logger.info(f"Moved warning file: {src_path.name} (score={file_info.get('quality_score', '?')}) -> {dest_path}")
+                except Exception as e:
+                    logger.error(f"Failed to move {src_path}: {e}")
+
+        logger.info(f"Moved {moved_count} quality warning files to {warning_root}")
+        return moved_count
+
     def _validate_file(self, file_path: Path) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
         Validate a single file (with caching support)

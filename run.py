@@ -73,40 +73,40 @@ def print_banner():
     cuda_available, cuda_info = check_cuda()
 
     banner = """
-╔══════════════════════════════════════════════════════════════════════╗
-║                                                                      ║
-║        Wakeword Training Platform v2.0.0 - Quick Launcher           ║
-║        Production-Ready Wakeword Detection Training System          ║
-║                                                                      ║
-╚══════════════════════════════════════════════════════════════════════╝
++----------------------------------------------------------------------+
+|                                                                      |
+|        Wakeword Training Platform v2.0.0 - Quick Launcher           |
+|        Production-Ready Wakeword Detection Training System          |
+|                                                                      |
++----------------------------------------------------------------------+
 
 System Information:
 """
-    print(banner)
+    print(banner, flush=True)
 
     # Python version
     py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    print(f"  🐍 Python: {py_version}")
+    print(f"  [*] Python: {py_version}")
 
     # PyTorch version
     try:
         import torch
-        print(f"  🔥 PyTorch: {torch.__version__}")
+        print(f"  [*] PyTorch: {torch.__version__}")
     except ImportError:
-        print(f"  🔥 PyTorch: Not installed")
+        print(f"  [*] PyTorch: Not installed")
 
     # GPU status
     if cuda_available:
-        print(f"  ✅ GPU: {cuda_info}")
+        print(f"  [OK] GPU: {cuda_info}")
     else:
-        print(f"  ⚠️  GPU: {cuda_info} (CPU mode)")
+        print(f"  [!] GPU: {cuda_info} (CPU mode)")
 
     # Gradio version
     try:
         import gradio
-        print(f"  🌐 Gradio: {gradio.__version__}")
+        print(f"  [*] Gradio: {gradio.__version__}")
     except ImportError:
-        print(f"  🌐 Gradio: Not installed")
+        print(f"  [*] Gradio: Not installed")
 
     print("\nProduction Features:")
     features = [
@@ -120,11 +120,11 @@ System Information:
         "ONNX Export"
     ]
     for feature in features:
-        print(f"  ✓ {feature}")
+        print(f"  [+] {feature}")
 
-    print("\n" + "─" * 70)
+    print("\n" + "-" * 70)
     print("Starting application...")
-    print("─" * 70 + "\n")
+    print("-" * 70 + "\n")
 
 if __name__ == "__main__":
     # Print banner

@@ -5,14 +5,13 @@ Handles feature extraction and normalization on GPU for training pipeline.
 
 import logging
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Optional, cast
 
 import torch
 import torch.nn as nn
 
 from src.data.cmvn import CMVN
 from src.data.feature_extraction import FeatureExtractor
-from src.data.augmentation import AudioAugmentation, SpecAugment
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,9 @@ class AudioProcessor(nn.Module):
     """
     GPU-accelerated Audio Processor.
     Handles feature extraction (Mel/MFCC) and CMVN on GPU.
+    
+    Note: Audio augmentation is handled separately in the Trainer class
+    to avoid double augmentation and allow proper epoch-based scheduling.
     """
 
     def __init__(self, config: WakewordConfig, cmvn_path: Optional[Path] = None, device: str = "cuda") -> None:
@@ -39,20 +41,6 @@ class AudioProcessor(nn.Module):
             n_fft=config.data.n_fft,
             hop_length=config.data.hop_length,
             device=device,
-        )
-
-        # Augmentation (GPU-based)
-        from src.config.paths import paths
-        self.augmentation = AudioAugmentation(
-            sample_rate=config.data.sample_rate,
-            device=device,
-            time_stretch_range=(config.augmentation.time_stretch_min, config.augmentation.time_stretch_max),
-            pitch_shift_range=(config.augmentation.pitch_shift_min, config.augmentation.pitch_shift_max),
-            background_noise_prob=config.augmentation.background_noise_prob,
-            noise_snr_range=(config.augmentation.noise_snr_min, config.augmentation.noise_snr_max),
-            rir_prob=config.augmentation.rir_prob,
-            background_noise_files=list(paths.BACKGROUND_NOISE.rglob("*.wav")) if paths.BACKGROUND_NOISE.exists() else None,
-            rir_files=list(paths.RIRS.rglob("*.wav")) if paths.RIRS.exists() else None,
         )
 
         # CMVN
@@ -97,8 +85,8 @@ class AudioProcessor(nn.Module):
 
         if inputs.ndim <= 3:
             # Raw audio processing pipeline
-            if self.training:
-                inputs = self.augmentation(inputs)
+            # Note: Augmentation is NOT applied here - it's handled by Trainer
+            # to avoid double augmentation and allow proper epoch scheduling
 
             # Ensure (Batch, 1, Samples)
             if inputs.ndim == 2:

@@ -47,7 +47,7 @@ class TrainingConfig:
     # Basic training parameters
     batch_size: int = 64
     epochs: int = 80
-    learning_rate: float = 3e-4
+    learning_rate: float = 5e-4  # Optimized: 5e-4 for stable training
     early_stopping_patience: int = 15
 
     # Hardware
@@ -156,7 +156,7 @@ class OptimizerConfig:
 
     # Scheduler
     scheduler: str = "cosine"  # cosine, step, plateau, none
-    warmup_epochs: int = 3
+    warmup_epochs: int = 5  # Optimized: 5 epochs warmup for stable training
     min_lr: float = 1e-6
 
     # Step scheduler parameters
@@ -232,13 +232,13 @@ class DistillationConfig:
     log_memory_usage: bool = False
     
     # Distillation parameters
-    teacher_architecture: str = "wav2vec2" # wav2vec2, conformer, dual
+    teacher_architecture: str = "dual" # wav2vec2, conformer, dual (recommended)
     secondary_teacher_architecture: str = "conformer"
     secondary_teacher_model_path: str = ""
     
     temperature: float = 2.0
     temperature_scheduler: str = "fixed" # fixed, linear_decay, exponential_decay
-    alpha: float = 0.5
+    alpha: float = 0.3  # Optimized: 0.3 is more balanced than 0.5
     
     # Feature Alignment (Intermediate Matching)
     feature_alignment_enabled: bool = False

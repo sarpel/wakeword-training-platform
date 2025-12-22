@@ -344,6 +344,7 @@ class NpyExtractor:
         npy_files: List[Path],
         expected_shape: Tuple[int, int, int],
         delete_invalid: bool = False,
+        move_invalid: bool = True,  # NEW: Move instead of delete
         progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
@@ -352,20 +353,29 @@ class NpyExtractor:
         Args:
             npy_files: List of .npy file paths
             expected_shape: Tuple of (channels, n_mels/mfcc, time_steps)
-            delete_invalid: If True, delete files with mismatching shapes
+            delete_invalid: If True, delete files with mismatching shapes (DEPRECATED)
+            move_invalid: If True, move invalid files to unused_datasets/invalid_shapes
             progress_callback: Optional progress callback
 
         Returns:
             Dictionary with validation results
         """
+        import shutil
+        
         results: Dict[str, Any] = {
             "total_files": len(npy_files),
             "valid_count": 0,
             "mismatch_count": 0,
             "error_count": 0,
             "deleted_count": 0,
+            "moved_count": 0,
             "mismatches": [],
         }
+        
+        # Create invalid shapes directory if moving
+        invalid_shapes_dir = Path("unused_datasets/invalid_shapes")
+        if move_invalid:
+            invalid_shapes_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Validating shapes for {len(npy_files)} files against {expected_shape}")
 
@@ -401,7 +411,48 @@ class NpyExtractor:
                         }
                     )
 
-                    if delete_invalid:
+                    # Move invalid files instead of deleting (preserving data)
+                    if move_invalid and not delete_invalid:
+                        try:
+                            # Close mmap before moving (Windows issue)
+                            if "data" in locals():
+                                del data
+                            import gc
+                            gc.collect()
+                            
+                            # Determine category from path (positive/negative/hard_negative)
+                            category = "unknown"
+                            path_str = str(file_path).lower()
+                            if "positive" in path_str:
+                                category = "positive"
+                            elif "hard_negative" in path_str or "hard-negative" in path_str:
+                                category = "hard_negative"
+                            elif "negative" in path_str:
+                                category = "negative"
+                            
+                            # Create category subfolder
+                            dest_dir = invalid_shapes_dir / category
+                            dest_dir.mkdir(parents=True, exist_ok=True)
+                            
+                            # Move file
+                            dest_path = dest_dir / file_path.name
+                            # Handle duplicate names
+                            if dest_path.exists():
+                                stem = file_path.stem
+                                suffix = file_path.suffix
+                                counter = 1
+                                while dest_path.exists():
+                                    dest_path = dest_dir / f"{stem}_{counter}{suffix}"
+                                    counter += 1
+                            
+                            shutil.move(str(file_path), str(dest_path))
+                            results["moved_count"] += 1
+                            logger.info(f"Moved invalid shape file: {file_path.name} -> {dest_path}")
+                        except Exception as e:
+                            logger.error(f"Failed to move {file_path}: {e}")
+                    
+                    # Legacy delete option (deprecated, use move_invalid instead)
+                    elif delete_invalid:
                         try:
                             # Close mmap before deleting (Windows issue)
                             if "data" in locals():

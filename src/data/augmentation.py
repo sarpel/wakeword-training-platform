@@ -213,30 +213,38 @@ class AudioAugmentation(nn.Module):
         shift_samples = int(shift_ms * self.sample_rate / 1000)
         return torch.roll(waveform, shifts=shift_samples, dims=-1)
 
-    def set_epoch(self, epoch: int, total_epochs: int):
+    def set_epoch(self, epoch: int, total_epochs: int) -> None:
+        """Update epoch for SNR scheduling (optional feature)."""
         self.current_epoch = epoch
-        self.total_epochs = total_epochs
+        self.total_epochs = max(total_epochs, 1)  # Prevent division by zero
+        self.use_snr_scheduling = True  # Enable scheduling when explicitly called
 
     def add_background_noise(self, waveform: torch.Tensor) -> torch.Tensor:
         """
-        Add background noise with SNR scheduling.
-        As training progresses, SNR range becomes more challenging (lower SNR).
+        Add background noise with optional SNR scheduling.
+        If SNR scheduling is enabled (via set_epoch), gradually makes SNR harder.
+        Otherwise, uses the configured noise_snr_range directly.
         """
         if self.background_noises.numel() == 0:
             return waveform + torch.randn_like(waveform) * 0.01
 
         batch_size, _, samples = waveform.shape
 
-        # SNR scheduling: Start with easy SNR (20-30dB), end with hard (0-15dB)
-        progress = self.current_epoch / self.total_epochs
-        
-        # Initial range (easy)
-        easy_min, easy_max = 15.0, 30.0
-        # Target range (hard)
-        hard_min, hard_max = self.noise_snr_range
-        
-        curr_min = easy_min - (easy_min - hard_min) * progress
-        curr_max = easy_max - (easy_max - hard_max) * progress
+        # Determine SNR range
+        if getattr(self, 'use_snr_scheduling', False) and self.total_epochs > 1:
+            # SNR scheduling: Start with easy SNR, progress to configured range
+            progress = self.current_epoch / self.total_epochs
+            
+            # Initial range (easy)
+            easy_min, easy_max = 15.0, 30.0
+            # Target range (from config)
+            hard_min, hard_max = self.noise_snr_range
+            
+            curr_min = easy_min - (easy_min - hard_min) * progress
+            curr_max = easy_max - (easy_max - hard_max) * progress
+        else:
+            # No scheduling - use configured range directly (original behavior)
+            curr_min, curr_max = self.noise_snr_range
 
         # Select random noises for each element in batch
         indices = torch.randint(0, len(self.background_noises), (batch_size,), device=self.background_noises.device)
