@@ -76,6 +76,9 @@ server/venv/
 # AI Agents
 .claude-flow/
 
+# Security: API Keys (commented out for template purposes)
+# .env.zai
+
 # OS Generated
 .DS_Store
 Thumbs.db
@@ -83,11 +86,10 @@ Thumbs.db
 *.7z
 *.zip
 docs/current_dataset_info.json
-
+.env.zai
 docs/best trial-2.txt
-.gitignore
 docs/helper_scripts/flagged_files.txt
 docs/helper_scripts/sample_manifest.csv
-*.ps1
+.env.zai
 docs/helper_scripts
 train_100_epochs.txt

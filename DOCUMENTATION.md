@@ -1,6 +1,21 @@
-# Wakeword Training Platform - Documentation
+# Wakeword Training Platform - Complete Documentation [![Version](https://img.shields.io/badge/version-v4.0-blue.svg)](https://github.com/sarpel/wakeword-training-platform)
 
-This document serves as the comprehensive guide for the Wakeword Training Platform, covering everything from basic configuration to deep technical architectural details.
+🎯 **Production-Ready Platform** for training custom wakeword detection models with enterprise-grade features, GPU acceleration, and advanced optimizations.
+
+📚 **Navigation**: Use the [Quick Reference](#quick-reference) or jump to specific sections below.
+
+---
+
+## ⚡ Quick Reference
+
+| 🎯 Task | 📂 Location | ⚙️ Command | 📊 Settings |
+|---|---|---|---|
+| **Start App** | `run.py` | `python run.py` | `localhost:7860` |
+| **Prepare Data** | `data/raw/` | Auto-create | 16kHz, .wav preferred |
+| **Quick Train** | UI Button | 🚀 Start Training | ResNet18, 32 batch |
+| **Export Model** | UI Panel | Export → ONNX/TFLite | Quantize for edge |
+| **GPU Enable** | `config/training` | `mixed_precision: true` | Requires CUDA 11.8+ |
+| **HPO Optimize** | `src/training/hpo.py` | Auto-search | Bayesian optimization |
 
 ---
 
