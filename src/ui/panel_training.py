@@ -1058,7 +1058,7 @@ def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, para
 
                 training_state.add_log(f"✅ Loaded {len(train_ds)} training samples for HPO")
 
-            study = run_hpo(
+            result = run_hpo(
                 config=state["config"],
                 train_loader=train_loader,
                 val_loader=val_loader,
@@ -1070,7 +1070,7 @@ def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, para
             )
             training_state.add_log("✅ HPO Study Complete!")
             # Store best params in state for "Apply" feature
-            state["best_hpo_params"] = study.best_params
+            state["best_hpo_params"] = result.best_params
 
         except Exception as e:
             logger.exception("HPO failed")

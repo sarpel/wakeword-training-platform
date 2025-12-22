@@ -439,7 +439,12 @@ class Objective:
                 params["hidden_size"] = trial.suggest_categorical(
                     "hidden_size", [64, 128, 256]
                 )
+                params["num_layers"] = trial.suggest_int("num_layers", 1, 3)
                 trial_config.model.hidden_size = params["hidden_size"]
+                trial_config.model.num_layers = params["num_layers"]
+            elif trial_config.model.architecture == "tcn":
+                params["tcn_kernel_size"] = trial.suggest_categorical("tcn_kernel_size", [3, 5, 7])
+                trial_config.model.tcn_kernel_size = params["tcn_kernel_size"]
 
         # Group: Augmentation
         if "Augmentation" in self.param_groups:
@@ -455,6 +460,12 @@ class Objective:
             )
             params["freq_mask_param"] = trial.suggest_int("freq_mask_param", 10, 40)
             params["time_mask_param"] = trial.suggest_int("time_mask_param", 20, 60)
+            
+            # New Augmentations
+            params["pitch_shift_range"] = trial.suggest_int("pitch_shift_range", 1, 4)
+            # We treat range as symmetric +/- value
+            trial_config.augmentation.pitch_shift_min = -params["pitch_shift_range"]
+            trial_config.augmentation.pitch_shift_max = params["pitch_shift_range"]
 
             # Apply to config
             trial_config.augmentation.background_noise_prob = params["background_noise_prob"]
@@ -470,10 +481,13 @@ class Objective:
             if not self.config.data.use_precomputed_features_for_training:
                 params["n_mels"] = trial.suggest_categorical("n_mels", [40, 64, 80])
                 trial_config.data.n_mels = params["n_mels"]
+                
+                params["hop_length"] = trial.suggest_categorical("hop_length", [160, 320])
+                trial_config.data.hop_length = params["hop_length"]
             else:
                 self._log(
-                    f"Skipping n_mels optimization "
-                    f"(using precomputed features: {self.config.data.n_mels})"
+                    f"Skipping data optimization "
+                    f"(using precomputed features)"
                 )
 
         # Group: Loss
@@ -482,10 +496,15 @@ class Objective:
                 "loss_function", ["cross_entropy", "focal_loss"]
             )
             trial_config.loss.loss_function = params["loss_function"]
+            
+            params["label_smoothing"] = trial.suggest_float("label_smoothing", 0.0, 0.2)
+            trial_config.loss.label_smoothing = params["label_smoothing"]
 
             if params["loss_function"] == "focal_loss":
                 params["focal_gamma"] = trial.suggest_float("focal_gamma", 1.0, 4.0)
+                params["focal_alpha"] = trial.suggest_float("focal_alpha", 0.1, 0.9)
                 trial_config.loss.focal_gamma = params["focal_gamma"]
+                trial_config.loss.focal_alpha = params["focal_alpha"]
 
         return params
 
@@ -693,6 +712,8 @@ class Objective:
 # =============================================================================
 
 
+from src.training.hpo_results import HPOResult
+
 def run_hpo(
     config: WakewordConfig,
     train_loader: DataLoader,
@@ -704,13 +725,9 @@ def run_hpo(
     n_jobs: int = 1,
     cache_dir: Optional[Path] = None,
     enable_profiling: bool = False,
-) -> optuna.study.Study:
+) -> HPOResult:
     """
     Run optimized hyperparameter optimization using Optuna.
-
-    This is the main entry point for HPO. It's fully backwards compatible
-    with the original run_hpo function, but includes significant performance
-    optimizations that reduce HPO time by ~90%.
 
     Args:
         config: Base WakewordConfig for training
@@ -719,31 +736,16 @@ def run_hpo(
         n_trials: Number of optimization trials (default: 50)
         study_name: Name for the Optuna study (default: "wakeword-hpo")
         param_groups: List of parameter groups to optimize.
-            Options: ["Training", "Model", "Augmentation", "Data", "Loss", "Critical"]
-            Default: ["Training", "Model", "Augmentation"] (backwards compatible)
         log_callback: Optional callback for logging messages
-        n_jobs: Number of parallel trials (default: 1, use 2+ for multi-GPU)
-        cache_dir: Directory for caching checkpoints (default: cache/hpo)
-        enable_profiling: Enable PyTorch profiling for performance analysis
+        n_jobs: Number of parallel trials (default: 1)
+        cache_dir: Directory for caching checkpoints
+        enable_profiling: Enable PyTorch profiling
 
     Returns:
-        Optuna study object with best parameters and history
-
-    Example:
-        # Basic usage (backwards compatible)
-        study = run_hpo(config, train_loader, val_loader, n_trials=50)
-        print(f"Best F1: {study.best_value}")
-        print(f"Best params: {study.best_params}")
-
-        # With logging and custom parameters
-        study = run_hpo(
-            config, train_loader, val_loader,
-            n_trials=100,
-            param_groups=["Critical"],  # Faster convergence
-            log_callback=lambda msg: print(f"[HPO] {msg}"),
-            cache_dir=Path("my_cache"),
-        )
+        HPOResult object with standardized results
     """
+    start_time = time.time()
+    
     # Create objective with all optimizations
     objective = Objective(
         config,
@@ -753,7 +755,7 @@ def run_hpo(
         log_callback=log_callback,
         cache_dir=cache_dir,
         enable_profiling=enable_profiling,
-        n_jobs=n_jobs,  # Pass n_jobs to handle shared state safety
+        n_jobs=n_jobs,
     )
 
     # Use HyperbandPruner for better resource-efficient pruning
@@ -763,12 +765,12 @@ def run_hpo(
         reduction_factor=3,
     )
 
-    # Use TPE sampler with multivariate mode for better parameter correlation
+    # Use TPE sampler with multivariate mode
     sampler = optuna.samplers.TPESampler(
         n_startup_trials=10,
         n_ei_candidates=24,
-        multivariate=True,  # Consider parameter correlations
-        group=True,  # Group correlated parameters
+        multivariate=True,
+        group=True,
         warn_independent_sampling=False,
     )
 
@@ -814,16 +816,24 @@ def run_hpo(
         # Always clean up resources
         objective.cleanup()
 
+    duration = time.time() - start_time
+
     # Report results
     if log_callback:
-        log_callback(f"✅ HPO Complete!")
+        log_callback(f"✅ HPO Complete in {duration:.1f}s")
         log_callback(f"🏆 Best F1 Score: {study.best_value:.4f}")
         log_callback(f"📊 Best params: {study.best_params}")
 
     logger.info(f"Best trial: {study.best_value}")
     logger.info(f"Best params: {study.best_params}")
 
-    return study
+    return HPOResult(
+        study_name=study_name,
+        best_value=study.best_value,
+        best_params=study.best_params,
+        n_trials=len(study.trials),
+        duration=duration
+    )
 
 
 # =============================================================================
@@ -837,16 +847,9 @@ def run_progressive_hpo(
     val_loader: DataLoader,
     log_callback: Optional[Callable[[str], None]] = None,
     cache_dir: Optional[Path] = None,
-) -> optuna.study.Study:
+) -> HPOResult:
     """
     Run progressive HPO strategy for faster convergence.
-
-    This strategy optimizes parameters in phases:
-    - Phase 1: Critical parameters only (fast convergence)
-    - Phase 2: Critical + Augmentation (fine-tuning)
-
-    This typically converges 2-3x faster than optimizing all parameters at once
-    because it focuses on the most impactful parameters first.
 
     Args:
         config: Base configuration
@@ -856,13 +859,7 @@ def run_progressive_hpo(
         cache_dir: Directory for caching
 
     Returns:
-        Final Optuna study object
-
-    Example:
-        study = run_progressive_hpo(
-            config, train_loader, val_loader,
-            log_callback=lambda msg: print(msg)
-        )
+        Final HPOResult
     """
     cache_dir = cache_dir or Path("cache/hpo")
 
@@ -870,7 +867,7 @@ def run_progressive_hpo(
     if log_callback:
         log_callback("🎯 Phase 1: Optimizing critical parameters...")
 
-    study = run_hpo(
+    result_phase1 = run_hpo(
         config,
         train_loader,
         val_loader,
@@ -884,7 +881,7 @@ def run_progressive_hpo(
 
     # Update config with best parameters from Phase 1
     best_config = config.copy()
-    for key, value in study.best_params.items():
+    for key, value in result_phase1.best_params.items():
         if key == "learning_rate":
             best_config.training.learning_rate = value
         elif key == "batch_size":
@@ -898,7 +895,7 @@ def run_progressive_hpo(
     if log_callback:
         log_callback("🎯 Phase 2: Fine-tuning with augmentation parameters...")
 
-    study = run_hpo(
+    final_result = run_hpo(
         best_config,
         train_loader,
         val_loader,
@@ -910,7 +907,7 @@ def run_progressive_hpo(
         cache_dir=cache_dir,
     )
 
-    return study
+    return final_result
 
 
 # =============================================================================
