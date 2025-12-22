@@ -1,0 +1,8 @@
+{
+  "track_id": "hpo_opt_20251222",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2025-12-22T10:30:00Z",
+  "updated_at": "2025-12-22T10:30:00Z",
+  "description": "Check the functionality of HPO testing module in training panel and optimize it for the fastest way possible for it to do testing. Also write all variables an HPO test can find in outputs so both apply/save to profile buttons and i can edit configs with as much variable tested as possible"
+}

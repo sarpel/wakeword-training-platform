@@ -26,18 +26,18 @@ Update the HPO engine to track and return a comprehensive set of parameters.
 - [x] Task: Update the HPO output persistence logic to ensure all variables are saved to the temporary results storage.
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Variable Expansion & Output Structuring' (Protocol in workflow.md)
 
-## Phase 4: UI Enhancement & Profile Integration
+## Phase 4: UI Enhancement & Profile Integration [checkpoint: 86a845c]
 Create a rich, editable results view and robust "Apply/Save" functionality.
 
-- [~] Task: Design and implement a structured Gradio table/form to display HPO results with inline editing capabilities.
-- [ ] Task: Implement logic to map UI-edited HPO results back to the internal configuration format.
-- [ ] Task: Enhance the "Apply to Current Session" and "Save to Profile" buttons to handle the full expanded set of variables.
-- [ ] Task: Verify that edited variables are correctly reflected in the configuration and active training session.
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: UI Enhancement & Profile Integration' (Protocol in workflow.md)
+- [x] Task: Design and implement a structured Gradio table/form to display HPO results with inline editing capabilities.
+- [x] Task: Implement logic to map UI-edited HPO results back to the internal configuration format.
+- [x] Task: Enhance the "Apply to Current Session" and "Save to Profile" buttons to handle the full expanded set of variables.
+- [x] Task: Verify that edited variables are correctly reflected in the configuration and active training session.
+- [x] Task: Conductor - User Manual Verification 'Phase 4: UI Enhancement & Profile Integration' (Protocol in workflow.md)
 
-## Phase 5: Final Verification & Benchmarking
+## Phase 5: Final Verification & Benchmarking [checkpoint: b754466]
 Ensure performance gains and full variable coverage.
 
-- [ ] Task: Run a final benchmark to quantify speed improvements from parallelization and pruning.
-- [ ] Task: Perform an end-to-end test of the HPO-to-Profile flow, verifying that every single variable is correctly persisted.
-- [ ] Task: Conductor - User Manual Verification 'Phase 5: Final Verification & Benchmarking' (Protocol in workflow.md)
+- [x] Task: Run a final benchmark to quantify speed improvements from parallelization and pruning.
+- [x] Task: Perform an end-to-end test of the HPO-to-Profile flow, verifying that every single variable is correctly persisted.
+- [x] Task: Conductor - User Manual Verification 'Phase 5: Final Verification & Benchmarking' (Protocol in workflow.md)

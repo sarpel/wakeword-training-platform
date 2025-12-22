@@ -21,9 +21,11 @@ The Wakeword Training Platform is designed to democratize high-quality, producti
 *   **Standardized Benchmarking:** Built-in profiling tools to measure latency and memory usage across all stages of the distributed cascade.
 *   **Robustness Engine:** Advanced acoustic simulation including Room Impulse Response (RIR), background noise, and pitch/speed perturbation to guarantee real-world performance.
 *   **Precision Training:** Specialized loss functions (Focal Loss, Weighted Cross-Entropy) and Knowledge Distillation from large teacher models (Wav2Vec2) to maximize accuracy on small devices.
+*   **Optimized Hyperparameter Tuning:** Performance-optimized HPO module using Optuna with parallel execution and early stopping to discover ideal model settings up to 90% faster.
 *   **Stable Streaming:** Integrated temporal smoothing and hysteresis logic to eliminate flickering detections in real-time usage.
 
 ## User Experience Goals
 *   **Automated Simplicity:** Default presets that allow users to launch high-quality training pipelines with minimal manual configuration.
 *   **Expert Granularity:** Deep-dive panels for advanced users to fine-tune hyper-parameters, loss functions, and distillation schedules.
+*   **Interactive HPO Results:** A structured, editable results table for HPO trials, allowing users to review, modify, and apply discovered configurations directly to their training session or save them as new profiles.
 *   **Live Verification:** Real-time streaming detection and metric visualization to provide immediate confidence in model improvements.

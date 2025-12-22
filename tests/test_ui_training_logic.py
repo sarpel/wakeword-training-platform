@@ -1,0 +1,68 @@
+import pytest
+from unittest.mock import MagicMock, patch
+from src.ui.panel_training import start_training
+from src.config.defaults import WakewordConfig
+
+def test_start_training_updates_loss_config():
+    """Test that start_training updates config with UI values."""
+    
+    # Mock Config State
+    config = WakewordConfig()
+    config_state = {"config": config}
+    
+    # Mock other dependencies to avoid side effects
+    with patch("src.ui.panel_training.training_state") as mock_state:
+        mock_state.is_training = False
+        
+        # We expect it to return error because datasets/paths not found in test env
+        # But we only care that it attempted to update config BEFORE failing or starting
+        
+        # Actually, start_training updates config inside the try block.
+        # If we can mock `paths.SPLITS` etc to pass checks, we can reach the update.
+        
+        with patch("src.ui.panel_training.paths") as mock_paths:
+            mock_paths.CHECKPOINTS.exists.return_value = True
+            mock_paths.SPLITS.exists.return_value = True
+            (mock_paths.SPLITS / "train.json").exists.return_value = True
+            
+            # We also need to mock load_dataset_splits or it will try to load data
+            with patch("src.ui.panel_training.load_dataset_splits") as mock_load:
+                mock_load.return_value = (MagicMock(), MagicMock(), MagicMock())
+                
+                # Mock DataLoader creation
+                with patch("src.ui.panel_training.DataLoader"):
+                    # Mock create_model
+                    with patch("src.ui.panel_training.create_model"):
+                        # Mock Trainer
+                        with patch("src.ui.panel_training.Trainer"):
+                            # Mock thread
+                            with patch("threading.Thread"):
+                                
+                                start_training(
+                                    config_state=config_state,
+                                    use_cmvn=False,
+                                    use_ema=False,
+                                    ema_decay=0.99,
+                                    use_balanced_sampler=False,
+                                    sampler_ratio_pos=1,
+                                    sampler_ratio_neg=1,
+                                    sampler_ratio_hard=0,
+                                    run_lr_finder=False,
+                                    use_wandb=False,
+                                    wandb_project="test",
+                                    # New params
+                                    loss_func_name="focal_loss",
+                                    loss_smoothing=0.2,
+                                    focal_gamma=3.0,
+                                    focal_alpha=0.6,
+                                    hard_neg_weight=2.0,
+                                    wandb_api_key="",
+                                    resume_checkpoint=None
+                                )
+                                
+                                # Check config updates
+                                assert config.loss.loss_function == "focal_loss"
+                                assert config.loss.label_smoothing == 0.2
+                                assert config.loss.focal_gamma == 3.0
+                                assert config.loss.focal_alpha == 0.6
+                                assert config.loss.hard_negative_weight == 2.0

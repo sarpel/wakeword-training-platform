@@ -78,13 +78,21 @@ class TrainingConfig(BaseModel):
 class ModelConfig(BaseModel):
     """Pydantic model for model architecture configuration"""
 
-    architecture: Literal["resnet18", "mobilenetv3", "lstm", "gru", "tcn"] = "resnet18"
+    architecture: Literal["resnet18", "mobilenetv3", "lstm", "gru", "tcn", "tiny_conv", "cd_dnn"] = "resnet18"
     num_classes: int = Field(2, ge=2)
     pretrained: bool = False
     dropout: float = Field(0.3, ge=0, lt=1)
     hidden_size: int = Field(128, ge=16)
     num_layers: int = Field(2, ge=1)
     bidirectional: bool = True
+    # TCN & CD-DNN fields are optional or handled via extra fields if passed, 
+    # but adding them explicitly is better if they are in the default config.
+    tcn_num_channels: List[int] = [64, 128, 256]
+    tcn_kernel_size: int = 3
+    tcn_dropout: float = 0.3
+    cddnn_hidden_layers: List[int] = [512, 256, 128]
+    cddnn_context_frames: int = 50
+    cddnn_dropout: float = 0.3
 
 
 class AugmentationConfig(BaseModel):
@@ -106,6 +114,10 @@ class AugmentationConfig(BaseModel):
     time_mask_param: int = Field(30, gt=0)
     n_freq_masks: int = Field(2, ge=0)
     n_time_masks: int = Field(2, ge=0)
+    # New fields found in defaults.py / UI
+    time_shift_prob: float = 0.0
+    time_shift_min_ms: int = -100
+    time_shift_max_ms: int = 100
 
     @root_validator(skip_on_failure=True)
     def min_less_than_max(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -153,13 +165,38 @@ class OptimizerConfig(BaseModel):
 class LossConfig(BaseModel):
     """Pydantic model for loss function configuration"""
 
-    loss_function: Literal["cross_entropy", "focal_loss"] = "cross_entropy"
+    loss_function: Literal["cross_entropy", "focal_loss", "triplet_loss"] = "cross_entropy"
     label_smoothing: float = Field(0.05, ge=0, lt=1)
     focal_alpha: float = Field(0.25, ge=0, le=1)
     focal_gamma: float = Field(2.0, ge=0)
     class_weights: Literal["balanced", "none", "custom"] = "balanced"
     hard_negative_weight: float = Field(1.5, ge=1.0)
     sampler_strategy: Literal["weighted", "balanced", "none"] = "weighted"
+    # New fields
+    triplet_margin: float = 1.0
+    class_weight_min: float = 0.1
+    class_weight_max: float = 100.0
+
+
+class QATConfig(BaseModel):
+    """Pydantic model for QAT configuration"""
+
+    enabled: bool = False
+    backend: Literal["fbgemm", "qnnpack"] = "fbgemm"
+    start_epoch: int = Field(5, ge=0)
+
+
+class DistillationConfig(BaseModel):
+    """Pydantic model for Knowledge Distillation configuration"""
+
+    enabled: bool = False
+    teacher_model_path: str = ""
+    teacher_on_cpu: bool = False
+    teacher_mixed_precision: bool = True
+    log_memory_usage: bool = False
+    teacher_architecture: Literal["wav2vec2"] = "wav2vec2"
+    temperature: float = Field(2.0, ge=1.0, le=10.0)
+    alpha: float = Field(0.5, ge=0.0, le=1.0)
 
 
 class WakewordPydanticConfig(BaseModel):
@@ -173,6 +210,8 @@ class WakewordPydanticConfig(BaseModel):
     augmentation: AugmentationConfig = Field(default_factory=lambda: AugmentationConfig())  # type: ignore
     optimizer: OptimizerConfig = Field(default_factory=lambda: OptimizerConfig())  # type: ignore
     loss: LossConfig = Field(default_factory=lambda: LossConfig())  # type: ignore
+    qat: QATConfig = Field(default_factory=lambda: QATConfig())  # type: ignore
+    distillation: DistillationConfig = Field(default_factory=lambda: DistillationConfig())  # type: ignore
 
     @root_validator(skip_on_failure=True)
     def cross_dependencies(cls, values: Dict[str, Any]) -> Dict[str, Any]:
