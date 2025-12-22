@@ -19,7 +19,9 @@ The Wakeword Training Platform is designed to democratize high-quality, producti
 *   **One-Click Export:** Seamlessly convert trained models to TFLite and ONNX formats, ready for integration into edge hardware.
 *   **Visual Analysis & Debugging:** Comprehensive tools for visualizing model performance, analyzing false positives, and tuning detection thresholds.
 *   **Standardized Benchmarking:** Built-in profiling tools to measure latency and memory usage across all stages of the distributed cascade.
-*   **Automated Data Excellence:** Built-in dataset health checks, automated balancing, and sophisticated noise augmentation to ensure model robustness.
+*   **Robustness Engine:** Advanced acoustic simulation including Room Impulse Response (RIR), background noise, and pitch/speed perturbation to guarantee real-world performance.
+*   **Precision Training:** Specialized loss functions (Focal Loss, Weighted Cross-Entropy) and Knowledge Distillation from large teacher models (Wav2Vec2) to maximize accuracy on small devices.
+*   **Stable Streaming:** Integrated temporal smoothing and hysteresis logic to eliminate flickering detections in real-time usage.
 
 ## User Experience Goals
 *   **Automated Simplicity:** Default presets that allow users to launch high-quality training pipelines with minimal manual configuration.

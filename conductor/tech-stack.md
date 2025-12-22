@@ -6,12 +6,14 @@
 
 ## Deep Learning & AI
 *   **PyTorch 2.1.2**: Main deep learning framework for model training.
+*   **HuggingFace Transformers**: Source for pre-trained teacher models (Wav2Vec2) used in distillation.
 *   **ONNX / ONNX Runtime**: Standardized model format for cross-platform inference and export.
 *   **onnx2tf / TFLite**: Tools for converting models to edge-optimized TensorFlow Lite formats.
 *   **Optuna**: Automated hyperparameter optimization (HPO).
 
 ## Audio Processing
 *   **Librosa / Soundfile**: Core libraries for loading, analyzing, and transforming audio data.
+*   **Torchaudio**: GPU-accelerated audio loading and augmentation.
 *   **Sounddevice**: Real-time microphone input for streaming detection testing.
 *   **Scipy**: Scientific computing used for signal processing and augmentations.
 
