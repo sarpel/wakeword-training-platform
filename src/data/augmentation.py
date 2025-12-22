@@ -157,7 +157,10 @@ class AudioAugmentation(nn.Module):
             self.register_buffer("rirs", stacked_rirs)
 
     def time_stretch(self, waveform: torch.Tensor) -> torch.Tensor:
-        """Batch time stretch using interpolation"""
+        """
+        Batch time stretch using interpolation.
+        Preserves original sequence length by padding or cropping.
+        """
         # waveform: (Batch, 1, Samples)
         factor = random.uniform(*self.time_stretch_range)
         if factor == 1.0:
@@ -176,7 +179,10 @@ class AudioAugmentation(nn.Module):
         return cast(torch.Tensor, out)
 
     def pitch_shift(self, waveform: torch.Tensor) -> torch.Tensor:
-        """Batch pitch shift"""
+        """
+        Batch pitch shift using resampling trick.
+        Preserves original duration.
+        """
         n_steps = random.randint(*self.pitch_shift_range)
         if n_steps == 0:
             return waveform
