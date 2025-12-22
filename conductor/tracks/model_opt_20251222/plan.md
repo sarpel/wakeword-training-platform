@@ -2,14 +2,14 @@
 
 This plan follows the Test-Driven Development (TDD) methodology and the specific phase completion protocols defined in `conductor/workflow.md`.
 
-## Phase 1: Advanced Data Augmentation & Robustness
+## Phase 1: Advanced Data Augmentation & Robustness [checkpoint: PLACEHOLDER_SHA]
 Focus on improving the model's ability to handle real-world acoustic environments.
 
-- [x] Task: Write tests for RIR, pitch, and speed perturbation in `tests/test_augmentation_advanced.py` [667554f]
-- [ ] Task: Implement RIR (Room Impulse Response) simulation in `src/data/augmentation.py`
-- [ ] Task: Implement Pitch and Speed perturbation in `src/data/augmentation.py`
-- [ ] Task: Update dataset loading to support these new augmentation types
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Advanced Augmentation' (Protocol in workflow.md)
+- [x] Task: Write tests for RIR, pitch, and speed perturbation in `tests/test_augmentation_advanced.py` [1685694]
+- [x] Task: Implement RIR (Room Impulse Response) simulation in `src/data/augmentation.py` [47e1aaf]
+- [x] Task: Implement Pitch and Speed perturbation in `src/data/augmentation.py` [7b76264]
+- [x] Task: Update dataset loading to support these new augmentation types [2a40fd3]
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Advanced Augmentation' (Protocol in workflow.md)
 
 ## Phase 2: Specialized Loss Functions & Class Imbalance
 Optimize the training objective to handle the 90% negative class imbalance.
