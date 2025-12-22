@@ -48,7 +48,8 @@ The Judge server is a Python-based API that hosts your high-accuracy models.
     ```
 3.  **Start the server**:
     ```bash
-    python app.py --model path/to/your/judge_model.onnx --port 8000
+    cd server
+    uvicorn app:app --host 0.0.0.0 --port 8000
     ```
 
 ### 3.2 MCU Installation (The Sentry)
