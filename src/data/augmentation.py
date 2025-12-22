@@ -244,7 +244,10 @@ class AudioAugmentation(nn.Module):
         return cast(torch.Tensor, noisy)
 
     def apply_rir(self, waveform: torch.Tensor) -> torch.Tensor:
-        """Apply RIR convolution to batch"""
+        """
+        Apply RIR convolution to batch using FFT.
+        Includes dry/wet mixing and energy normalization.
+        """
         if self.rirs.numel() == 0:
             return waveform
 
