@@ -73,7 +73,11 @@ class ModelEvaluator:
 
         # Audio processor
         # Create CMVN path
-        cmvn_path = Path("data/cmvn_stats.json")
+        from src.config.paths import paths
+        cmvn_path = paths.CMVN_STATS
+
+        if not cmvn_path.exists():
+            logger.warning(f"CMVN stats not found at {cmvn_path}. Evaluation might be inaccurate if model was trained with CMVN.")
 
         processor_config: Optional["WakewordConfig"] = None
         if config is not None:
@@ -117,6 +121,9 @@ class ModelEvaluator:
         self.metrics_calculator = MetricsCalculator(device=device)
 
         logger.info(f"ModelEvaluator initialized on {device}")
+        logger.info(f"Class Mapping: Positive=1, Negative=0")
+        if hasattr(model, "num_classes"):
+            logger.info(f"Model Classes: {model.num_classes}")
 
     def evaluate_file(self, audio_path: Path, threshold: float = 0.5) -> EvaluationResult:
         return evaluate_file(self, audio_path, threshold)
@@ -198,6 +205,18 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
         dropout=config.model.dropout,
         input_size=input_size,
         input_channels=1,
+        # RNN (LSTM/GRU) params
+        hidden_size=config.model.hidden_size,
+        num_layers=config.model.num_layers,
+        bidirectional=config.model.bidirectional,
+        # TCN / TinyConv params
+        tcn_num_channels=getattr(config.model, "tcn_num_channels", None),
+        tcn_kernel_size=getattr(config.model, "tcn_kernel_size", 3),
+        tcn_dropout=getattr(config.model, "tcn_dropout", config.model.dropout),
+        # CD-DNN params
+        cddnn_hidden_layers=getattr(config.model, "cddnn_hidden_layers", None),
+        cddnn_context_frames=getattr(config.model, "cddnn_context_frames", 50),
+        cddnn_dropout=getattr(config.model, "cddnn_dropout", config.model.dropout),
     )
 
     # Load weights

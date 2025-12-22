@@ -161,7 +161,9 @@ def export_to_onnx(
             log += f"   File size: {results['tflite_size_mb']:.2f} MB\n"
             log += f"   Path: {results['tflite_path']}\n"
         elif export_tflite:
-            log += f"\n❌ TFLite export failed: {results.get('tflite_error')}\n"
+            tflite_error = results.get('tflite_error', 'Unknown conversion error')
+            log += f"\n❌ TFLite export failed: {tflite_error}\n"
+            log += f"   Hint: Ensure 'onnx2tf' is correctly installed and the model architecture is supported.\n"
 
         log += f"\n" + "=" * 60 + "\n"
         log += f"✅ Export complete!\n"
@@ -243,6 +245,18 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
             dropout=config.model.dropout,
             input_size=input_size,
             input_channels=1,
+            # RNN (LSTM/GRU) params
+            hidden_size=config.model.hidden_size,
+            num_layers=config.model.num_layers,
+            bidirectional=config.model.bidirectional,
+            # TCN / TinyConv params
+            tcn_num_channels=getattr(config.model, "tcn_num_channels", None),
+            tcn_kernel_size=getattr(config.model, "tcn_kernel_size", 3),
+            tcn_dropout=getattr(config.model, "tcn_dropout", config.model.dropout),
+            # CD-DNN params
+            cddnn_hidden_layers=getattr(config.model, "cddnn_hidden_layers", None),
+            cddnn_context_frames=getattr(config.model, "cddnn_context_frames", 50),
+            cddnn_dropout=getattr(config.model, "cddnn_dropout", config.model.dropout),
         )
         
         # Load weights

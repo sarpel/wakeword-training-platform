@@ -100,11 +100,25 @@ class MetricsCalculator:
 
         # Get predicted classes
         if predictions.dim() == 2:
-            # Multi-class output, take argmax
-            pred_classes = torch.argmax(predictions, dim=1)
+            if predictions.size(1) >= 2:
+                # Multi-class output (usually 2).
+                # To respect threshold, we compute probability of class 1 (Positive)
+                # If these are logits, apply softmax first
+                if torch.abs(predictions.sum(dim=1) - 1.0).mean() > 1e-3:
+                    # Likely logits, apply softmax
+                    probs = torch.softmax(predictions, dim=1)[:, 1]
+                else:
+                    # Likely probabilities
+                    probs = predictions[:, 1]
+                pred_classes = (probs >= threshold).long()
+            else:
+                # Single output but 2D (batch, 1)
+                # Apply sigmoid if not probabilities
+                probs = torch.sigmoid(predictions[:, 0]) if predictions.max() > 1.0 or predictions.min() < 0.0 else predictions[:, 0]
+                pred_classes = (probs >= threshold).long()
         else:
-            # Single output, threshold
-            pred_classes = (predictions > threshold).long()
+            # Single output 1D (batch,)
+            pred_classes = (predictions >= threshold).long()
 
         # Calculate confusion matrix components
         tp = int(((pred_classes == 1) & (targets == 1)).sum().item())

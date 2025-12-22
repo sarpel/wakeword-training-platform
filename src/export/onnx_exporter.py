@@ -151,7 +151,12 @@ class ONNXExporter:
             return {"success": False, "error": str(e)}
 
     def export_to_tflite(
-        self, onnx_path: Path, output_path: Path, sample_input: Optional[torch.Tensor] = None
+        self, 
+        onnx_path: Path, 
+        output_path: Path, 
+        sample_input: Optional[torch.Tensor] = None,
+        quantize_int8: bool = False,
+        is_qat: bool = False
     ) -> Dict[str, Any]:
         """
         Export ONNX model to TFLite using onnx2tf
@@ -160,67 +165,72 @@ class ONNXExporter:
             onnx_path: Path to ONNX model
             output_path: Path to save .tflite file
             sample_input: Optional sample input for calibration/verification
+            quantize_int8: Whether to perform INT8 quantization during conversion
+            is_qat: Whether the model was trained with QAT
 
         Returns:
             Dictionary with export results
         """
-        logger.info(f"Exporting to TFLite: {output_path}")
+        logger.info(f"Exporting to TFLite: {output_path} (INT8={quantize_int8}, QAT={is_qat})")
 
         try:
-            # Using onnx2tf via subprocess
-            # onnx2tf -i input.onnx -o output_folder
-
             output_folder = output_path.parent / "tflite_export"
             output_folder.mkdir(parents=True, exist_ok=True)
 
             input_shape_str = ",".join(map(str, self.sample_input_shape))
 
-            # Use python -m onnx2tf for better compatibility
+            # Base command
             cmd = [
                 sys.executable,
                 "-m",
                 "onnx2tf",
-                "-i",
-                str(onnx_path),
-                "-o",
-                str(output_folder),
-                "-ois",
-                f"input:{input_shape_str}",
-                "-v",
-                "info",  # verbose level
+                "-i", str(onnx_path),
+                "-o", str(output_folder),
+                "-ois", f"input:{input_shape_str}",
+                "--non_verbose", # Reduce log noise
             ]
+
+            # QAT / Quantization specific flags
+            if is_qat:
+                # For QAT models, we want to preserve the fake quantization nodes or convert them correctly
+                cmd.extend([
+                    "--copy_onnx_input_output_names_to_tflite", # Feature keeping
+                    "--output_integer_quantized_tflite" if quantize_int8 else ""
+                ])
+            
+            if quantize_int8:
+                cmd.extend([
+                    "-qt", "int8",
+                    "--overwrite_input_dtype", "uint8" if is_qat else "float32", # Optional: hardware dependent
+                ])
+
+            # Filter out empty strings
+            cmd = [c for c in cmd if c]
 
             logger.info(f"Running command: {' '.join(cmd)}")
 
             process = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-            logger.info(f"onnx2tf output:\n{process.stdout}")
+            logger.info("onnx2tf conversion completed successfully")
 
-            # onnx2tf saves as saved_model and .tflite in the output folder
-            # We need to find the .tflite file
+            # Find generated .tflite file
             tflite_files = list(output_folder.glob("*.tflite"))
-
             if not tflite_files:
                 raise FileNotFoundError("onnx2tf did not generate a .tflite file")
 
-            # Move the tflite file to requested output_path
+            # Move the tflite file
             generated_tflite = tflite_files[0]
             shutil.move(str(generated_tflite), str(output_path))
 
-            # Cleanup output folder
-            # shutil.rmtree(output_folder) # Optional: keep saved_model?
-
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
-
             logger.info(f"✅ TFLite model exported: {output_path}")
 
             return {"success": True, "path": str(output_path), "file_size_mb": file_size_mb}
 
         except subprocess.CalledProcessError as e:
             logger.error(f"onnx2tf failed with code {e.returncode}")
-            logger.error(f"STDOUT: {e.stdout}")
             logger.error(f"STDERR: {e.stderr}")
-            return {"success": False, "error": f"onnx2tf failed: {e.stderr}"}
+            return {"success": False, "error": f"onnx2tf failed: {e.stderr[:500]}..."}
         except Exception as e:
             logger.error(f"TFLite export failed: {e}")
             return {"success": False, "error": str(e)}
@@ -353,6 +363,18 @@ def export_model_to_onnx(
         dropout=config.model.dropout,
         input_size=input_size,
         input_channels=1,
+        # RNN (LSTM/GRU) params
+        hidden_size=config.model.hidden_size,
+        num_layers=config.model.num_layers,
+        bidirectional=config.model.bidirectional,
+        # TCN / TinyConv params
+        tcn_num_channels=getattr(config.model, "tcn_num_channels", None),
+        tcn_kernel_size=getattr(config.model, "tcn_kernel_size", 3),
+        tcn_dropout=getattr(config.model, "tcn_dropout", config.model.dropout),
+        # CD-DNN params
+        cddnn_hidden_layers=getattr(config.model, "cddnn_hidden_layers", None),
+        cddnn_context_frames=getattr(config.model, "cddnn_context_frames", 50),
+        cddnn_dropout=getattr(config.model, "cddnn_dropout", config.model.dropout),
     )
 
     # Handle QAT checkpoints
@@ -436,13 +458,16 @@ def export_model_to_onnx(
         logger.info("Starting TFLite export...")
         tflite_path = output_path.with_suffix(".tflite")
 
-        # Create dummy input for calibration/shape
-        dummy_input = torch.randn(*sample_input_shape)
-
-        # Use the base ONNX model for conversion (not quantized)
+        # Use the base ONNX model for conversion
         onnx_base_path = Path(results["path"])
 
-        tflite_results = exporter.export_to_tflite(onnx_base_path, tflite_path)
+        # Perform TFLite conversion with quantization if requested OR if model is QAT
+        tflite_results = exporter.export_to_tflite(
+            onnx_path=onnx_base_path, 
+            output_path=tflite_path,
+            quantize_int8=quantize_int8 or is_qat_model,
+            is_qat=is_qat_model
+        )
 
         results["tflite_path"] = tflite_results.get("path")
         results["tflite_size_mb"] = tflite_results.get("file_size_mb")

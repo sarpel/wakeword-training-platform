@@ -297,8 +297,10 @@ def evaluate_test_set(
 
     try:
         # Default to data/splits/test.json if not provided
+        from src.config.paths import paths
+        
         if not test_split_path or test_split_path.strip() == "":
-            test_split_path = str(Path(data_root) / "splits" / "test.json")
+            test_split_path = str(paths.SPLITS / "test.json")
 
         test_path = Path(test_split_path)
 
@@ -313,7 +315,12 @@ def evaluate_test_set(
         logger.info(f"Evaluating test set: {test_path}")
 
         # Load test dataset
-        dataset_root_inferred = test_path.parent.parent
+        # We rely on GpuAudioProcessor (initialized in ModelEvaluator) to handle CMVN via centralized paths
+        # So we don't need to pass cmvn_path here for GpuAudioProcessor, BUT WakewordDataset might need it 
+        # if we weren't using return_raw_audio=True. Since we are, it's fine.
+        
+        # However, to be safe and consistent with training, we pass it.
+        cmvn_path = paths.CMVN_STATS
 
         test_dataset = WakewordDataset(
             manifest_path=test_path,
@@ -331,8 +338,8 @@ def evaluate_test_set(
             ].data.use_precomputed_features_for_training,
             npy_cache_features=eval_state.model_info["config"].data.npy_cache_features,
             fallback_to_audio=True,
-            cmvn_path=dataset_root_inferred / "cmvn_stats.json",
-            apply_cmvn=True if (dataset_root_inferred / "cmvn_stats.json").exists() else False,
+            cmvn_path=cmvn_path,
+            apply_cmvn=True if cmvn_path.exists() else False,
             return_raw_audio=True,
         )
 

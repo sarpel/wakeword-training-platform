@@ -627,20 +627,31 @@ Export PyTorch model to ONNX format for deployment on various platforms (mobile,
 - **Inference Speed**: ~28% faster on GPU, significantly faster on CPU
 - **Memory Usage**: ~73% reduction
 
-### 6.2 Quantization (INT8)
+### 6.2 TFLite & Quantization
 
 #### Purpose
-Reduce model size and inference time by converting FP32 weights to INT8, achieving 4× compression with minimal accuracy loss (<1%).
+Reduce model size and inference time for edge devices (ESP32, ARM) using TensorFlow Lite and 8-bit quantization.
 
-#### Technical Implementation
-
-**Methods**:
-- **Post-Training Quantization (PTQ)**: Quick, good for CPU deployment
-- **Quantization-Aware Training (QAT)**: Best accuracy, simulates quantization during training
+#### Features
+- **QAT Support**: Seamless conversion of Quantization-Aware Trained models.
+- **Feature Preservation**: Preserves input/output names and shapes for hardware compatibility.
+- **Integer Quantization**: Option for full integer quantized TFLite output.
 
 **Performance Impact**:
 - **Model Size**: 75% reduction (28.5 MB → 7.2 MB)
 - **Inference Speed**: ~66% faster on CPU
+
+---
+
+## 7. Metrics & Alignment
+
+### 7.1 Class Label Standard
+The platform uses a standardized class mapping across all modules:
+- **Index 1 (Positive)**: Wakeword / Target event.
+- **Index 0 (Negative)**: Non-wakeword speech, silence, or noise.
+
+### 7.2 Threshold-Aware Calculation
+Metrics calculation (`MetricsCalculator`) is threshold-aware for multi-class models. It computes the probability of the positive class (Index 1) and compares it against the user-defined threshold, ensuring the Confusion Matrix matches the visual detection results in the UI.
 
 ## 7. System Architecture
 

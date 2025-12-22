@@ -116,6 +116,11 @@ def evaluate_dataset(
     all_preds = torch.cat(all_preds, dim=0)
     all_targs = torch.cat(all_targs, dim=0)
 
+    # Log label distribution for verification
+    pos_count = (all_targs == 1).sum().item()
+    neg_count = (all_targs == 0).sum().item()
+    logger.info(f"Test Set Distribution: Positive (1)={pos_count}, Negative (0)={neg_count}")
+
     metrics = evaluator.metrics_calculator.calculate(all_preds, all_targs, threshold=threshold)
 
     logger.info(f"Evaluation complete: {metrics}")
