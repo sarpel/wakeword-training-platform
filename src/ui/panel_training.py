@@ -1113,7 +1113,7 @@ def apply_best_params(state: gr.State) -> str:
     if "background_noise_prob" in best_params:
         config.augmentation.background_noise_prob = best_params["background_noise_prob"]
     if "rir_prob" in best_params:
-        config.augmentation.rir_prob = best_params["rir_params"]
+        config.augmentation.rir_prob = best_params["rir_prob"]
     if "time_stretch_min" in best_params:
         config.augmentation.time_stretch_min = best_params["time_stretch_min"]
     if "time_stretch_max" in best_params:

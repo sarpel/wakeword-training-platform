@@ -97,7 +97,7 @@ def get_ha_wyoming_preset() -> WakewordConfig:
 
 def get_esp32s3_production_preset() -> WakewordConfig:
     """
-    ESP32-S3 Production configuration
+    ESP32-S3 Production configuration (PSRAM Required)
 
     Optimized for:
     - ESP32-S3 with PSRAM
@@ -106,7 +106,7 @@ def get_esp32s3_production_preset() -> WakewordConfig:
     """
     return WakewordConfig(
         config_name="esp32s3_production",
-        description="Production: ESP32-S3 (MobileNetV3, 40 Mel, Int8 Ready)",
+        description="Production: ESP32-S3 (PSRAM) - MobileNetV3",
         data=DataConfig(
             sample_rate=16000,
             audio_duration=1.0,
@@ -149,7 +149,7 @@ def get_esp32s3_production_preset() -> WakewordConfig:
 
 def get_mcu_tiny_production_preset() -> WakewordConfig:
     """
-    MCU (No PSRAM) Production configuration
+    MCU Production configuration (No-PSRAM)
 
     Optimized for:
     - Ultra-low memory devices (ESP32 without PSRAM)
@@ -158,7 +158,7 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
     """
     return WakewordConfig(
         config_name="mcu_tiny_production",
-        description="Production: MCU Lightweight (TinyConv 64x4, 40 Mel)",
+        description="Production: MCU (No-PSRAM) - TinyConv",
         data=DataConfig(
             sample_rate=16000,
             audio_duration=1.0,
@@ -430,9 +430,9 @@ def get_fast_training_preset() -> WakewordConfig:
 PRESETS: Dict[str, Callable[[], WakewordConfig]] = {
     "Default": get_default_preset,
     "Production: Home Assistant / Wyoming": get_ha_wyoming_preset,
-    "Production: ESP32-S3 (Standard)": get_esp32s3_production_preset,
+    "Production: ESP32-S3 (PSRAM)": get_esp32s3_production_preset,
     "Production: RPi Zero 2W Satellite": get_rpi_zero2w_preset,
-    "Production: MCU (Lightweight - No PSRAM)": get_mcu_tiny_production_preset,
+    "Production: MCU (No-PSRAM)": get_mcu_tiny_production_preset,
     "Production: Server (High Accuracy Judge)": get_server_judge_preset,
     "Production: x86_64 (Ultimate Accuracy)": get_ultimate_accuracy_preset,
     "Utility: Small Dataset (<10k)": get_small_dataset_preset,
