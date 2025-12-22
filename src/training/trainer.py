@@ -122,6 +122,16 @@ class Trainer:
             config=config, cmvn_path=cmvn_path if cmvn_path.exists() else None, device=device
         )
 
+        # Calculate class weights
+        class_weights = None
+        if hasattr(train_loader.dataset, "get_class_weights"):
+            try:
+                # Calculate weights from training data
+                class_weights = train_loader.dataset.get_class_weights()
+                logger.info(f"Class weights calculated: {class_weights}")
+            except Exception as e:
+                logger.warning(f"Failed to calculate class weights: {e}")
+
         # Create loss function
         # Initialize with reduction='none' to support hard negative weighting
         self.criterion = create_loss_function(
@@ -130,7 +140,7 @@ class Trainer:
             label_smoothing=config.loss.label_smoothing,
             focal_alpha=config.loss.focal_alpha,
             focal_gamma=config.loss.focal_gamma,
-            class_weights=None,
+            class_weights=class_weights,
             device=device,
             reduction="none",  # Changed from default 'mean'
         ).to(device)
