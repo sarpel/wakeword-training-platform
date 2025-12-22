@@ -20,7 +20,7 @@ Optimize the training objective to handle the 90% negative class imbalance.
 - [x] Task: Integrate loss selection into the training configuration and UI [536d84d]
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Loss Optimization' (Protocol in workflow.md)
 
-## Phase 3: Knowledge Distillation Pipeline [checkpoint: PLACEHOLDER_SHA]
+## Phase 3: Knowledge Distillation Pipeline [checkpoint: 8b947a4]
 Implement the Teacher-Student training flow to boost edge model performance.
 
 - [x] Task: Write tests for Teacher-Student logit matching in `tests/test_distillation_pipeline.py` [3bbf12b]
@@ -29,10 +29,10 @@ Implement the Teacher-Student training flow to boost edge model performance.
 - [x] Task: Verify the distilled student outperforms the baseline student [36bedb3]
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Knowledge Distillation' (Protocol in workflow.md)
 
-## Phase 4: Hard Negative Mining & Streaming Refinement
+## Phase 4: Hard Negative Mining & Streaming Refinement [checkpoint: PLACEHOLDER_SHA]
 Close the loop on false alarms and stabilize real-time detection.
 
-- [ ] Task: Create a utility script to extract high-confidence False Positives from evaluation logs
-- [ ] Task: Implement temporal smoothing logic (N-of-M frames) in the streaming detector
-- [ ] Task: Conduct a final end-to-end evaluation to verify FNR reduction and FAH maintenance
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: Final Production Tuning' (Protocol in workflow.md)
+- [x] Task: Create a utility script to extract high-confidence False Positives from evaluation logs [6485130]
+- [x] Task: Implement temporal smoothing logic (N-of-M frames) in the streaming detector [0904386]
+- [x] Task: Conduct a final end-to-end evaluation to verify FNR reduction and FAH maintenance [0904386]
+- [x] Task: Conductor - User Manual Verification 'Phase 4: Final Production Tuning' (Protocol in workflow.md)
