@@ -1,10 +1,10 @@
 # Plan: General Bug Hunt and Documentation Update
 
-## Phase 1: Audit and Verification
+## Phase 1: Audit and Verification [checkpoint: 10e4e10]
 - [x] Task: Audit root `.md` files for outdated file paths and broken internal links.
 - [x] Task: Verify all CLI commands in `README.md` and `DOCUMENTATION.md` against actual scripts and `run.py`.
 - [x] Task: Verify configuration examples against `src/config/defaults.py` and `presets.py`.
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Audit and Verification' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Audit and Verification' (Protocol in workflow.md) 10e4e10
 
 ## Phase 2: Content Updates
 - [ ] Task: Update `README.md` and `DOCUMENTATION.md` with corrected commands and installation steps.
