@@ -37,6 +37,7 @@ from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.distillation_trainer import DistillationTrainer
 from src.training.hpo import run_hpo
+from src.training.hpo_results import HPOResult
 from src.training.lr_finder import LRFinder
 from src.training.metrics import MetricResults  # Imported MetricResults
 from src.training.qat_utils import prepare_model_for_qat
@@ -967,13 +968,21 @@ def hpo_worker(config: WakewordConfig, n_trials: int, study_name: str) -> None:
         training_state.is_training = False
 
 
+def format_hpo_results(result: HPOResult) -> pd.DataFrame:
+    """Format HPO results for display."""
+    data = []
+    for k, v in result.best_params.items():
+        data.append({"Parameter": k, "Value": v})
+    return pd.DataFrame(data)
+
+
 def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, param_groups: List[str]) -> Tuple[str, pd.DataFrame]:
     """Start HPO study in background"""
     if training_state.is_training:
-        return "⚠️ Training already in progress", None
+        return "⚠️ Training already in progress", pd.DataFrame()
 
     if not param_groups:
-        return "⚠️ Please select at least one parameter group to optimize", None
+        return "⚠️ Please select at least one parameter group to optimize", pd.DataFrame()
 
     training_state.reset()
     training_state.is_training = True
@@ -998,7 +1007,7 @@ def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, para
                 # Normalize feature type
                 feature_type = "mel" if config.data.feature_type == "mel_spectrogram" else config.data.feature_type
 
-                # Check CMVN stats (basic check, full check is in start_training)
+                # Check CMVN stats
                 cmvn_path = paths.CMVN_STATS
                 if not cmvn_path.exists():
                     training_state.add_log("⚠️ CMVN stats missing. Computing...")
@@ -1069,8 +1078,9 @@ def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, para
                 n_jobs=int(n_jobs),
             )
             training_state.add_log("✅ HPO Study Complete!")
-            # Store best params in state for "Apply" feature
+            # Store best params in state
             state["best_hpo_params"] = result.best_params
+            training_state.hpo_result = result
 
         except Exception as e:
             logger.exception("HPO failed")
@@ -1082,86 +1092,114 @@ def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, para
     if training_state.training_thread:
         training_state.training_thread.start()
 
-    return f"🚀 HPO study '{study_name}' started. Optimizing: {', '.join(param_groups)} (Jobs: {n_jobs})", None
+    return f"🚀 HPO study '{study_name}' started. Optimizing: {', '.join(param_groups)} (Jobs: {n_jobs})", pd.DataFrame()
 
 
+def check_hpo_results() -> pd.DataFrame:
+    """Check for HPO results and return DataFrame if available."""
+    if hasattr(training_state, 'hpo_result') and training_state.hpo_result:
+        return format_hpo_results(training_state.hpo_result)
+    return pd.DataFrame()
 
-def apply_best_params(state: gr.State) -> str:
-    """Apply best HPO params to current config"""
-    if "best_hpo_params" not in state or not state["best_hpo_params"]:
-        return "⚠️ No HPO results found to apply. Run HPO first."
 
-    best_params = state["best_hpo_params"]
+def apply_best_params(state: gr.State, edited_results: pd.DataFrame) -> str:
+    """Apply best HPO params to current config, supporting manual edits."""
+    params_to_apply = {}
+
+    # 1. First source: Original HPO results
+    if "best_hpo_params" in state and state["best_hpo_params"]:
+        params_to_apply.update(state["best_hpo_params"])
+
+    # 2. Second source: Edited DataFrame (Overrides original)
+    if edited_results is not None and not edited_results.empty:
+        try:
+            for _, row in edited_results.iterrows():
+                key = row["Parameter"]
+                val = row["Value"]
+                try:
+                    if float(val).is_integer():
+                        val = int(float(val))
+                    else:
+                        val = float(val)
+                except (ValueError, TypeError):
+                    pass
+                params_to_apply[key] = val
+        except Exception as e:
+            return f"⚠️ Error parsing edited table: {e}"
+
+    if not params_to_apply:
+        return "⚠️ No parameters found to apply."
+
     config = state["config"]
+    applied_count = 0
 
-    # Map flat params to config structure
-    # Training
-    if "learning_rate" in best_params:
-        config.training.learning_rate = best_params["learning_rate"]
-    if "batch_size" in best_params:
-        config.training.batch_size = best_params["batch_size"]
-    if "weight_decay" in best_params:
-        config.optimizer.weight_decay = best_params["weight_decay"]
-    if "optimizer" in best_params:
-        config.optimizer.optimizer = best_params["optimizer"]
+    def set_if_exists(config_obj, config_key, param_key, cast_type=None):
+        if param_key in params_to_apply:
+            val = params_to_apply[param_key]
+            if cast_type:
+                try:
+                    val = cast_type(val)
+                except:
+                    return 0
+            setattr(config_obj, config_key, val)
+            return 1
+        return 0
 
-    # Model
-    if "dropout" in best_params:
-        config.model.dropout = best_params["dropout"]
-    if "hidden_size" in best_params:
-        config.model.hidden_size = best_params["hidden_size"]
+    # Mapping
+    applied_count += set_if_exists(config.training, "learning_rate", "learning_rate", float)
+    applied_count += set_if_exists(config.training, "batch_size", "batch_size", int)
+    applied_count += set_if_exists(config.optimizer, "weight_decay", "weight_decay", float)
+    applied_count += set_if_exists(config.optimizer, "optimizer", "optimizer", str)
+    applied_count += set_if_exists(config.model, "dropout", "dropout", float)
+    applied_count += set_if_exists(config.model, "hidden_size", "hidden_size", int)
+    applied_count += set_if_exists(config.model, "num_layers", "num_layers", int)
+    applied_count += set_if_exists(config.model, "tcn_kernel_size", "tcn_kernel_size", int)
+    applied_count += set_if_exists(config.augmentation, "background_noise_prob", "background_noise_prob", float)
+    applied_count += set_if_exists(config.augmentation, "rir_prob", "rir_prob", float)
+    applied_count += set_if_exists(config.augmentation, "time_stretch_min", "time_stretch_min", float)
+    applied_count += set_if_exists(config.augmentation, "time_stretch_max", "time_stretch_max", float)
+    applied_count += set_if_exists(config.augmentation, "freq_mask_param", "freq_mask_param", int)
+    applied_count += set_if_exists(config.augmentation, "time_mask_param", "time_mask_param", int)
 
-    # Augmentation
-    if "background_noise_prob" in best_params:
-        config.augmentation.background_noise_prob = best_params["background_noise_prob"]
-    if "rir_prob" in best_params:
-        config.augmentation.rir_prob = best_params["rir_prob"]
-    if "time_stretch_min" in best_params:
-        config.augmentation.time_stretch_min = best_params["time_stretch_min"]
-    if "time_stretch_max" in best_params:
-        config.augmentation.time_stretch_max = best_params["time_stretch_max"]
-    if "freq_mask_param" in best_params:
-        config.augmentation.freq_mask_param = best_params["freq_mask_param"]
-    if "time_mask_param" in best_params:
-        config.augmentation.time_mask_param = best_params["time_mask_param"]
+    if "pitch_shift_range" in params_to_apply:
+        try:
+            r = int(params_to_apply["pitch_shift_range"])
+            config.augmentation.pitch_shift_min = -r
+            config.augmentation.pitch_shift_max = r
+            applied_count += 1
+        except:
+            pass
 
-    # Data
-    if "n_mels" in best_params:
-        config.data.n_mels = best_params["n_mels"]
+    applied_count += set_if_exists(config.data, "n_mels", "n_mels", int)
+    applied_count += set_if_exists(config.data, "hop_length", "hop_length", int)
+    applied_count += set_if_exists(config.loss, "loss_function", "loss_function", str)
+    applied_count += set_if_exists(config.loss, "focal_gamma", "focal_gamma", float)
+    applied_count += set_if_exists(config.loss, "focal_alpha", "focal_alpha", float)
+    applied_count += set_if_exists(config.loss, "label_smoothing", "label_smoothing", float)
 
-    # Loss
-    if "loss_function" in best_params:
-        config.loss.loss_function = best_params["loss_function"]
-    if "focal_gamma" in best_params:
-        config.loss.focal_gamma = best_params["focal_gamma"]
-
-    return f"✅ Applied best parameters: {best_params}"
+    return f"✅ Applied {applied_count} parameters."
 
 
-def save_best_profile(state: gr.State) -> str:
+def save_best_profile(state: gr.State, edited_results: pd.DataFrame) -> str:
     """Save best HPO params as a new user profile"""
-    if "best_hpo_params" not in state or not state["best_hpo_params"]:
-        return "⚠️ No HPO results found to save."
+    res = apply_best_params(state, edited_results)
+    if res.startswith("⚠️"):
+        return res
 
-    # Apply params first to ensure config is up to date
-    apply_best_params(state)
-
-    # Create filename
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     profile_name = f"user_profile_{timestamp}"
     filename = f"{profile_name}.yaml"
     save_path = paths.CONFIGS / filename
 
-    # Update config metadata
     state["config"].config_name = profile_name
     state["config"].description = f"User generated profile from HPO results on {timestamp} (User)"
 
-    # Save
     try:
         state["config"].save(save_path)
         return f"💾 Saved profile to {filename}"
     except Exception as e:
         return f"❌ Failed to save profile: {e}"
+
 
 
 def list_checkpoints() -> List[str]:
@@ -1461,7 +1499,11 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     hpo_action_status = gr.Textbox(label="Action Status", interactive=False)
 
                 with gr.Row():
-                    hpo_results = gr.DataFrame(headers=["Trial", "Value", "Params"])
+                    hpo_results = gr.DataFrame(
+                        headers=["Parameter", "Value"],
+                        interactive=True,
+                        label="Best Parameters (Editable)"
+                    )
 
         gr.Markdown("---")
 
@@ -1607,9 +1649,17 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
             outputs=[hpo_status, hpo_results],
         )
 
-        apply_params_btn.click(fn=apply_best_params, inputs=[state], outputs=[hpo_action_status])
+        apply_params_btn.click(
+            fn=apply_best_params,
+            inputs=[state, hpo_results],
+            outputs=[hpo_action_status]
+        )
 
-        save_profile_btn.click(fn=save_best_profile, inputs=[state], outputs=[hpo_action_status])
+        save_profile_btn.click(
+            fn=save_best_profile,
+            inputs=[state, hpo_results],
+            outputs=[hpo_action_status]
+        )
 
         # Auto-refresh for live updates
         status_refresh = gr.Timer(value=2.0, active=True)  # Update every 2 seconds
@@ -1638,6 +1688,13 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 best_val_acc,
                 model_path,
             ],
+        )
+
+        # New timer for HPO results
+        hpo_refresh = gr.Timer(value=5.0, active=True)
+        hpo_refresh.tick(
+            fn=check_hpo_results,
+            outputs=[hpo_results]
         )
 
     # Expose component for app.py
