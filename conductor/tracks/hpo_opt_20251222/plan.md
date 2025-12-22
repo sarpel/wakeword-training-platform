@@ -18,18 +18,18 @@ Implement hardware-aware parallelization and intelligent trial pruning.
 - [x] Task: Add configuration options to the HPO settings UI to control parallelization and pruning aggressiveness.
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Speed Optimization Implementation' (Protocol in workflow.md)
 
-## Phase 3: Variable Expansion & Output Structuring
+## Phase 3: Variable Expansion & Output Structuring [checkpoint: e8dad56]
 Update the HPO engine to track and return a comprehensive set of parameters.
 
-- [~] Task: Modify the HPO objective function to log and return all architectural, training, preprocessing, and threshold variables.
-- [ ] Task: Standardize the HPO result data structure to support a wide range of variable types (int, float, categorical).
-- [ ] Task: Update the HPO output persistence logic to ensure all variables are saved to the temporary results storage.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Variable Expansion & Output Structuring' (Protocol in workflow.md)
+- [x] Task: Modify the HPO objective function to log and return all architectural, training, preprocessing, and threshold variables.
+- [x] Task: Standardize the HPO result data structure to support a wide range of variable types (int, float, categorical).
+- [x] Task: Update the HPO output persistence logic to ensure all variables are saved to the temporary results storage.
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Variable Expansion & Output Structuring' (Protocol in workflow.md)
 
 ## Phase 4: UI Enhancement & Profile Integration
 Create a rich, editable results view and robust "Apply/Save" functionality.
 
-- [ ] Task: Design and implement a structured Gradio table/form to display HPO results with inline editing capabilities.
+- [~] Task: Design and implement a structured Gradio table/form to display HPO results with inline editing capabilities.
 - [ ] Task: Implement logic to map UI-edited HPO results back to the internal configuration format.
 - [ ] Task: Enhance the "Apply to Current Session" and "Save to Profile" buttons to handle the full expanded set of variables.
 - [ ] Task: Verify that edited variables are correctly reflected in the configuration and active training session.
