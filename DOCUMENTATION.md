@@ -665,7 +665,9 @@ src/
 ├── training/         # Training loop and optimizations
 ├── evaluation/       # Inference and metrics
 ├── export/           # ONNX export
-└── ui/               # Gradio interface
+├── platform/         # Platform-specific optimizations (RPI, etc.)
+├── ui/               # Gradio interface
+└── exceptions.py     # Custom exception classes
 ```
 
 ### 7.2 Data Flow Architecture

@@ -11,7 +11,7 @@ This guide details the **Industrial Standardized Training Presets** available in
 | **M5Stack Atom Echo** | `Production: MCU (No-PSRAM)` | **Internal RAM only**| TinyConv |
 | **ESP32 / ESP32-C3** | `Production: MCU (No-PSRAM)` | **Internal RAM only**| TinyConv |
 | **RPi Zero 2W / 3 / 4**| `Production: RPi Zero 2W Satellite`| Linux / Wyoming | MobileNetV3 |
-| **Desktop / Server** | `Production: x86_64 (Ultimate)` | High Performance | ResNet18 |
+| **Desktop / Server** | `Production: x86_64 (Ultimate Accuracy)` | High Performance | ResNet18 |
 
 ---
 
@@ -33,10 +33,25 @@ This guide details the **Industrial Standardized Training Presets** available in
 - **Architecture:** `MobileNetV3-Small`
 - **Context:** Uses a 1.5s audio window to match standard Home Assistant voice satellite behaviors.
 
-### 4. Production: x86_64 (Ultimate Accuracy)
+### 4. Production: RPi Zero 2W Satellite
+**Best for:** Raspberry Pi Zero 2W, 3, or 4 running as voice satellites.
+- **Architecture:** `MobileNetV3-Small`
+- **Why this?** Optimized for the Cortex-A53 processor and Wyoming protocol.
+
+### 5. Production: x86_64 (Ultimate Accuracy)
 **Best for:** Running detection on powerful hardware (PC, Home Assistant Blue/Yellow, NUC).
 - **Architecture:** `ResNet18`
-- **Why this?** Uses 80 Mel bands and high-resolution features. It is too "heavy" for microcontrollers but provides near-perfect detection for server-side or desktop use cases.
+- **Why this?** Uses 80 Mel bands and high-resolution features (2.0s context). It is too "heavy" for microcontrollers but provides near-perfect detection for server-side or desktop use cases.
+
+---
+
+## 🛠️ Utility Profiles
+
+### 1. Utility: Small Dataset (<10k)
+Optimized for training when you have very limited data. Uses high dropout (0.5) and aggressive augmentation to prevent overfitting.
+
+### 2. Utility: Fast Training (Prototyping)
+Used for quick iterations. Uses a high learning rate and fewer epochs.
 
 ---
 
