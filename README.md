@@ -42,6 +42,16 @@ Detailed documentation has been consolidated into [DOCUMENTATION.md](DOCUMENTATI
 
 ---
 
+## 📂 Data Preparation
+
+The platform expects audio files in the following structure:
+- `data/raw/positive/`: Put your wakeword audio files here (.wav, .flac, .mp3).
+- `data/raw/negative/`: Put background noise and non-wakeword speech here.
+
+The system will automatically create these directories on first run.
+
+---
+
 ## 🏗️ Architecture Overview
 
 The system supports a 3-stage distributed architecture:
