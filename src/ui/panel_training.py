@@ -967,7 +967,7 @@ def hpo_worker(config: WakewordConfig, n_trials: int, study_name: str) -> None:
         training_state.is_training = False
 
 
-def start_hpo(state: gr.State, n_trials: int, study_name: str, param_groups: List[str]) -> Tuple[str, pd.DataFrame]:
+def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, param_groups: List[str]) -> Tuple[str, pd.DataFrame]:
     """Start HPO study in background"""
     if training_state.is_training:
         return "⚠️ Training already in progress", None
@@ -1066,6 +1066,7 @@ def start_hpo(state: gr.State, n_trials: int, study_name: str, param_groups: Lis
                 study_name=study_name,
                 param_groups=param_groups,
                 log_callback=training_state.add_log,
+                n_jobs=int(n_jobs),
             )
             training_state.add_log("✅ HPO Study Complete!")
             # Store best params in state for "Apply" feature
@@ -1081,7 +1082,8 @@ def start_hpo(state: gr.State, n_trials: int, study_name: str, param_groups: Lis
     if training_state.training_thread:
         training_state.training_thread.start()
 
-    return f"🚀 HPO study '{study_name}' started. Optimizing: {', '.join(param_groups)}", None
+    return f"🚀 HPO study '{study_name}' started. Optimizing: {', '.join(param_groups)} (Jobs: {n_jobs})", None
+
 
 
 def apply_best_params(state: gr.State) -> str:
@@ -1433,6 +1435,14 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         step=10,
                         label="Number of Trials",
                     )
+                    n_jobs = gr.Slider(
+                        minimum=1,
+                        maximum=8,
+                        value=1,
+                        step=1,
+                        label="Parallel Jobs",
+                        info="Number of parallel trials (increases RAM usage)",
+                    )
                     study_name = gr.Textbox(label="Study Name", value="wakeword-hpo")
                 with gr.Row():
                     start_hpo_btn = gr.Button("🚀 Start HPO Study", variant="primary")
@@ -1593,7 +1603,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
 
         start_hpo_btn.click(
             fn=start_hpo,
-            inputs=[state, n_trials, study_name, hpo_param_groups],
+            inputs=[state, n_trials, n_jobs, study_name, hpo_param_groups],
             outputs=[hpo_status, hpo_results],
         )
 
