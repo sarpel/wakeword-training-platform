@@ -20,19 +20,19 @@ This plan follows a TDD-driven approach to implement advanced optimization techn
 - [x] Task: Implement dynamic temperature scaling logic (scheduler) for the distillation loss. 8af3b1d
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Dual-Teacher Distillation' (Protocol in workflow.md)
 
-## Phase 3: Interactive Hard Negative Mining
+## Phase 3: Interactive Hard Negative Mining [checkpoint: 99bbef4]
 **Goal:** Build the UI and backend loop for mining and verifying false positives.
 
-- [ ] Task: Add a "Mining" trigger to the Benchmark results logic to capture false positives.
-- [ ] Task: Implement the "Verification Queue" backend (JSON/SQLite) to store mined samples for review.
-- [ ] Task: Update the Gradio UI with a verification interface for "Confirm/Discard" actions.
-- [ ] Task: Implement the data injection logic to include verified negatives in the next training run.
+- [x] Task: Add a "Mining" trigger to the Benchmark results logic to capture false positives. 99bbef4
+- [x] Task: Implement the "Verification Queue" backend (JSON/SQLite) to store mined samples for review. 99bbef4
+- [x] Task: Update the Gradio UI with a verification interface for "Confirm/Discard" actions. 99bbef4
+- [x] Task: Implement the data injection logic to include verified negatives in the next training run. 99bbef4
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Hard Negative Mining' (Protocol in workflow.md)
 
-## Phase 4: Pipeline Refinement & Final Integration
+## Phase 4: Pipeline Refinement & Final Integration [checkpoint: da213a9]
 **Goal:** Enhance augmentations and perform final validation of the "Model Excellence" suite.
 
-- [ ] Task: Implement refined SpecAugment parameters in the `AudioAugmentor`.
-- [ ] Task: Implement the advanced noise mixing strategy with SNR-based scheduling.
-- [ ] Task: Run a full "theoretical best" training trial using all new components.
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: Final Integration' (Protocol in workflow.md)
+- [x] Task: Implement refined SpecAugment parameters in the `AudioAugmentor`. da213a9
+- [x] Task: Implement the advanced noise mixing strategy with SNR-based scheduling. da213a9
+- [x] Task: Run a full "theoretical best" training trial using all new components. da213a9
+- [x] Task: Conductor - User Manual Verification 'Phase 4: Final Integration' (Protocol in workflow.md)
