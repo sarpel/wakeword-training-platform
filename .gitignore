@@ -94,4 +94,5 @@ cache/
 .serena/
 .pytest_cache/
 .mypy_cache/
-
+.env.zai
+quality_warning_dataset/
