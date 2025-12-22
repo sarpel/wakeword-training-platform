@@ -67,6 +67,9 @@ class TrainingConfig:
 
     # Metrics
     metric_window_size: int = 100
+    
+    # Hard Negative Mining
+    include_mined_negatives: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""

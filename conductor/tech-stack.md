@@ -7,6 +7,7 @@
 ## Deep Learning & AI
 *   **PyTorch 2.1.2**: Main deep learning framework for model training.
 *   **HuggingFace Transformers**: Source for pre-trained teacher models (Wav2Vec2) used in distillation.
+*   **Conformer / Transformer**: Advanced hybrid architectures for robust teacher models.
 *   **ONNX / ONNX Runtime**: Standardized model format for cross-platform inference and export.
 *   **onnx2tf / TFLite**: Tools for converting models to edge-optimized TensorFlow Lite formats.
 *   **Optuna**: Automated hyperparameter optimization (HPO).

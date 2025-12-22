@@ -18,10 +18,11 @@ The Wakeword Training Platform is designed to democratize high-quality, producti
 ## Key Features
 *   **One-Click Export:** Seamlessly convert trained models to TFLite and ONNX formats, ready for integration into edge hardware.
 *   **Visual Analysis & Debugging:** Comprehensive tools for visualizing model performance, analyzing false positives, and tuning detection thresholds.
+*   **Closed-Loop Hard Negative Mining:** Interactive system to identify misclassified benchmarking samples and inject them back into training splits for iterative refinement.
 *   **Standardized Benchmarking:** Built-in profiling tools to measure latency and memory usage across all stages of the distributed cascade.
-*   **Robustness Engine:** Advanced acoustic simulation including Room Impulse Response (RIR), background noise, and pitch/speed perturbation to guarantee real-world performance.
-*   **Precision Training:** Specialized loss functions (Focal Loss, Weighted Cross-Entropy) and Knowledge Distillation from large teacher models (Wav2Vec2) to maximize accuracy on small devices.
-*   **Optimized Hyperparameter Tuning:** Performance-optimized HPO module using Optuna with parallel execution and early stopping to discover ideal model settings up to 90% faster.
+*   **Robustness Engine:** Advanced acoustic simulation including Room Impulse Response (RIR), background noise with SNR scheduling, and pitch/speed perturbation.
+*   **Precision Training:** Dual-teacher knowledge distillation (Wav2Vec2 + Conformer), intermediate feature alignment, and multi-objective optimization (pAUC vs Latency).
+*   **Optimized Hyperparameter Tuning:** Multi-objective HPO using Optuna (NSGA-II) with exploit-and-explore mutation to discover ideal accuracy/speed trade-offs.
 *   **Stable Streaming:** Integrated temporal smoothing and hysteresis logic to eliminate flickering detections in real-time usage.
 
 ## User Experience Goals
