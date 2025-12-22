@@ -6,11 +6,11 @@
 - [x] Task: Verify configuration examples against `src/config/defaults.py` and `presets.py`.
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Audit and Verification' (Protocol in workflow.md) 10e4e10
 
-## Phase 2: Content Updates
-- [ ] Task: Update `README.md` and `DOCUMENTATION.md` with corrected commands and installation steps.
-- [ ] Task: Update `CONFIG_PRESETS_GUIDE.md` and other configuration guides to reflect current logic.
-- [ ] Task: Synchronize project structure diagrams/lists in all root `.md` files with actual directory structure.
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Content Updates' (Protocol in workflow.md)
+## Phase 2: Content Updates [checkpoint: 1558d5e]
+- [x] Task: Update `README.md` and `DOCUMENTATION.md` with corrected commands and installation steps.
+- [x] Task: Update `CONFIG_PRESETS_GUIDE.md` and other configuration guides to reflect current logic.
+- [x] Task: Synchronize project structure diagrams/lists in all root `.md` files with actual directory structure.
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Content Updates' (Protocol in workflow.md) 1558d5e
 
 ## Phase 3: Developer Guides and Specialized Docs
 - [ ] Task: Review and update `GEMINI.md`, `DISTRIBUTED_CASCADE_GUIDE.md`, and `CLAUDE.md`.
