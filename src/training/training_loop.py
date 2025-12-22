@@ -5,6 +5,7 @@ if TYPE_CHECKING:
 
 import structlog
 import torch
+import time
 from tqdm import tqdm
 
 from src.training.metrics import MetricResults
@@ -40,6 +41,9 @@ def _run_epoch(
 
     pbar = tqdm(dataloader, desc=pbar_desc, leave=False)
 
+    total_latency_ms = 0.0
+    total_inference_samples = 0
+
     with torch.set_grad_enabled(is_training):
         for batch_idx, batch in enumerate(pbar):
             if len(batch) == 3:
@@ -59,6 +63,14 @@ def _run_epoch(
 
             # Keep reference to raw inputs (for distillation)
             raw_inputs = inputs
+
+            # Timing for latency (only for validation)
+            batch_start_time = 0.0
+            if not is_training:
+                # Ensure all previous GPU tasks are complete
+                if trainer.device == "cuda":
+                    torch.cuda.synchronize()
+                batch_start_time = time.perf_counter()
 
             # NEW: GPU Processing Pipeline
             # If input is raw audio (B, S) or (B, 1, S), run through AudioProcessor
@@ -82,6 +94,15 @@ def _run_epoch(
 
             with torch.amp.autocast("cuda", enabled=use_amp):
                 outputs = trainer.model(inputs)
+                # Ensure inference is finished before measuring time
+                if not is_training and trainer.device == "cuda":
+                    torch.cuda.synchronize()
+                
+                if not is_training:
+                    batch_end_time = time.perf_counter()
+                    total_latency_ms += (batch_end_time - batch_start_time) * 1000
+                    total_inference_samples += inputs.size(0)
+
                 # Use compute_loss method to allow overriding (e.g., for distillation)
                 loss = trainer.compute_loss(
                     outputs,
@@ -133,6 +154,10 @@ def _run_epoch(
 
     avg_loss = epoch_loss / num_batches
     metrics = metrics_tracker.compute()
+    
+    # Add latency info
+    if not is_training and total_inference_samples > 0:
+        metrics.latency_ms = total_latency_ms / total_inference_samples
 
     log_prefix = "Train" if is_training else "Val"
     logger.info(f"Epoch {epoch+1} [{log_prefix}]: Loss={avg_loss:.4f}, {metrics}")

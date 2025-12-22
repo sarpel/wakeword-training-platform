@@ -34,6 +34,10 @@ class MetricResults:
     total_samples: int
     positive_samples: int
     negative_samples: int
+    
+    # Fields with defaults MUST come last
+    pauc: float = 0.0  # Partial AUC
+    latency_ms: float = 0.0  # Average latency per sample in ms
 
     def __str__(self) -> str:
         """String representation"""
@@ -43,7 +47,8 @@ class MetricResults:
             f"Recall: {self.recall:.4f} | "
             f"F1: {self.f1_score:.4f} | "
             f"FPR: {self.fpr:.4f} | "
-            f"FNR: {self.fnr:.4f}"
+            f"FNR: {self.fnr:.4f} | "
+            f"pAUC: {self.pauc:.4f}"
         )
 
     def to_dict(self) -> Dict[str, float]:
@@ -55,13 +60,15 @@ class MetricResults:
             "f1_score": self.f1_score,
             "fpr": self.fpr,
             "fnr": self.fnr,
-            "true_positives": self.true_positives,
-            "true_negatives": self.true_negatives,
-            "false_positives": self.false_positives,
-            "false_negatives": self.false_negatives,
-            "total_samples": self.total_samples,
-            "positive_samples": self.positive_samples,
-            "negative_samples": self.negative_samples,
+            "pauc": self.pauc,
+            "latency_ms": self.latency_ms,
+            "true_positives": float(self.true_positives),
+            "true_negatives": float(self.true_negatives),
+            "false_positives": float(self.false_positives),
+            "false_negatives": float(self.false_negatives),
+            "total_samples": float(self.total_samples),
+            "positive_samples": float(self.positive_samples),
+            "negative_samples": float(self.negative_samples),
         }
 
 
@@ -147,6 +154,10 @@ class MetricsCalculator:
         # How often we miss the wakeword
         fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
 
+        # Calculate pAUC
+        from src.evaluation.metrics import calculate_pauc
+        pauc = calculate_pauc(predictions, targets, fpr_max=0.1)
+
         return MetricResults(
             accuracy=accuracy,
             precision=precision,
@@ -161,6 +172,7 @@ class MetricsCalculator:
             total_samples=total,
             positive_samples=positive_samples,
             negative_samples=negative_samples,
+            pauc=pauc
         )
 
     def confusion_matrix(self, predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 2) -> torch.Tensor:

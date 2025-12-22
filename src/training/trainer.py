@@ -31,7 +31,7 @@ from src.data.processor import AudioProcessor  # FIXED
 from src.models.losses import create_loss_function
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.ema import EMA, EMAScheduler
-from src.training.metrics import MetricMonitor, MetricsTracker
+from src.training.metrics import MetricMonitor, MetricResults, MetricsTracker
 from src.training.optimizer_factory import create_grad_scaler, create_optimizer_and_scheduler, get_learning_rate
 from src.training.training_loop import train_epoch, validate_epoch
 
@@ -45,6 +45,7 @@ class TrainingState:
     best_val_loss: float = float("inf")
     best_val_f1: float = 0.0
     best_val_fpr: float = 1.0
+    best_val_pauc: float = 0.0
     epochs_without_improvement: int = 0
     training_time: float = 0.0
     should_stop: bool = False  # Added external stop flag
@@ -244,6 +245,7 @@ class Trainer:
             "val_f1": [],
             "val_fpr": [],
             "val_fnr": [],
+            "val_pauc": [],
             "learning_rates": [],
         }
 
@@ -280,11 +282,12 @@ class Trainer:
                 history["val_f1"].append(val_metrics.f1_score)
                 history["val_fpr"].append(val_metrics.fpr)
                 history["val_fnr"].append(val_metrics.fnr)
+                history["val_pauc"].append(val_metrics.pauc)
                 history["learning_rates"].append(current_lr)
 
                 self.val_metrics_tracker.save_epoch_metrics(val_metrics)
 
-                improved = self._check_improvement(val_loss, val_metrics.f1_score, val_metrics.fpr)
+                improved = self._check_improvement(val_loss, val_metrics)
 
                 self.checkpoint_manager.save_checkpoint(self, epoch, val_loss, val_metrics, improved)
 
@@ -302,7 +305,7 @@ class Trainer:
                 logger.info(f"  Train: Loss={train_loss:.4f}, Acc={train_acc:.4f}")
                 logger.info(
                     f"  Val:   Loss={val_loss:.4f}, Acc={val_metrics.accuracy:.4f}, "
-                    f"F1={val_metrics.f1_score:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}"
+                    f"F1={val_metrics.f1_score:.4f}, pAUC={val_metrics.pauc:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}"
                 )
                 logger.info(f"  LR: {current_lr:.6f}")
                 if improved:
@@ -354,11 +357,14 @@ class Trainer:
                 except TypeError:
                     self.scheduler.step()
 
-    def _check_improvement(self, val_loss: float, val_f1: float, val_fpr: float) -> bool:
+    def _check_improvement(self, val_loss: float, val_metrics: MetricResults) -> bool:
         """Check if model improved based on primary metric (val_f1)
         Simplified to use single primary metric for early stopping
         """
         improved = False
+        val_f1 = val_metrics.f1_score
+        val_fpr = val_metrics.fpr
+        val_pauc = val_metrics.pauc
 
         # Track all metrics for logging
         if val_loss < self.state.best_val_loss:
@@ -366,6 +372,9 @@ class Trainer:
 
         if val_fpr < self.state.best_val_fpr and self.state.epoch > 0:
             self.state.best_val_fpr = val_fpr
+
+        if val_pauc > self.state.best_val_pauc:
+            self.state.best_val_pauc = val_pauc
 
         # Primary metric: val_f1 (for early stopping)
         if val_f1 > self.state.best_val_f1:

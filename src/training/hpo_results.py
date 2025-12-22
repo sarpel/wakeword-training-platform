@@ -8,10 +8,11 @@ class HPOResult:
     Standardized result from an HPO trial or study.
     """
     study_name: str
-    best_value: float
+    best_value: Union[float, List[float]] # Single or Multiple values
     best_params: Dict[str, Union[int, float, str]]
     n_trials: int
     duration: float
+    best_trials: List[Dict[str, Any]] = field(default_factory=list) # Pareto front
     
     # Optional: Detailed history if needed for UI plots
     history: List[Dict[str, Any]] = field(default_factory=list)

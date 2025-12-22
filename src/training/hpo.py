@@ -385,37 +385,60 @@ class Objective:
         trial_config: WakewordConfig
     ) -> Dict:
         """
-        Define and apply hyperparameter search space.
-
-        Maintains backwards compatibility with original parameter groups:
-        - "Training": learning_rate, weight_decay, optimizer, batch_size
-        - "Model": dropout, hidden_size (for RNNs)
-        - "Augmentation": noise probs, time stretch, spec augment
-        - "Data": n_mels (when not using precomputed features)
-        - "Loss": loss function, focal gamma
-
-        Also supports new "Critical" group for quick optimization.
-
-        Args:
-            trial: Optuna trial object
-            trial_config: Configuration to update
-
-        Returns:
-            Dictionary of suggested parameters
+        Define and apply hyperparameter search space with Exploit-and-Explore mutation.
         """
         params = {}
+        
+        # EXPLORE vs EXPLOIT logic
+        # Every 10th trial (after first 20), we try to "exploit" the best trial found so far
+        is_exploit = trial.number > 20 and trial.number % 10 == 0
+        best_params = {}
+        if is_exploit:
+            try:
+                # Get best trial from Pareto front (pick first one for simplicity)
+                best_trial = trial.study.best_trials[0]
+                best_params = best_trial.params
+                self._log(f"🧬 Trial {trial.number}: EXPLOIT mode (mutating best trial {best_trial.number})")
+            except Exception:
+                is_exploit = False
+
+        def suggest_with_mutation(name, low, high, log=False):
+            if is_exploit and name in best_params:
+                val = best_params[name]
+                # Mutate by +/- 10%
+                if log:
+                    # For log scale, mutation in log space
+                    log_val = math.log10(val)
+                    mutation = (math.log10(high) - math.log10(low)) * 0.1
+                    new_val = 10 ** (log_val + np.random.uniform(-mutation, mutation))
+                    new_val = max(low, min(high, new_val))
+                else:
+                    mutation = (high - low) * 0.1
+                    new_val = val + np.random.uniform(-mutation, mutation)
+                    new_val = max(low, min(high, new_val))
+                return trial.suggest_float(name, new_val, new_val) # Force it
+            
+            if log:
+                return trial.suggest_float(name, low, high, log=True)
+            return trial.suggest_float(name, low, high)
 
         # Group: Training (includes critical parameters)
         if "Training" in self.param_groups or "Critical" in self.param_groups:
-            params["learning_rate"] = trial.suggest_float(
+            params["learning_rate"] = suggest_with_mutation(
                 "learning_rate", 1e-5, 1e-2, log=True
             )
-            params["weight_decay"] = trial.suggest_float(
+            params["weight_decay"] = suggest_with_mutation(
                 "weight_decay", 1e-6, 1e-3, log=True
             )
-            params["batch_size"] = trial.suggest_categorical(
-                "batch_size", [32, 64, 128]
-            )
+            
+            # Batch size is categorical, mutation means picking a neighbor or staying same
+            if is_exploit and "batch_size" in best_params:
+                params["batch_size"] = best_params["batch_size"]
+                trial.suggest_categorical("batch_size", [params["batch_size"]])
+            else:
+                params["batch_size"] = trial.suggest_categorical(
+                    "batch_size", [32, 64, 128]
+                )
 
             # Apply to config
             trial_config.training.learning_rate = params["learning_rate"]
@@ -637,29 +660,31 @@ class Objective:
 
             best_f1 = results["best_val_f1"]
             best_fpr = results["best_val_fpr"]
-
-            # FPR constraint - penalize high false positive rates
-            if best_fpr > 0.05:
-                self._log(f"⚠️ Trial {trial.number} penalized (FPR: {best_fpr:.4f})")
-                metric = best_f1 * 0.5  # Penalize but don't zero out
+            
+            # Retrieve best pAUC and Latency from tracker
+            best_pauc_epoch, best_pauc_metrics = trainer.val_metrics_tracker.get_best_epoch("pauc")
+            
+            if best_pauc_metrics:
+                pauc_val = best_pauc_metrics.pauc
+                latency_val = best_pauc_metrics.latency_ms
             else:
-                metric = best_f1
+                pauc_val = 0.0
+                latency_val = 1000.0 # Penalty
 
-            # Save if this is the best model so far
-            # Note: self.best_f1 is not thread-safe in parallel mode,
-            # but it's just for logging/copying best model. 
-            # We should probably lock it or ignore it for parallel runs.
-            # Optuna tracks the best value anyway.
-            # We'll keep it simple for now, maybe add a lock later if needed.
-            if metric > self.best_f1:
-                self.best_f1 = metric
+            # FPR constraint - still useful to log
+            if best_fpr > 0.05:
+                self._log(f"⚠️ Trial {trial.number} high FPR ({best_fpr:.4f})")
+
+            # Save if this is the best model so far (using F1 as primary for checkpointing)
+            if best_f1 > self.best_f1:
+                self.best_f1 = best_f1
                 save_path = Path("models/hpo_best_model.pt")
                 save_path.parent.mkdir(parents=True, exist_ok=True)
 
                 source_path = checkpoint_dir / "best_model.pt"
                 if source_path.exists():
                     shutil.copy(source_path, save_path)
-                    self._log(f"🏆 New best model saved (F1: {metric:.4f})")
+                    self._log(f"🏆 New best model saved (F1: {best_f1:.4f})")
 
             # Track trial time for performance analysis
             trial_time = time.time() - trial_start_time
@@ -667,8 +692,13 @@ class Objective:
 
             self._log(
                 f"✅ Trial {trial.number} completed in {trial_time:.1f}s "
-                f"(F1: {metric:.4f})"
+                f"(pAUC: {pauc_val:.4f}, Latency: {latency_val:.2f}ms)"
             )
+
+            # Store multi-objective results in trial attributes for reference
+            trial.set_user_attr("pauc", pauc_val)
+            trial.set_user_attr("latency", latency_val)
+            trial.set_user_attr("f1", best_f1)
 
         except optuna.TrialPruned:
             # Clean up pruned trial's checkpoint
@@ -677,13 +707,16 @@ class Objective:
             raise
         except Exception as e:
             self._log(f"❌ Trial {trial.number} failed: {e}")
-            metric = 0.0
+            import traceback
+            logger.error(traceback.format_exc())
+            pauc_val = 0.0
+            latency_val = 1000.0
         finally:
             # Clean up non-best trials to save disk space
-            if checkpoint_dir.exists() and metric < self.best_f1:
+            if checkpoint_dir.exists() and best_f1 < self.best_f1:
                 shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
-        return float(metric)
+        return pauc_val, latency_val
 
     def cleanup(self):
         """
@@ -765,18 +798,15 @@ def run_hpo(
         reduction_factor=3,
     )
 
-    # Use TPE sampler with multivariate mode
-    sampler = optuna.samplers.TPESampler(
-        n_startup_trials=10,
-        n_ei_candidates=24,
-        multivariate=True,
-        group=True,
-        warn_independent_sampling=False,
+    # Use NSGA-II for multi-objective optimization
+    sampler = optuna.samplers.NSGAIISampler(
+        population_size=20,
+        mutation_prob=0.1,
     )
 
-    # Create or load study
+    # Create or load study with multiple objectives: pAUC (maximize) and Latency (minimize)
     study = optuna.create_study(
-        direction="maximize",
+        directions=["maximize", "minimize"],
         study_name=study_name,
         pruner=pruner,
         sampler=sampler,
@@ -821,18 +851,32 @@ def run_hpo(
     # Report results
     if log_callback:
         log_callback(f"✅ HPO Complete in {duration:.1f}s")
-        log_callback(f"🏆 Best F1 Score: {study.best_value:.4f}")
-        log_callback(f"📊 Best params: {study.best_params}")
+        if len(study.directions) > 1:
+            log_callback(f"📊 Number of Pareto optimal trials: {len(study.best_trials)}")
+        else:
+            log_callback(f"🏆 Best Score: {study.best_value:.4f}")
+            log_callback(f"📊 Best params: {study.best_params}")
 
-    logger.info(f"Best trial: {study.best_value}")
-    logger.info(f"Best params: {study.best_params}")
+    # Prepare results
+    if len(study.directions) > 1:
+        best_value = [t.values for t in study.best_trials]
+        best_params = study.best_trials[0].params if study.best_trials else {}
+        best_trials_data = [
+            {"number": t.number, "values": t.values, "params": t.params} 
+            for t in study.best_trials
+        ]
+    else:
+        best_value = study.best_value
+        best_params = study.best_params
+        best_trials_data = []
 
     return HPOResult(
         study_name=study_name,
-        best_value=study.best_value,
-        best_params=study.best_params,
+        best_value=best_value,
+        best_params=best_params,
         n_trials=len(study.trials),
-        duration=duration
+        duration=duration,
+        best_trials=best_trials_data
     )
 
 
@@ -880,8 +924,11 @@ def run_progressive_hpo(
     )
 
     # Update config with best parameters from Phase 1
+    # For multi-objective, we pick the first trial in the Pareto front as a heuristic
     best_config = config.copy()
-    for key, value in result_phase1.best_params.items():
+    phase1_params = result_phase1.best_params
+    
+    for key, value in phase1_params.items():
         if key == "learning_rate":
             best_config.training.learning_rate = value
         elif key == "batch_size":
