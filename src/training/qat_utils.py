@@ -261,191 +261,76 @@ def calibrate_model(model: nn.Module, data_loader_or_list: Any, device: str = "c
 
 
 def compare_model_accuracy(
-
-
     fp32_model: nn.Module, 
-
-
     quant_model: nn.Module, 
-
-
     val_loader_or_list: Any, 
-
-
-    device: str = "cpu"
-
-
+    device: str = "cpu",
+    audio_processor: Optional[nn.Module] = None
 ) -> Dict[str, float]:
-
-
     """
-
-
     Compare accuracy of FP32 vs Quantized model.
 
-
-
-
-
     Args:
-
-
         fp32_model: Original float model
-
-
         quant_model: Quantized or QAT model
-
-
         val_loader_or_list: Validation data
-
-
         device: Device to run evaluation on
-
-
-
-
+        audio_processor: Optional GPU audio processor for feature extraction
 
     Returns:
-
-
         Dictionary with accuracy results and drop
-
-
     """
-
-
     def evaluate(model, data):
-
-
         # Move to CPU for quantized models if requested
-
-
         model.eval()
-
-
         
-
-
         # Set quantized engine for CPU evaluation
-
-
         if device == "cpu":
-
-
             model.to("cpu")
-
-
             try:
-
-
                 if "fbgemm" in torch.backends.quantized.supported_engines:
-
-
                     torch.backends.quantized.engine = "fbgemm"
-
-
                 elif "qnnpack" in torch.backends.quantized.supported_engines:
-
-
                     torch.backends.quantized.engine = "qnnpack"
-
-
             except Exception as e:
-
-
                 logger.warning(f"Could not set quantized engine: {e}")
-
-
         else:
-
-
             model.to(device)
 
-
-
-
-
         correct = 0
-
-
         total = 0
-
-
         with torch.no_grad():
-
-
             for batch in data:
-
-
                 if isinstance(batch, (list, tuple)):
-
-
                     inputs, targets = batch[0], batch[1]
-
-
                 else:
-
-
                     # Assume it's just inputs (for calibration-like eval)
-
-
                     continue
 
-
-
-
-
                 inputs, targets = inputs.to(device), targets.to(device)
-
-
                 
-
-
+                # Apply audio processor if provided
+                if audio_processor is not None:
+                    # Ensure processor is on the same device as inputs
+                    audio_processor.to(device)
+                    audio_processor.eval()
+                    inputs = audio_processor(inputs)
+                
                 # Ensure inputs are contiguous for quantized ops
-
-
                 if device == "cpu":
-
-
                     inputs = inputs.contiguous()
-
-
                     
-
-
                 outputs = model(inputs)
-
-
                 preds = torch.argmax(outputs, dim=1)
-
-
                 correct += (preds == targets).sum().item()
-
-
                 total += targets.size(0)
-
-
         return correct / total if total > 0 else 0.0
 
-
-
-
-
     logger.info("Evaluating FP32 model...")
-
-
     # Keep FP32 on its original device for speed if it's CUDA
-
-
     fp32_acc = evaluate(fp32_model, val_loader_or_list)
-
-
     
-
-
     logger.info("Evaluating Quantized model...")
-
-
     quant_acc = evaluate(quant_model, val_loader_or_list)
 
 

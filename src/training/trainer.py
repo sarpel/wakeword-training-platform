@@ -378,7 +378,8 @@ class Trainer:
                     fp32_model, 
                     quantized_model, 
                     self.val_loader, 
-                    device="cpu"
+                    device="cpu",
+                    audio_processor=self.audio_processor
                 )
                 results["qat_report"] = qat_report
             except Exception as e:
