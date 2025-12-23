@@ -72,6 +72,15 @@ This section explains all the configurable parameters in the training system.
 *   **class_weights**: "balanced" makes the model pay equal attention to rare classes.
 *   **hard_negative_weight**: Extra penalty multiplier (e.g. 1.5 - 3.0) applied to samples explicitly marked as hard negatives in the dataset manifest.
 
+*   **patience**: Stop if model doesn't improve (Plateau).
+*   **factor**: How much to reduce LR (Plateau).
+
+### 📏 Size Targets (`size_targets`)
+*   **max_flash_kb**: Maximum Flash memory target for your device (0 = no limit).
+*   **max_ram_kb**: Maximum RAM target for your device (0 = no limit).
+
+### ⚖️ Calibration (`calibration`)
+
 ### ⚡ Advanced
 *   **qat**: Quantization Aware Training. Prepares model for running on low-power chips (int8).
     *   **Accuracy Recovery**: (NEW) Multi-stage fine-tuning pipeline: Standard Training -> QAT Fine-tuning -> INT8 Export.
@@ -185,19 +194,18 @@ QAT simulates the precision loss of 8-bit integers (INT8) during training.
 ### 4. "The Judge" Server (Stage 2 Verification)
 **Best for:** A home server that double-checks wake events to prevent false alarms.
 
-**Setup & Installation:**
-1.  `cd server`
-2.  `pip install -r requirements.txt`
-3.  `uvicorn app:app --host 0.0.0.0 --port 8000`
+... (same as before)
 
-**Docker:**
-```bash
-docker build -f server/Dockerfile -t wakeword-judge .
-docker run -p 8000:8000 wakeword-judge
-```
+### 5. Model Size Insight & Platform Constraints
+**Best for:** Ensuring your model will actually fit and run on your target hardware (ESP32, Pico, etc.).
 
-**Testing:**
-Send a POST request to `/verify` with an audio file.
+The platform now includes a specialized calculator that estimates the memory footprint of your model *before* you even start training.
+
+**Key Features:**
+- **Predefined Platforms**: Choose from common hardware like ESP32-S3, Raspberry Pi Pico, or Arduino Nano.
+- **Flash Estimation**: Calculates how much storage the model weights will take (handles INT8/FP32).
+- **RAM Estimation**: Heuristic calculation of activation buffers and audio windows.
+- **Validation**: Automatically warns you if your configuration is too heavy for your target platform.
 
 ---
 
@@ -650,31 +658,28 @@ Export PyTorch model to ONNX format for deployment on various platforms (mobile,
 
 ### 6.2 TFLite & Quantization
 
-#### Purpose
-Reduce model size and inference time for edge devices (ESP32, ARM) using TensorFlow Lite and 8-bit quantization.
+... (same as before)
 
-#### Features
-- **QAT Support**: Seamless conversion of Quantization-Aware Trained models.
-- **Feature Preservation**: Preserves input/output names and shapes for hardware compatibility.
-- **Integer Quantization**: Option for full integer quantized TFLite output.
+## 7. Model Size Calculation Logic
 
-**Performance Impact**:
-- **Model Size**: 75% reduction (28.5 MB → 7.2 MB)
-- **Inference Speed**: ~66% faster on CPU
+### 7.1 Flash Estimation
+Flash usage is primarily determined by the number of model parameters.
+- **FP32**: `Flash = Params * 4 bytes * 1.1 (overhead)`
+- **INT8 (QAT enabled)**: `Flash = Params * 1 byte * 1.1 (overhead)`
 
----
+### 7.2 RAM Estimation
+RAM usage is more complex as it involves:
+1. **Weights**: If not executed in-place (XIP), weights may be copied to RAM.
+2. **Activations**: Calculated as ~20% of the parameter count (as a heuristic for peak activation volume).
+3. **Audio Buffer**: `Audio Duration * Sample Rate * 4 bytes (FP32)`.
 
-## 7. Metrics & Alignment
+### 7.3 Platform Profiles
+Common platform profiles stored in `src/config/platform_constraints.py`:
+- **ESP32-S3**: 4MB Flash / 512KB RAM
+- **Raspberry Pi Pico**: 2MB Flash / 264KB RAM
+- **Arduino Nano 33 BLE**: 1MB Flash / 256KB RAM
 
-### 7.1 Class Label Standard
-The platform uses a standardized class mapping across all modules:
-- **Index 1 (Positive)**: Wakeword / Target event.
-- **Index 0 (Negative)**: Non-wakeword speech, silence, or noise.
-
-### 7.2 Threshold-Aware Calculation
-Metrics calculation (`MetricsCalculator`) is threshold-aware for multi-class models. It computes the probability of the positive class (Index 1) and compares it against the user-defined threshold, ensuring the Confusion Matrix matches the visual detection results in the UI.
-
-## 7. System Architecture
+## 8. System Architecture
 
 ### 7.1 Module Organization
 

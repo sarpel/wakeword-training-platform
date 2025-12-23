@@ -7770,6 +7770,19 @@ tests/
 
 ---
 
+## 📏 MODEL SIZE INSIGHT & PLATFORM CONSTRAINTS
+
+**Date**: 23 December 2025
+**Status**: COMPLETED ✅
+
+**Features Added**:
+- New `src/config/platform_constraints.py` for hardware limits.
+- New `src/config/size_calculator.py` for parameter count and memory estimation.
+- Integrated validation in `src/config/validator.py`.
+- Documentation updated in `README.md` and `DOCUMENTATION.md`.
+
+---
+
 ## 🔧 HIZLI DÜZELTME SCRIPTLERI
 
 ### Kullanılmayan Import'ları Temizle

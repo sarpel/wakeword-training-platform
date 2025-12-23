@@ -77,6 +77,7 @@ The system will automatically create these directories on first run.
 
 - **📉 New**: Focal Loss implementation for superior hard-negative handling
 - **⚡ New**: QAT Accuracy Recovery pipeline (FP32 baseline to INT8 fine-tuning)
+- **📏 New**: Model Size Insight & Platform Constraints validation for Edge deployment
 - **✨ New**: Advanced GPU acceleration with Mixed Precision training
 - **🚀 New**: Comprehensive HPO (Hyperparameter Optimization) system
 - **📦 New**: Production-ready ONNX and TFLite export

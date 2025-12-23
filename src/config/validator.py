@@ -196,10 +196,48 @@ class ConfigValidator:
         # Extra kurallar
         self._add_custom_warnings(config)
         self._validate_gpu_compatibility(config)
+        self._validate_model_size(config)
 
         all_issues = self.errors + self.warnings
         is_valid = len(self.errors) == 0
         return is_valid, all_issues
+
+    def _validate_model_size(self, config: WakewordConfig) -> None:
+        """Validate model size against platform targets"""
+        try:
+            from src.config.size_calculator import SizeCalculator
+
+            calc = SizeCalculator(config)
+            res = calc.compare_with_platform()
+
+            # If targets are 0, they are not set, so we don't error
+            if res["max_flash_kb"] > 0 and not res["flash_ok"]:
+                self.errors.append(
+                    ValidationError(
+                        "model.size",
+                        f"Estimated Flash size ({res['estimated_flash_kb']} KB) exceeds target ({res['max_flash_kb']} KB). "
+                        f"Try reducing architecture complexity or enabling QAT.",
+                    )
+                )
+            elif res["estimated_flash_kb"] > 500 and not config.qat.enabled:
+                self.warnings.append(
+                    ValidationError(
+                        "model.size",
+                        f"Large model ({res['estimated_flash_kb']} KB) without QAT. "
+                        f"Deployment on microcontrollers might be difficult.",
+                        "warning",
+                    )
+                )
+
+            if res["max_ram_kb"] > 0 and not res["ram_ok"]:
+                self.errors.append(
+                    ValidationError(
+                        "model.size",
+                        f"Estimated RAM usage ({res['estimated_ram_kb']} KB) exceeds target ({res['max_ram_kb']} KB).",
+                    )
+                )
+        except Exception as e:
+            logger.warning("validator.size_check_failed", error=str(e))
 
     def _add_custom_warnings(self, config: WakewordConfig) -> None:
         """Add custom warnings not covered by Pydantic validators"""

@@ -92,7 +92,10 @@ class TrainingState:
         self.current_lr = 0.0  # NEW
         self.current_gpu_mem = 0.0  # NEW: GPU memory in GB
         self.current_speed = 0.0
+        self.epoch_speed = 0.0  # NEW: Epochs per minute
         self.eta_seconds = 0
+        self.batch_start_time = 0.0  # NEW
+        self.epoch_start_time = 0.0  # NEW
 
         # Best metrics
         self.best_epoch = 0
@@ -114,7 +117,27 @@ class TrainingState:
         self.is_paused = False
         self.current_epoch = 0
         self.current_batch = 0
+        self.current_speed = 0.0
+        self.epoch_speed = 0.0
         self.eta_seconds = 0
+        self.batch_start_time = time.time()
+        self.epoch_start_time = time.time()
+
+        # Reset history
+        self.history = {
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
+            "val_f1": [],
+            "val_fpr": [],
+            "val_fnr": [],
+            "val_eer": [],
+            "val_fah": [],
+            "learning_rate": [],
+            "throughput": [],  # NEW
+            "epochs": [],
+        }
 
     def add_log(self, message: str) -> None:
         """Add message to log queue"""
@@ -274,6 +297,80 @@ def create_metrics_plot() -> plt.Figure:
     plt.tight_layout()
     return fig
 
+def create_lr_plot() -> plt.Figure:
+    """Create learning rate curve plot"""
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    if len(training_state.history.get("learning_rate", [])) > 0:
+        epochs = training_state.history["epochs"]
+        lrs = training_state.history["learning_rate"]
+
+        ax.plot(
+            epochs,
+            lrs,
+            label="Learning Rate",
+            marker="o",
+            linewidth=2,
+            color="blue",
+        )
+
+        ax.set_xlabel("Epoch", fontsize=12)
+        ax.set_ylabel("Learning Rate", fontsize=12)
+        ax.set_yscale("log")
+        ax.set_title("Learning Rate Schedule", fontsize=14, fontweight="bold")
+        ax.grid(True, which="both", alpha=0.3)
+    else:
+        ax.text(
+            0.5,
+            0.5,
+            "No data yet",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=14,
+        )
+        ax.set_title("Learning Rate Schedule", fontsize=14, fontweight="bold")
+
+    plt.tight_layout()
+    return fig
+
+
+def create_throughput_plot() -> plt.Figure:
+    """Create throughput (samples/sec) curve plot"""
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    if len(training_state.history.get("throughput", [])) > 0:
+        epochs = training_state.history["epochs"]
+        throughput = training_state.history["throughput"]
+
+        ax.plot(
+            epochs,
+            throughput,
+            label="Throughput",
+            marker="s",
+            linewidth=2,
+            color="green",
+        )
+
+        ax.set_xlabel("Epoch", fontsize=12)
+        ax.set_ylabel("Samples/sec", fontsize=12)
+        ax.set_title("Training Throughput", fontsize=14, fontweight="bold")
+        ax.grid(True, alpha=0.3)
+    else:
+        ax.text(
+            0.5,
+            0.5,
+            "No data yet",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=14,
+        )
+        ax.set_title("Training Throughput", fontsize=14, fontweight="bold")
+
+    plt.tight_layout()
+    return fig
+
 
 def format_time(seconds: float) -> str:
     """Format seconds to HH:MM:SS"""
@@ -307,6 +404,13 @@ def training_worker() -> None:
         # Create custom callback for live updates
         class LiveUpdateCallback:
             def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
+                # Calculate epoch duration
+                now = time.time()
+                epoch_duration = now - training_state.epoch_start_time
+                training_state.epoch_start_time = now
+                if epoch_duration > 0:
+                    training_state.epoch_speed = 60.0 / epoch_duration  # Epochs per minute
+
                 # Update state
                 training_state.current_epoch = epoch + 1
                 training_state.current_train_loss = train_loss
@@ -350,6 +454,7 @@ def training_worker() -> None:
                 safe_append("val_eer", training_state.current_eer)
                 safe_append("val_fah", training_state.current_fah)
                 safe_append("learning_rate", training_state.current_lr)
+                safe_append("throughput", training_state.current_speed)
 
                 # Update best metrics
                 if val_loss < training_state.best_val_loss:
@@ -370,10 +475,23 @@ def training_worker() -> None:
                     f"Acc: {training_state.current_train_acc:.2%}/{val_metrics.accuracy:.2%} - "
                     f"FPR: {val_metrics.fpr:.2%} - FNR: {val_metrics.fnr:.2%} - "
                     f"EER: {training_state.current_eer:.2%} - FAH: {training_state.current_fah:.2f} - "
-                    f"LR: {training_state.current_lr:.2e}"
+                    f"LR: {training_state.current_lr:.2e} - "
+                    f"Speed: {training_state.current_speed:.1f} samples/sec"
                 )
 
             def on_batch_end(self, batch_idx: int, loss: float, acc: float, **kwargs: Any) -> None:
+                # Calculate speed
+                now = time.time()
+                dt = now - training_state.batch_start_time
+                training_state.batch_start_time = now
+
+                if dt > 0:
+                    # Estimate batch size from config
+                    batch_size = training_state.config.training.batch_size
+                    current_speed = batch_size / dt
+                    # Smooth speed with EMA
+                    training_state.current_speed = 0.9 * training_state.current_speed + 0.1 * current_speed
+
                 training_state.current_batch = batch_idx + 1
                 training_state.current_train_loss = loss
                 training_state.current_train_acc = acc
@@ -445,6 +563,8 @@ def start_training(
             None,
             None,
             None,
+            None,
+            None,
         )
 
     try:
@@ -457,6 +577,8 @@ def start_training(
                     f"❌ Checkpoint not found: {resume_checkpoint}",
                     "0/0",
                     "0/0",
+                    None,
+                    None,
                     None,
                     None,
                     None,
@@ -480,6 +602,8 @@ def start_training(
                 "❌ No configuration loaded. Please configure in Panel 2 first.",
                 "0/0",
                 "0/0",
+                None,
+                None,
                 None,
                 None,
                 None,
@@ -523,6 +647,8 @@ def start_training(
                 "❌ Dataset splits not found. Please run Panel 1 to scan and split datasets first.",
                 "0/0",
                 "0/0",
+                None,
+                None,
                 None,
                 None,
                 None,
@@ -846,20 +972,8 @@ def start_training(
             except Exception as e:
                 training_state.add_log(f"⚠️ W&B initialization failed: {e}. Skipping W&B logging.")
 
-        # Reset history
-        training_state.history = {
-            "train_loss": [],
-            "train_acc": [],
-            "val_loss": [],
-            "val_acc": [],
-            "val_f1": [],
-            "val_fpr": [],
-            "val_fnr": [],
-            "val_eer": [],
-            "val_fah": [],
-            "learning_rate": [],
-            "epochs": [],
-        }
+        # Reset state and history
+        training_state.reset()
 
         # Start training in background thread
         training_state.is_training = True
@@ -875,6 +989,8 @@ def start_training(
             create_loss_plot(),
             create_accuracy_plot(),
             create_metrics_plot(),
+            create_lr_plot(),
+            create_throughput_plot(),
         )
 
     except WakewordException as e:
@@ -883,12 +999,12 @@ def start_training(
             f"{error_msg}\n\nActionable suggestion: Please check your configuration and data for the following error: {e}"
         )
         logger.exception("Failed to start training")
-        return (error_msg, "0/0", "0/0", None, None, None)
+        return (error_msg, "0/0", "0/0", None, None, None, None, None)
     except Exception as e:
         error_msg = f"❌ Failed to start training: {str(e)}"
         training_state.add_log(error_msg)
         logger.exception("Failed to start training")
-        return (error_msg, "0/0", "0/0", None, None, None)
+        return (error_msg, "0/0", "0/0", None, None, None, None, None)
 
 
 def stop_training() -> str:
@@ -903,6 +1019,27 @@ def stop_training() -> str:
     training_state.add_log("Stop requested. Training will stop after current epoch...")
 
     return "⏹️ Stopping training..."
+
+
+def get_gpu_utilization() -> float:
+    """Get actual GPU core utilization using nvidia-smi"""
+    try:
+        import subprocess
+
+        # Run nvidia-smi to get GPU utilization
+        cmd = ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"]
+        result = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
+        return float(result.strip())
+    except Exception:
+        # Fallback to memory-based util if nvidia-smi fails
+        try:
+            from src.config.cuda_utils import get_cuda_validator
+
+            validator = get_cuda_validator()
+            gpu_util = validator.get_memory_info()
+            return gpu_util["allocated_gb"] / gpu_util["total_gb"] * 100
+        except Exception:
+            return 0.0
 
 
 def get_training_status() -> Tuple:
@@ -924,22 +1061,22 @@ def get_training_status() -> Tuple:
     else:
         status = "✅ Ready to train"
 
-    # Calculate ETA (simple estimation)
+    # Calculate ETA (improved estimation)
     if training_state.is_training and training_state.current_epoch > 0:
-        # Rough estimate based on current progress
+        # Calculate time per epoch based on elapsed time and current progress
+        elapsed = time.time() - training_state.epoch_start_time # This is not quite right as it resets every epoch
+        # Let's use a better way if we have history
         epochs_remaining = training_state.total_epochs - training_state.current_epoch
-        # Assume similar time per epoch
-        training_state.eta_seconds = epochs_remaining * 60  # Placeholder
+        
+        if training_state.epoch_speed > 0:
+            training_state.eta_seconds = (epochs_remaining / (training_state.epoch_speed / 60.0))
+        else:
+            training_state.eta_seconds = epochs_remaining * 300  # Default 5 min per epoch
     else:
         training_state.eta_seconds = 0
 
     # GPU utilization
-    try:
-        validator = get_cuda_validator()
-        gpu_util = validator.get_memory_info()
-        gpu_percent = gpu_util["allocated_gb"] / gpu_util["total_gb"] * 100
-    except Exception:
-        gpu_percent = 0.0
+    gpu_percent = get_gpu_utilization()
 
     return (
         status,
@@ -951,17 +1088,20 @@ def get_training_status() -> Tuple:
         round(training_state.current_val_acc * 100, 2),
         round(training_state.current_fpr * 100, 2),
         round(training_state.current_fnr * 100, 2),
-        round(training_state.current_eer * 100, 2),  # NEW: EER
-        round(training_state.current_fah, 2),  # NEW: FAH
+        round(training_state.current_eer * 100, 2),
+        round(training_state.current_fah, 2),
         round(training_state.current_speed, 1),
+        round(training_state.epoch_speed, 1),  # NEW
         round(gpu_percent, 1),
-        training_state.current_lr,  # NEW: Current LR
-        round(training_state.current_gpu_mem, 2),  # NEW: GPU Mem
+        training_state.current_lr,
+        round(training_state.current_gpu_mem, 2),
         format_time(training_state.eta_seconds),
         logs,
         create_loss_plot(),
         create_accuracy_plot(),
         create_metrics_plot(),
+        create_lr_plot(),
+        create_throughput_plot(),
         str(training_state.best_epoch),
         round(training_state.best_val_loss, 4),
         round(training_state.best_val_acc * 100, 2),
@@ -1677,28 +1817,33 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
 
                 with gr.Row():
                     speed = gr.Number(label="Speed (samples/sec)", value=0.0, interactive=False)
+                    epoch_speed_display = gr.Number(label="Epoch Speed (epochs/min)", value=0.0, interactive=False)
+
+                with gr.Row():
                     gpu_util = gr.Number(label="GPU Util (%)", value=0.0, interactive=False)
+                    gpu_mem_display = gr.Number(label="GPU Mem (GB)", value=0.0, interactive=False, precision=2)
 
                 with gr.Row():
                     current_lr_display = gr.Number(label="Learning Rate", value=0.0, interactive=False, precision=6)
-                    gpu_mem_display = gr.Number(label="GPU Mem (GB)", value=0.0, interactive=False, precision=2)
-
-                eta = gr.Textbox(label="ETA", value="--:--:--", interactive=False)
+                    eta = gr.Textbox(label="ETA", value="--:--:--", interactive=False)
 
             with gr.Column(scale=2):
                 gr.Markdown("### Training Curves")
 
-                # Loss plot
-                loss_plot = gr.Plot(label="Loss Curves", value=create_loss_plot())
-
-                # Accuracy plot
-                accuracy_plot = gr.Plot(label="Accuracy Curves", value=create_accuracy_plot())
-
-                # Metrics plot
-                metrics_plot = gr.Plot(
-                    label="Validation Metrics (FPR, FNR, F1)",
-                    value=create_metrics_plot(),
-                )
+                with gr.Tabs():
+                    with gr.TabItem("Loss & Acc"):
+                        with gr.Row():
+                            loss_plot = gr.Plot(label="Loss Curves", value=create_loss_plot())
+                            accuracy_plot = gr.Plot(label="Accuracy Curves", value=create_accuracy_plot())
+                    with gr.TabItem("Advanced Metrics"):
+                        metrics_plot = gr.Plot(
+                            label="Validation Metrics (FPR, FNR, F1)",
+                            value=create_metrics_plot(),
+                        )
+                    with gr.TabItem("System & Schedule"):
+                        with gr.Row():
+                            lr_plot = gr.Plot(label="Learning Rate", value=create_lr_plot())
+                            throughput_plot = gr.Plot(label="Throughput", value=create_throughput_plot())
 
         gr.Markdown("---")
 
@@ -1748,7 +1893,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         start_training_btn.click(
             fn=start_training_wrapper,
             inputs=[
-                state,
+                config_state,
                 use_cmvn,
                 use_ema,
                 ema_decay,
@@ -1770,6 +1915,8 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 loss_plot,
                 accuracy_plot,
                 metrics_plot,
+                lr_plot,
+                throughput_plot,
             ],
         )
 
@@ -1821,6 +1968,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 eer_display,
                 fah_display,
                 speed,
+                epoch_speed_display,
                 gpu_util,
                 current_lr_display,
                 gpu_mem_display,
@@ -1829,6 +1977,8 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 loss_plot,
                 accuracy_plot,
                 metrics_plot,
+                lr_plot,
+                throughput_plot,
                 best_epoch,
                 best_val_loss,
                 best_val_acc,
