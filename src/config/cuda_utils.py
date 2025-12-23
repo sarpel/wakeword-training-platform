@@ -4,7 +4,6 @@ Supports CPU fallback for testing and development
 """
 
 import logging
-import sys
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -262,7 +261,7 @@ def enforce_cuda(allow_cpu: bool = False) -> CUDAValidator:
         info = validator.get_device_info()
         print(f"\nCUDA Version: {info['cuda_version']}")
         print(f"cuDNN Version: {info['cudnn_version']}")
-        print(f"\nAvailable GPUs:")
+        print("\nAvailable GPUs:")
         for device in info["devices"]:
             print(f"  [{device['id']}] {device['name']}")
             print(f"      Compute Capability: {device['compute_capability']}")

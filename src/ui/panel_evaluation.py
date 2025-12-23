@@ -125,7 +125,7 @@ def load_model(model_path: str) -> str:
         eval_state.waveform_sr = info["config"].data.sample_rate
 
         # Format status message
-        status = f"✅ Model Loaded Successfully\n"
+        status = "✅ Model Loaded Successfully\n"
         status += f"Architecture: {info['config'].model.architecture}\n"
         status += f"Training Epoch: {info['epoch'] + 1}\n"
         status += f"Val Loss: {info['val_loss']:.4f}\n"
@@ -550,7 +550,7 @@ def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
     # Add text annotations
     for i in range(2):
         for j in range(2):
-            text = ax.text(
+            ax.text(
                 j,
                 i,
                 f"{cm[i, j]}",
@@ -714,7 +714,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
                 with gr.Row():
                     with gr.Column():
-                        sensitivity_slider = gr.Slider(
+                        gr.Slider(
                             minimum=0,
                             maximum=1,
                             value=0.5,

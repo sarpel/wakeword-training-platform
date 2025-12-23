@@ -218,7 +218,7 @@ class ONNXExporter:
 
             logger.info(f"Running command: {' '.join(cmd)}")
 
-            process = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
 
             logger.info("onnx2tf conversion completed successfully")
 

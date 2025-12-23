@@ -320,7 +320,7 @@ if __name__ == "__main__":
     idx_neg = list(range(100, 300))  # 200 negative samples
     idx_hard_neg = list(range(300, 400))  # 100 hard negative samples
 
-    print(f"Test dataset:")
+    print("Test dataset:")
     print(f"  Positive: {len(idx_pos)}")
     print(f"  Negative: {len(idx_neg)}")
     print(f"  Hard Negative: {len(idx_hard_neg)}")
@@ -335,14 +335,14 @@ if __name__ == "__main__":
         ratio=(1, 1, 1),
     )
 
-    print(f"\nSampler created:")
+    print("\nSampler created:")
     print(f"  Batch size: {batch_size}")
-    print(f"  Ratio: (1, 1, 1)")
+    print("  Ratio: (1, 1, 1)")
     print(f"  Samples per batch: pos={sampler.n_pos}, neg={sampler.n_neg}, hard_neg={sampler.n_hard_neg}")
     print(f"  Total batches: {len(sampler)}")
 
     # Generate a few batches
-    print(f"\nGenerating batches:")
+    print("\nGenerating batches:")
     for i, batch_idx in enumerate(sampler):
         if i >= 3:
             break
@@ -355,7 +355,7 @@ if __name__ == "__main__":
         print(f"  Batch {i+1}: size={len(batch_idx)}, pos={n_pos}, neg={n_neg}, hard_neg={n_hard}")
 
     # Test with different ratio (1:2:1)
-    print(f"\nTesting with ratio (1:2:1):")
+    print("\nTesting with ratio (1:2:1):")
     sampler2 = BalancedBatchSampler(
         idx_pos=idx_pos,
         idx_neg=idx_neg,

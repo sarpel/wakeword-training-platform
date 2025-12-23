@@ -205,7 +205,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                             val_n_mels = gr.Number(label="Mel Channels", value=64, precision=0)
                             val_hop_length = gr.Number(label="Hop Length", value=160)
 
-                        validate_shape_checkbox = gr.Checkbox(
+                        gr.Checkbox(
                             label="Validate Shapes",
                             value=True,
                             info="Check dimensions against target config",
@@ -470,7 +470,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     npy_source_path = Path(root_path) / "npy"
 
                 progress(0.2, desc="Splitting datasets...")
-                splits = splitter.split_datasets(
+                splitter.split_datasets(
                     train_ratio=train,
                     val_ratio=val,
                     test_ratio=test,
@@ -713,7 +713,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
 
                 # Extract and analyze
                 progress(0.1, desc=f"Processing {len(npy_files)} .npy files...")
-                results = extractor.extract_and_convert(npy_files, progress_callback=update_progress)
+                extractor.extract_and_convert(npy_files, progress_callback=update_progress)
 
                 # Generate report
                 progress(0.95, desc="Generating report...")
@@ -977,7 +977,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 progress(0.7, desc="Step 4/5: Loading Configuration...")
                 log("\n--- STEP 4: PREPARING CONFIGURATION ---")
 
-                from src.config.defaults import DataConfig, ModelConfig, TrainingConfig, WakewordConfig
+                from src.config.defaults import DataConfig, WakewordConfig
 
                 # Create config matching UI parameters
                 config = WakewordConfig()

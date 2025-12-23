@@ -492,7 +492,7 @@ if __name__ == "__main__":
     perm = torch.randperm(batch_size)
     targets = targets[perm]
 
-    print(f"\nTest setup:")
+    print("\nTest setup:")
     print(f"  Predictions shape: {predictions.shape}")
     print(f"  Targets shape: {targets.shape}")
     print(f"  Positive samples: {(targets == 1).sum().item()}")
@@ -504,16 +504,16 @@ if __name__ == "__main__":
     metrics = calculator.calculate(predictions, targets)
 
     print(f"\n{metrics}")
-    print(f"\nConfusion Matrix:")
+    print("\nConfusion Matrix:")
     print(f"  TP: {metrics.true_positives} | FP: {metrics.false_positives}")
     print(f"  FN: {metrics.false_negatives} | TN: {metrics.true_negatives}")
-    print(f"  ✅ MetricsCalculator works")
+    print("  ✅ MetricsCalculator works")
 
     # Test confusion matrix
     print("\n2. Testing confusion matrix calculation...")
     conf_matrix = calculator.confusion_matrix(predictions, targets, num_classes=2)
     print(f"  Confusion matrix:\n{conf_matrix}")
-    print(f"  ✅ Confusion matrix works")
+    print("  ✅ Confusion matrix works")
 
     # Test MetricsTracker
     print("\n3. Testing MetricsTracker (multi-batch)...")
@@ -546,7 +546,7 @@ if __name__ == "__main__":
     best_epoch, best_metrics = tracker.get_best_epoch("f1_score")
     f1 = best_metrics.f1_score if best_metrics else 0.0
     print(f"  Best epoch: {best_epoch + 1} with F1={f1:.4f}")
-    print(f"  ✅ MetricsTracker works")
+    print("  ✅ MetricsTracker works")
 
     # Test MetricMonitor
     print("\n4. Testing MetricMonitor...")
@@ -560,7 +560,7 @@ if __name__ == "__main__":
 
     running_avg = monitor.get_running_averages()
     print(f"  Running averages: Loss={running_avg['loss']:.4f}, Acc={running_avg['accuracy']:.4f}")
-    print(f"  ✅ MetricMonitor works")
+    print("  ✅ MetricMonitor works")
 
     # Test class weights calculation
     print("\n5. Testing class weights calculation...")
@@ -570,7 +570,7 @@ if __name__ == "__main__":
         weights = calculate_class_weights(dataset_stats, method=method, device=device)
         print(f"  {method}: {weights}")
 
-    print(f"  ✅ Class weights calculation works")
+    print("  ✅ Class weights calculation works")
 
     print("\n✅ All metrics tests passed successfully")
     print("Metrics module loaded successfully")

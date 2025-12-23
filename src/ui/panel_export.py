@@ -148,41 +148,41 @@ def export_to_onnx(
         export_state.export_results = results
 
         # Build success message
-        log += f"✅ Base model exported successfully\n"
+        log += "✅ Base model exported successfully\n"
         log += f"   File size: {results['file_size_mb']:.2f} MB\n"
         log += f"   Path: {output_path}\n"
 
         if quantize_fp16 and "fp16_path" in results:
-            log += f"\n✅ FP16 model exported\n"
+            log += "\n✅ FP16 model exported\n"
             log += f"   File size: {results['fp16_size_mb']:.2f} MB\n"
             log += f"   Reduction: {results['fp16_reduction']:.1f}%\n"
             log += f"   Path: {results['fp16_path']}\n"
 
         if quantize_int8 and "int8_path" in results:
-            log += f"\n✅ INT8 model exported\n"
+            log += "\n✅ INT8 model exported\n"
             log += f"   File size: {results['int8_size_mb']:.2f} MB\n"
             log += f"   Reduction: {results['int8_reduction']:.1f}%\n"
             log += f"   Path: {results['int8_path']}\n"
 
         if export_tflite and results.get("tflite_success", False):
-            log += f"\n✅ TFLite model exported\n"
+            log += "\n✅ TFLite model exported\n"
             log += f"   File size: {results['tflite_size_mb']:.2f} MB\n"
             log += f"   Path: {results['tflite_path']}\n"
         elif export_tflite:
             tflite_error = results.get("tflite_error", "Unknown conversion error")
             log += f"\n❌ TFLite export failed: {tflite_error}\n"
-            log += f"   Hint: Ensure 'onnx2tf' is correctly installed and the model architecture is supported.\n"
+            log += "   Hint: Ensure 'onnx2tf' is correctly installed and the model architecture is supported.\n"
 
         if results.get("fixed_path"):
-            log += f"\n✅ Copied to ESPHome fixed path:\n"
+            log += "\n✅ Copied to ESPHome fixed path:\n"
             log += f"   {results['fixed_path']}\n"
         elif esphome_compatible:
             log += f"\n❌ Failed to copy to ESPHome fixed path: {results.get('fixed_path_error', 'Unknown error')}\n"
 
-        log += f"\n" + "=" * 60 + "\n"
-        log += f"✅ Export complete!\n"
+        log += "\n" + "=" * 60 + "\n"
+        log += "✅ Export complete!\n"
 
-        status = f"✅ Export Successful\n"
+        status = "✅ Export Successful\n"
         status += f"Model: {results['architecture']}\n"
         status += f"File: {output_filename} ({results['file_size_mb']:.2f} MB)"
 

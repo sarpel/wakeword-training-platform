@@ -369,12 +369,12 @@ def training_worker() -> None:
 
         # Train
         start_time = time.time()
-        results = trainer.train()
+        trainer.train()
         elapsed = time.time() - start_time
 
         # Training complete
         training_state.add_log("-" * 60)
-        training_state.add_log(f"Training complete!")
+        training_state.add_log("Training complete!")
         training_state.add_log(f"Total time: {elapsed/3600:.2f} hours")
         training_state.add_log(f"Best epoch: {training_state.best_epoch}")
         training_state.add_log(f"Best val F1: {training_state.best_val_f1:.4f}")
@@ -452,7 +452,7 @@ def start_training(
             try:
                 import wandb
 
-                training_state.add_log(f"Logging into W&B...")
+                training_state.add_log("Logging into W&B...")
                 wandb.login(key=wandb_api_key.strip())
                 save_wandb_key(wandb_api_key.strip())  # Save key on successful use
                 training_state.add_log("✅ W&B Login successful")
@@ -571,7 +571,7 @@ def start_training(
             if should_compute_cmvn:
                 # Instead of auto-recomputing, we now provide a warning if it wasn't recomputed
                 training_state.add_log(
-                    f"⚠️ CMVN stats dimension mismatch! Disabling CMVN for this run. Please use 'Recompute CMVN Stats' button to fix."
+                    "⚠️ CMVN stats dimension mismatch! Disabling CMVN for this run. Please use 'Recompute CMVN Stats' button to fix."
                 )
                 use_cmvn = False
                 cmvn_path = None
@@ -632,7 +632,6 @@ def start_training(
         )
 
         # test_ds is not used in training, so we don't load it here to save memory
-        test_ds = None
 
         training_state.add_log(f"Loaded {len(train_ds)} training samples")
         training_state.add_log(f"Loaded {len(val_ds)} validation samples")
@@ -1006,7 +1005,7 @@ def hpo_worker(config: WakewordConfig, n_trials: int, study_name: str) -> None:
         )
 
         # Run HPO with logging callback
-        study = run_hpo(hpo_config, train_loader, val_loader, n_trials, study_name, log_callback=training_state.add_log)
+        run_hpo(hpo_config, train_loader, val_loader, n_trials, study_name, log_callback=training_state.add_log)
 
         training_state.add_log(f"✅ HPO study '{study_name}' finished successfully.")
 

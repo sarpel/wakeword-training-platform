@@ -469,7 +469,7 @@ if __name__ == "__main__":
 
     # Create checkpoint manager
     manager = CheckpointManager(test_dir)
-    print(f"✅ CheckpointManager created")
+    print("✅ CheckpointManager created")
 
     # Create dummy checkpoints
     print("\n1. Creating dummy checkpoints...")
@@ -500,7 +500,7 @@ if __name__ == "__main__":
         "val_metrics": {"accuracy": 0.92, "f1_score": 0.89, "fpr": 0.05, "fnr": 0.08},
     }
     torch.save(best_checkpoint, test_dir / "best_model.pt")
-    print(f"  Created: best_model.pt")
+    print("  Created: best_model.pt")
 
     # List checkpoints
     print("\n2. Listing checkpoints...")
@@ -520,7 +520,7 @@ if __name__ == "__main__":
     # Export checkpoint info
     print("\n4. Exporting checkpoint info...")
     manager.export_checkpoint_info(test_dir / "checkpoint_info.json")
-    print(f"  ✅ Exported to checkpoint_info.json")
+    print("  ✅ Exported to checkpoint_info.json")
 
     # Cleanup old checkpoints
     print("\n5. Testing cleanup...")
@@ -531,7 +531,7 @@ if __name__ == "__main__":
     # Cleanup test directory
     print("\n6. Cleaning up test files...")
     shutil.rmtree(test_dir)
-    print(f"  ✅ Test directory removed")
+    print("  ✅ Test directory removed")
 
     print("\n✅ All checkpoint manager tests passed successfully")
     print("Checkpoint manager module loaded successfully")

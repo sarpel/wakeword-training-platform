@@ -5,7 +5,7 @@ Implements global normalization statistics with persistence
 
 import json
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import structlog
 import torch
@@ -106,7 +106,7 @@ class CMVN(nn.Module):
         self.count.fill_(total_frames)
         self._initialized = True
 
-        logger.info(f"CMVN stats computed:")
+        logger.info("CMVN stats computed:")
         logger.info(f"  Total frames: {total_frames}")
         logger.info(f"  Feature dim: {self.mean.shape[0]}")
         logger.info(f"  Mean range: [{self.mean.min():.4f}, {self.mean.max():.4f}]")
@@ -302,7 +302,7 @@ if __name__ == "__main__":
     cmvn = CMVN(stats_path=Path("test_cmvn_stats.json"))
     mean, std = cmvn.compute_stats(features_list)
 
-    print(f"\nComputed stats:")
+    print("\nComputed stats:")
     print(f"  Mean: {mean[:5]} ...")
     print(f"  Std: {std[:5]} ...")
 
@@ -310,14 +310,14 @@ if __name__ == "__main__":
     test_features = torch.randn(feature_dim, time_steps)
     normalized = cmvn.normalize(test_features)
 
-    print(f"\nTest normalization:")
+    print("\nTest normalization:")
     print(f"  Input mean: {test_features.mean():.4f}")
     print(f"  Normalized mean: {normalized.mean():.4f}")
     print(f"  Normalized std: {normalized.std():.4f}")
 
     # Test save/load
     cmvn.save_stats()
-    print(f"\nStats saved to test_cmvn_stats.json")
+    print("\nStats saved to test_cmvn_stats.json")
 
     # Load in new object
     cmvn2 = CMVN(stats_path=Path("test_cmvn_stats.json"))
@@ -325,6 +325,6 @@ if __name__ == "__main__":
     # Verify loaded stats match
     assert torch.allclose(cmvn.mean, cmvn2.mean)
     assert torch.allclose(cmvn.std, cmvn2.std)
-    print(f"✅ Save/load verification passed")
+    print("✅ Save/load verification passed")
 
     print("\n✅ CMVN module test complete")

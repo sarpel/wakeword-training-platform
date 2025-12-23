@@ -3,13 +3,13 @@ Optimizer and Scheduler Factory
 Creates optimizers and learning rate schedulers from configuration
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import structlog
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, StepLR, _LRScheduler
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, StepLR
 
 logger = structlog.get_logger(__name__)
 
@@ -383,7 +383,7 @@ if __name__ == "__main__":
     for sched_name in ["cosine", "step", "plateau", "none"]:
         scheduler = create_scheduler(optimizer, scheduler_name=sched_name, epochs=50, warmup_epochs=0)
         if sched_name == "none":
-            print(f"  ✅ Scheduler 'none' correctly returns None")
+            print("  ✅ Scheduler 'none' correctly returns None")
         else:
             print(f"  ✅ Created {sched_name} scheduler")
 
@@ -405,12 +405,12 @@ if __name__ == "__main__":
         elif epoch == 5:
             print(f"  After warmup epoch {epoch+1}: LR = {lr:.6f}")
 
-    print(f"  ✅ Warmup scheduler works")
+    print("  ✅ Warmup scheduler works")
 
     # Test mixed precision scaler
     print("\n4. Testing mixed precision scaler...")
     scaler = create_grad_scaler(enabled=True)
-    print(f"  ✅ Created gradient scaler")
+    print("  ✅ Created gradient scaler")
 
     # Test gradient clipping
     print("\n5. Testing gradient clipping...")
@@ -428,7 +428,7 @@ if __name__ == "__main__":
 
     print(f"  Gradient norm before clipping: {total_norm_before:.4f}")
     print(f"  Gradient norm after clipping: {total_norm_after:.4f}")
-    print(f"  ✅ Gradient clipping works")
+    print("  ✅ Gradient clipping works")
 
     # Test ReduceLROnPlateau
     print("\n6. Testing ReduceLROnPlateau with metrics...")
@@ -450,7 +450,7 @@ if __name__ == "__main__":
             current_lr = get_learning_rate(optimizer)
             print(f"  After epoch {epoch+1}: LR = {current_lr:.6f}")
 
-    print(f"  ✅ ReduceLROnPlateau works")
+    print("  ✅ ReduceLROnPlateau works")
 
     # Test full integration with config-like object
     print("\n7. Testing config-based creation...")
@@ -482,7 +482,7 @@ if __name__ == "__main__":
 
     print(f"  Created optimizer: {type(optimizer).__name__}")
     print(f"  Created scheduler: {type(scheduler).__name__}")
-    print(f"  ✅ Config-based creation works")
+    print("  ✅ Config-based creation works")
 
     print("\n✅ All optimizer and scheduler tests passed successfully")
     print("Optimizer factory module loaded successfully")

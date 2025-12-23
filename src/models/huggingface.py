@@ -8,7 +8,7 @@ Default cache location: models/teachers/
 import logging
 import os
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 import torch
 import torch.nn as nn
@@ -58,7 +58,7 @@ def ensure_teacher_model_downloaded(model_id: str = "facebook/wav2vec2-base-960h
         logger.info(f"Downloading teacher model {model_id} to {TEACHER_CACHE_DIR}...")
         # This will download and cache the model
         _ = Wav2Vec2Model.from_pretrained(model_id, cache_dir=str(TEACHER_CACHE_DIR))
-        logger.info(f"Teacher model downloaded successfully")
+        logger.info("Teacher model downloaded successfully")
     else:
         logger.info(f"Teacher model already cached at {cache_path}")
 

@@ -4,12 +4,10 @@ Includes VAD filtering and other offline processing steps.
 """
 
 import json
-import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import structlog
-import torch
 import torchaudio
 from tqdm import tqdm
 

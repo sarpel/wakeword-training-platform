@@ -159,7 +159,7 @@ def evaluate_with_advanced_metrics(
     logger.info(f"  ROC-AUC: {metrics['roc_auc']:.4f}")
     logger.info(f"  EER: {metrics['eer']:.4f}")
     logger.info(f"  pAUC (FPR≤0.1): {metrics['pauc_at_fpr_0.1']:.4f}")
-    logger.info(f"  Operating Point:")
+    logger.info("  Operating Point:")
     logger.info(f"    Threshold: {metrics['operating_point']['threshold']:.4f}")
     logger.info(f"    TPR: {metrics['operating_point']['tpr']:.4f}")
     logger.info(f"    FPR: {metrics['operating_point']['fpr']:.4f}")

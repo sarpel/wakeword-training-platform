@@ -122,7 +122,7 @@ class ModelEvaluator:
         self.metrics_calculator = MetricsCalculator(device=device)
 
         logger.info(f"ModelEvaluator initialized on {device}")
-        logger.info(f"Class Mapping: Positive=1, Negative=0")
+        logger.info("Class Mapping: Positive=1, Negative=0")
         if hasattr(model, "num_classes"):
             logger.info(f"Model Classes: {model.num_classes}")
 
@@ -311,7 +311,7 @@ if __name__ == "__main__":
                 hop_length=info["config"].data.hop_length,
             )
 
-            print(f"✅ Evaluator created")
+            print("✅ Evaluator created")
             print("\nEvaluator module loaded successfully")
 
         except Exception as e:

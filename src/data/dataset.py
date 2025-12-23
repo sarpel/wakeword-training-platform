@@ -4,7 +4,6 @@ Handles audio loading, preprocessing, and augmentation
 """
 
 import json
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
@@ -638,7 +637,7 @@ if __name__ == "__main__":
             # Test loading a sample
             if len(train_ds) > 0:
                 audio, label, metadata = train_ds[0]
-                print(f"\nSample:")
+                print("\nSample:")
                 print(f"  Audio shape: {audio.shape}")
                 print(f"  Label: {label}")
                 print(f"  Metadata: {metadata}")

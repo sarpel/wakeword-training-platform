@@ -373,7 +373,7 @@ if __name__ == "__main__":
         print("⚠️  sounddevice not installed")
         print("Install with: pip install sounddevice")
     else:
-        print(f"✅ sounddevice available")
+        print("✅ sounddevice available")
 
         # List audio devices
         print("\nAvailable audio devices:")

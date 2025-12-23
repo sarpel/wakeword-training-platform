@@ -481,7 +481,7 @@ class Objective:
                 params["hop_length"] = trial.suggest_categorical("hop_length", [160, 320])
                 trial_config.data.hop_length = params["hop_length"]
             else:
-                self._log(f"Skipping data optimization " f"(using precomputed features)")
+                self._log("Skipping data optimization " "(using precomputed features)")
 
         # Group: Loss
         if "Loss" in self.param_groups:

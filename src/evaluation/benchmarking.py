@@ -4,7 +4,7 @@ Performance benchmarking for inference stages.
 
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
 import psutil
@@ -45,7 +45,7 @@ class BenchmarkRunner:
             self.stage.predict(audio)
 
         # Benchmark loop
-        start_mem = self._get_memory_usage()
+        self._get_memory_usage()
 
         for i in range(num_iterations):
             start_time = time.perf_counter()
@@ -53,7 +53,7 @@ class BenchmarkRunner:
             end_time = time.perf_counter()
             latencies.append((end_time - start_time) * 1000)
 
-        end_mem = self._get_memory_usage()
+        self._get_memory_usage()
 
         metrics = {
             "name": self.stage.name,

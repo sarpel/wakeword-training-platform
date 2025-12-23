@@ -355,7 +355,7 @@ if __name__ == "__main__":
 
     print(f"  Total detections: {len(detections)}")
     assert len(detections) == 1, "Should have exactly 1 detection"
-    print(f"  ✅ Basic detector test passed")
+    print("  ✅ Basic detector test passed")
 
     # Test 2: Sliding window processor
     print("\n2. Testing SlidingWindowProcessor...")
@@ -367,7 +367,7 @@ if __name__ == "__main__":
 
     windows, timestamps = processor.extract_windows(audio)
 
-    print(f"  Audio duration: 5 seconds")
+    print("  Audio duration: 5 seconds")
     print(f"  Windows extracted: {len(windows)}")
     print(f"  Window shape: {windows[0].shape}")
     print(f"  First timestamp: {timestamps[0]}ms")
@@ -375,7 +375,7 @@ if __name__ == "__main__":
 
     expected_windows = (len(audio) - processor.window_size) // processor.hop_size + 1
     assert len(windows) == expected_windows, f"Expected {expected_windows} windows"
-    print(f"  ✅ Sliding window test passed")
+    print("  ✅ Sliding window test passed")
 
     # Test 3: Hysteresis behavior
     print("\n3. Testing hysteresis...")
@@ -402,6 +402,6 @@ if __name__ == "__main__":
         state = "ACTIVE" if detector_hyst.is_active else "INACTIVE"
         print(f"  t={timestamp_ms}ms, score={score:.2f}, state={state}, detected={detected}")
 
-    print(f"  ✅ Hysteresis test passed")
+    print("  ✅ Hysteresis test passed")
 
     print("\n✅ All streaming detector tests passed")

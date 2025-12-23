@@ -6,9 +6,8 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-import numpy as np
 import structlog
 
 from src.evaluation.types import EvaluationResult

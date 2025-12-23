@@ -884,7 +884,7 @@ class DatasetSplitter:
 
         # For now, we just log that NPYs are linked.
         if npy_mapped_count > 0:
-            logger.info(f"NPY files linked in manifest (no copying needed)")
+            logger.info("NPY files linked in manifest (no copying needed)")
         else:
             logger.warning(f"No NPY files found in {npy_source_dir}. Skipping NPY mapping.")
             logger.warning("If you want to use precomputed features, run batch extraction first.")

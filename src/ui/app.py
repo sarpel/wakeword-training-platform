@@ -164,19 +164,19 @@ def create_app() -> gr.Blocks:
                 panel_dataset = create_dataset_panel(state=global_state)
 
             with gr.TabItem("⚙️ 2. Configuration", id=2):
-                panel_config = create_config_panel(global_state)
+                create_config_panel(global_state)
 
             with gr.TabItem("🚀 3. Training", id=3):
                 panel_training = create_training_panel(global_state)
 
             with gr.TabItem("🎯 4. Evaluation", id=4):
-                panel_evaluation = create_evaluation_panel(global_state)
+                create_evaluation_panel(global_state)
 
             with gr.TabItem("📦 5. ONNX Export", id=5):
-                panel_export = create_export_panel()
+                create_export_panel()
 
             with gr.TabItem("📚 6. Documentation", id=6):
-                panel_docs = create_docs_panel()
+                create_docs_panel()
 
         # Footer
         gr.Markdown("---")

@@ -529,11 +529,11 @@ if __name__ == "__main__":
 
     # Load back
     loaded_config = WakewordConfig.load(test_path)
-    print(f"Configuration loaded successfully")
+    print("Configuration loaded successfully")
     print(f"  Loaded config name: {loaded_config.config_name}")
 
     # Cleanup
     test_path.unlink()
-    print(f"Test file cleaned up")
+    print("Test file cleaned up")
 
     print("\nConfiguration system test complete")

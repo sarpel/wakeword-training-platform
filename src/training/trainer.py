@@ -3,7 +3,6 @@ Wakeword Training Loop
 GPU-accelerated training with checkpointing, early stopping, and metrics tracking
 """
 
-import shutil
 import sys
 import threading
 import time
@@ -551,13 +550,13 @@ if __name__ == "__main__":
     from src.models.architectures import create_model
 
     model = create_model("resnet18", num_classes=2, pretrained=False)
-    print(f"✅ Created model: ResNet18")
+    print("✅ Created model: ResNet18")
 
     # Create dummy config
     from src.config.defaults import WakewordConfig
 
     config = WakewordConfig()
-    print(f"✅ Created config")
+    print("✅ Created config")
 
     # Create dummy data loaders
     dummy_dataset = torch.utils.data.TensorDataset(
@@ -585,11 +584,11 @@ if __name__ == "__main__":
             checkpoint_manager=checkpoint_manager,
             device=device,
         )
-        print(f"✅ Trainer initialized successfully")
+        print("✅ Trainer initialized successfully")
 
         print("\n✅ Trainer module loaded successfully")
         print("Note: Full training test requires actual dataset and GPU")
 
-    except SystemExit as e:
+    except SystemExit:
         print("\n❌ Trainer requires CUDA GPU (as specified in requirements)")
         print("  This is expected behavior - CPU fallback not allowed")

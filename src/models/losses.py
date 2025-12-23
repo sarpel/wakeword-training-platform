@@ -229,10 +229,9 @@ class TripletLoss(nn.Module):
 
         # Create mask for positive and negative pairs
         # mask[i, j] = 1 if target[i] == target[j]
-        batch_size = embeddings.size(0)
+        embeddings.size(0)
         target = target.unsqueeze(1)  # (B, 1)
         mask_pos = target.eq(target.t())  # (B, B)
-        mask_neg = ~mask_pos
 
         # For each anchor, find the hardest positive (max distance)
         # We multiply by mask to zero out negatives, but we need to handle cases where
@@ -321,7 +320,7 @@ if __name__ == "__main__":
     pred = torch.randn(batch_size, num_classes).to(device)
     target = torch.randint(0, num_classes, (batch_size,)).to(device)
 
-    print(f"\nTest input:")
+    print("\nTest input:")
     print(f"  Predictions shape: {pred.shape}")
     print(f"  Targets shape: {target.shape}")
 
@@ -331,7 +330,7 @@ if __name__ == "__main__":
     ce_loss = ce_loss.to(device)
     loss_value = ce_loss(pred, target)
     print(f"  Loss value: {loss_value.item():.4f}")
-    print(f"  ✅ Label Smoothing Cross Entropy works")
+    print("  ✅ Label Smoothing Cross Entropy works")
 
     # Test Focal Loss
     print("\n2. Testing Focal Loss...")
@@ -339,7 +338,7 @@ if __name__ == "__main__":
     focal_loss = focal_loss.to(device)
     loss_value = focal_loss(pred, target)
     print(f"  Loss value: {loss_value.item():.4f}")
-    print(f"  ✅ Focal Loss works")
+    print("  ✅ Focal Loss works")
 
     # Test with class weights
     print("\n3. Testing with class weights...")
@@ -348,14 +347,14 @@ if __name__ == "__main__":
     ce_weighted = ce_weighted.to(device)
     loss_value = ce_weighted(pred, target)
     print(f"  Loss value: {loss_value.item():.4f}")
-    print(f"  ✅ Weighted loss works")
+    print("  ✅ Weighted loss works")
 
     # Test factory function
     print("\n4. Testing factory function...")
     loss_fn = create_loss_function("cross_entropy", label_smoothing=0.1, device=device)
     loss_value = loss_fn(pred, target)
     print(f"  Loss value: {loss_value.item():.4f}")
-    print(f"  ✅ Factory function works")
+    print("  ✅ Factory function works")
 
     # Test Triplet Loss
     print("\n5. Testing Triplet Loss...")
@@ -363,7 +362,7 @@ if __name__ == "__main__":
     triplet_loss = create_loss_function("triplet_loss", triplet_margin=1.0, device=device)
     loss_value = triplet_loss(embeddings, target)
     print(f"  Loss value: {loss_value.item():.4f}")
-    print(f"  ✅ Triplet Loss works")
+    print("  ✅ Triplet Loss works")
 
     print("\n✅ All loss functions tested successfully")
     print("Loss functions module loaded successfully")

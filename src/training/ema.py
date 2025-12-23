@@ -234,10 +234,10 @@ if __name__ == "__main__":
 
     # Create EMA
     ema = EMA(model, decay=0.999)
-    print(f"\nEMA created with decay=0.999")
+    print("\nEMA created with decay=0.999")
 
     # Simulate training updates
-    print(f"\nSimulating 100 training steps...")
+    print("\nSimulating 100 training steps...")
 
     for step in range(100):
         # Simulate gradient update (modify model weights)
@@ -251,42 +251,42 @@ if __name__ == "__main__":
     final_weight = model[0].weight.data.clone()
     shadow_weight = ema.shadow_params["0.weight"]
 
-    print(f"Weight changes:")
+    print("Weight changes:")
     print(f"  Initial weight mean: {initial_weight.mean():.6f}")
     print(f"  Final weight mean: {final_weight.mean():.6f}")
     print(f"  Shadow weight mean: {shadow_weight.mean():.6f}")
 
     # Test apply/restore
-    print(f"\nTesting apply_shadow and restore...")
+    print("\nTesting apply_shadow and restore...")
 
     original_params = ema.apply_shadow()
     applied_weight = model[0].weight.data.clone()
 
     assert torch.allclose(applied_weight, shadow_weight), "Shadow not applied correctly"
-    print(f"  ✅ Shadow applied correctly")
+    print("  ✅ Shadow applied correctly")
 
     ema.restore(original_params)
     restored_weight = model[0].weight.data.clone()
 
     assert torch.allclose(restored_weight, final_weight), "Parameters not restored correctly"
-    print(f"  ✅ Parameters restored correctly")
+    print("  ✅ Parameters restored correctly")
 
     # Test scheduler
-    print(f"\nTesting EMA Scheduler...")
+    print("\nTesting EMA Scheduler...")
 
     ema2 = EMA(model, decay=0.999)
     scheduler = EMAScheduler(ema2, initial_decay=0.999, final_decay=0.9995, warmup_epochs=5, final_epochs=10)
 
     total_epochs = 50
     print(f"  Total epochs: {total_epochs}")
-    print(f"  Decay schedule:")
+    print("  Decay schedule:")
 
     for epoch in [0, 4, 5, 20, 39, 40, 49]:
         decay = scheduler.step(epoch, total_epochs)
         print(f"    Epoch {epoch:2d}: decay={decay:.5f}")
 
     # Test state dict
-    print(f"\nTesting state_dict save/load...")
+    print("\nTesting state_dict save/load...")
 
     state = ema.state_dict()
     print(f"  State dict keys: {list(state.keys())}")
@@ -297,6 +297,6 @@ if __name__ == "__main__":
 
     assert ema3.decay == ema.decay, "Decay not loaded correctly"
     assert ema3.num_updates == ema.num_updates, "Num updates not loaded correctly"
-    print(f"  ✅ State dict save/load works")
+    print("  ✅ State dict save/load works")
 
     print("\n✅ All EMA tests passed")
