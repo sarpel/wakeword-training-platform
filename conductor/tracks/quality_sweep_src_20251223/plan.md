@@ -7,7 +7,7 @@ Establish that all required quality tools are available and record the initial s
 - [x] Task: Run baseline tests to ensure current state is functional (Baseline: 28 failed, 141 passed)
 - [x] Task: Conductor - User Manual Verification 'Tool Validation & Baseline' (Protocol in workflow.md)
 
-## Phase 2: Automated Formatting & Linting
+## Phase 2: Automated Formatting & Linting [checkpoint: 9e54b16]
 Apply non-destructive automated fixes to the `src/` directory.
 
 - [x] Task: Execute `isort src/` to standardize import ordering 8791317
