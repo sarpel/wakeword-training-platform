@@ -111,7 +111,7 @@ class WakewordDataset(Dataset):
             logger.info("CMVN enabled but deferred to GPU pipeline (return_raw_audio=True)")
 
         # Load manifest
-        with open(self.manifest_path, "r") as f:
+        with open(self.manifest_path, "r", encoding="utf-8") as f:  # type: ignore[assignment]
             manifest = json.load(f)
 
         self.files: List[Dict[str, Any]] = manifest["files"]

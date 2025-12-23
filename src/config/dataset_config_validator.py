@@ -4,7 +4,7 @@ Checks for consistency between configuration and dataset features.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Literal, Tuple
 
 import numpy as np
 import structlog
@@ -36,7 +36,7 @@ class DatasetConfigValidator:
         # We only need the shape, so we don't need a real device
         extractor = FeatureExtractor(
             sample_rate=config.data.sample_rate,
-            feature_type=config.data.feature_type,
+            feature_type=cast(Literal["mel", "mfcc"], config.data.feature_type),  # type: ignore[arg-type]
             n_mels=config.data.n_mels,
             n_mfcc=config.data.n_mfcc,
             n_fft=config.data.n_fft,

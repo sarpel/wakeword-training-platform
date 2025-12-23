@@ -227,7 +227,7 @@ def calculate_pauc(
         raw = auc(fpr_c, tpr_c)
         return float(raw / fpr_max) if fpr_max > 0 else 0.0
 
-    thr: np.ndarray = np.unique(np.concatenate(([0.0, 1.0], probs)))
+    thr: np.ndarray = np.unique(np.concatenate((np.array([0.0, 1.0]), probs)))
     roc_list: list[tuple[float, float]] = []
     for t in thr:
         m = _metrics_from_probs_at_threshold(y, probs, float(t))

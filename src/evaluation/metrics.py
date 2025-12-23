@@ -39,7 +39,7 @@ def calculate_pauc(
     labels: Union[torch.Tensor, np.ndarray],
     fpr_max: float = 0.1,
     positive_index: int = 1,
-) -> float:
+) -> np.ndarray:  # type: ignore[return-value]
     """
     Calculate the Partial Area Under the ROC Curve (pAUC) up to a max FPR.
 

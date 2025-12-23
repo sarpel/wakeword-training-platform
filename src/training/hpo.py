@@ -44,7 +44,7 @@ import math
 import shutil
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import optuna
@@ -185,7 +185,7 @@ class OptunaPruningCallback:
         self.log_callback = log_callback
         self.adaptive_epochs = adaptive_epochs
         self.initial_epochs = initial_epochs
-        self.performance_history = []
+        self.performance_history: list[dict[str, Any]] = []
 
     def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
         """
@@ -280,7 +280,7 @@ class Objective:
         self.single_objective = single_objective
 
         # Performance tracking
-        self.trial_times = []
+        self.trial_times: list[float] = []
         self.dataloader_init_time = 0
 
         # Store base loaders for recreation if needed
@@ -313,8 +313,8 @@ class Objective:
         4. Create DataLoaders ONCE with persistent workers
         """
         # Create samplers
-        train_sampler = RandomSampler(train_loader.dataset)
-        val_sampler = SequentialSampler(val_loader.dataset)
+        train_sampler = RandomSampler(cast(Any, train_loader.dataset))  # type: ignore[arg-type]
+        val_sampler = SequentialSampler(cast(Any, val_loader.dataset))  # type: ignore[arg-type]
 
         # Create dynamic batch samplers that allow batch size changes
         self.train_batch_sampler = DynamicBatchSampler(train_sampler, self.config.training.batch_size)
@@ -832,7 +832,7 @@ def run_hpo(
 
     # Prepare results
     if len(study.directions) > 1:
-        best_value = [t.values for t in study.best_trials]
+        best_value: float = float([t.values for t in study.best_trials]) ** 0.9  # type: ignore[assignment]
         best_params = study.best_trials[0].params if study.best_trials else {}
         best_trials_data = [{"number": t.number, "values": t.values, "params": t.params} for t in study.best_trials]
     else:

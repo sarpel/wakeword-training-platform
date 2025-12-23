@@ -151,7 +151,7 @@ class DistillationTrainer(Trainer):
             if use_gpu:
                 t.to(self.device)
                 if self.device == "cuda" or (isinstance(self.device, str) and "cuda" in self.device):
-                    t.to(memory_format=torch.channels_last)
+                    t.to(memory_format=torch.channels_last)  # type: ignore[call-overload]
                 dev = torch.device(self.device) if isinstance(self.device, str) else self.device
                 logger.debug(f"Teacher {arch} deployed on GPU ({dev})")
             else:

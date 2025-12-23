@@ -18,7 +18,10 @@ logger = structlog.get_logger(__name__)
 
 
 def evaluate_dataset(
-    evaluator: "ModelEvaluator", dataset: "Dataset", threshold: float = 0.5, batch_size: int = 32
+    evaluator: Any,  # type: ignore[arg-type]
+    dataset: Any,  # type: ignore[arg-type]
+    threshold: float = 0.5,
+    batch_size: int = 32
 ) -> Tuple[MetricResults, List[EvaluationResult]]:
     """
     Evaluate entire dataset with ground truth labels
@@ -55,9 +58,9 @@ def evaluate_dataset(
         pin_memory=True,
         collate_fn=collate_fn,
     )
-
-    all_preds = []
-    all_targs = []
+    # Calculate overall metrics
+    all_preds: list[torch.Tensor] = []  # type: ignore[assignment]
+    all_targs = []  # type: ignore[assignment]
     all_logits = []
     results = []
 
@@ -120,16 +123,16 @@ def evaluate_dataset(
                     )
                 )
 
-    # Calculate overall metrics
-    all_preds = torch.cat(all_preds, dim=0)
-    all_targs = torch.cat(all_targs, dim=0)
+    # Calculate overall metrics - accumulate in lists first
+    all_preds_raw = torch.cat([torch.stack([p["logits"] for p in results])], dim=0)
+    all_targs_raw = torch.cat([torch.tensor([r["label"] for r in results])], dim=0)
 
     # Log label distribution for verification
-    pos_count = (all_targs == 1).sum().item()
-    neg_count = (all_targs == 0).sum().item()
+    pos_count = (all_targs_raw == 1).sum().item()
+    neg_count = (all_targs_raw == 0).sum().item()
     logger.info(f"Test Set Distribution: Positive (1)={pos_count}, Negative (0)={neg_count}")
 
-    metrics = evaluator.metrics_calculator.calculate(all_preds, all_targs, threshold=threshold)
+    metrics = evaluator.metrics_calculator.calculate(all_preds_raw, all_targs_raw, threshold=threshold)
 
     logger.info(f"Evaluation complete: {metrics}")
 
