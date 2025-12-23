@@ -20,12 +20,30 @@ from src.config.defaults import DistillationConfig, QATConfig, WakewordConfig
 from src.config.logger import get_data_logger
 from src.config.presets import get_preset, list_presets
 from src.config.validator import ConfigValidator
+from src.config.dataset_config_validator import DatasetConfigValidator
 from src.exceptions import WakewordException
 
 logger = get_data_logger()
 
 # Global state for current configuration
 _current_config = None
+
+
+def check_mismatch(config: WakewordConfig) -> Tuple[bool, str]:
+    """Check for mismatches between config and dataset features"""
+    validator = DatasetConfigValidator()
+    npy_dir = Path(config.data.npy_feature_dir)
+    mismatches = validator.validate_dataset_features(config, npy_dir)
+
+    if mismatches:
+        details = "Detected shape mismatches in existing .npy features:\n\n"
+        for m in mismatches[:3]:
+            details += f"• **{Path(m['file']).name}**\n"
+            details += f"  Got: {m['actual_shape']}, Expected: {m['expected_shape']}\n"
+        if len(mismatches) > 3:
+            details += f"\n... and {len(mismatches) - 3} more files."
+        return True, details
+    return False, ""
 
 
 def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
@@ -306,6 +324,13 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 interactive=False,
                 visible=False,
             )
+
+        with gr.Group(visible=False) as mismatch_warning_box:
+            gr.Markdown("### ⚠️ Dataset Feature Mismatch Detected")
+            mismatch_details_msg = gr.Markdown("The active configuration does not match the features extracted in the dataset. This will cause errors during training.")
+            with gr.Row():
+                reextract_btn = gr.Button("⚡ Go to Dataset Panel to Re-extract", variant="primary")
+                revert_btn = gr.Button("🔄 Revert to Defaults", variant="secondary")
 
         # Collect all inputs for easier handling
         all_inputs = [
@@ -653,13 +678,21 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
 
                 logger.info(f"Preset loaded successfully: {preset_name}")
 
-                return tuple(params + [status, gr.update(visible=False)])
+                # Check for mismatch
+                is_mismatch, details = check_mismatch(config)
+
+                return tuple(params + [
+                    status, 
+                    gr.update(visible=False),
+                    gr.update(visible=is_mismatch),
+                    details if is_mismatch else ""
+                ])
 
             except Exception as e:
                 error_msg = f"Error loading preset: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
+                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""])
 
         def update_config_handler(*params: Any) -> str:
             """Update current configuration from UI"""
@@ -748,13 +781,21 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 status = f"✅ Loaded configuration from: {latest_config.name}"
                 logger.info("Configuration loaded successfully")
 
-                return tuple(params + [status, gr.update(visible=False)])
+                # Check for mismatch
+                is_mismatch, details = check_mismatch(config)
+
+                return tuple(params + [
+                    status, 
+                    gr.update(visible=False),
+                    gr.update(visible=is_mismatch),
+                    details if is_mismatch else ""
+                ])
 
             except Exception as e:
                 error_msg = f"Error loading configuration: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
+                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""])
 
         def reset_config_handler() -> Tuple:
             """Reset to default configuration"""
@@ -778,13 +819,21 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 status = "✅ Reset to default configuration"
                 logger.info("Configuration reset successfully")
 
-                return tuple(params + [status, gr.update(visible=False)])
+                # Check for mismatch
+                is_mismatch, details = check_mismatch(config)
+
+                return tuple(params + [
+                    status, 
+                    gr.update(visible=False),
+                    gr.update(visible=is_mismatch),
+                    details if is_mismatch else ""
+                ])
 
             except Exception as e:
                 error_msg = f"Error resetting configuration: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
+                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""])
 
         def validate_config_handler(*params: Any) -> Tuple[str, str]:
             """Validate current configuration"""
@@ -828,25 +877,35 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
         load_preset_btn.click(
             fn=load_preset_handler,
             inputs=[preset_dropdown],
-            outputs=all_inputs + [config_status, validation_report],
+            outputs=all_inputs + [config_status, validation_report, mismatch_warning_box, mismatch_details_msg],
         )
 
         save_config_btn.click(fn=save_config_handler, inputs=all_inputs, outputs=[config_status])
 
         load_config_btn.click(
             fn=load_config_handler,
-            outputs=all_inputs + [config_status, validation_report],
+            outputs=all_inputs + [config_status, validation_report, mismatch_warning_box, mismatch_details_msg],
         )
 
         reset_config_btn.click(
             fn=reset_config_handler,
-            outputs=all_inputs + [config_status, validation_report],
+            outputs=all_inputs + [config_status, validation_report, mismatch_warning_box, mismatch_details_msg],
         )
 
         validate_btn.click(
             fn=validate_config_handler,
             inputs=all_inputs,
             outputs=[config_status, validation_report],
+        )
+
+        revert_btn.click(
+            fn=reset_config_handler,
+            outputs=all_inputs + [config_status, validation_report, mismatch_warning_box, mismatch_details_msg],
+        )
+
+        reextract_btn.click(
+            fn=lambda: gr.update(visible=False),
+            outputs=[mismatch_warning_box],
         )
 
     return panel
