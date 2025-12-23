@@ -14,16 +14,23 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [~] Track: Training & Performance Improvements (Focal Loss & QAT Accuracy)
-*Link: [./conductor/tracks/training_perf_boost_20251223/](./conductor/tracks/training_perf_boost_20251223/)*
-
----
-
 ## [x] Track: Dynamic CMVN Dimensions & Hardcoding Removal
-
 *Link: [./conductor/tracks/dynamic_cmvn_dims_20251223/](./conductor/tracks/dynamic_cmvn_dims_20251223/)*
 
 ---
 
+
+
 ## [x] Track: Startup and HPO Fixes
+
 *Link: [./conductor/tracks/startup_hpo_fixes_20251223/](./conductor/tracks/startup_hpo_fixes_20251223/)*
+
+
+
+---
+
+
+
+## [~] Track: Stability & UX Enhancement Suite
+
+*Link: [./conductor/tracks/stability_ux_fixes_20251223/](./conductor/tracks/stability_ux_fixes_20251223/)*

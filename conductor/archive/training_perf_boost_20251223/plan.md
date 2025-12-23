@@ -13,8 +13,8 @@
 - [x] Task: Implement the "Quantization Error" reporting tool to compare FP32 vs. INT8 validation metrics
 - [x] Task: Conductor - User Manual Verification 'Phase 2: QAT Accuracy Recovery' (Protocol in workflow.md)
 
-## Phase 3: Integration and Benchmarking
-- [~] Task: Write integration tests for the full pipeline (Standard Training -> QAT -> TFLite Export)
-- [ ] Task: Perform a benchmark run to verify that accuracy drop is < 2% and Focal Loss improves hard-negative handling
-- [ ] Task: Final code cleanup, documentation update, and coverage verification (>80%)
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Integration and Benchmarking' (Protocol in workflow.md)
+## Phase 3: Integration and Benchmarking [checkpoint: ceb9d3f]
+- [x] Task: Write integration tests for the full pipeline (Standard Training -> QAT -> TFLite Export) ceb9d3f
+- [x] Task: Perform a benchmark run to verify that accuracy drop is < 2% and Focal Loss improves hard-negative handling ceb9d3f
+- [x] Task: Final code cleanup, documentation update, and coverage verification (>80%) ceb9d3f
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Integration and Benchmarking' (Protocol in workflow.md) ceb9d3f
