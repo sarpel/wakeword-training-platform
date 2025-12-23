@@ -7,13 +7,13 @@ Update existing configuration presets and suppress terminal noise to establish a
 - [x] Task: Implement `ConnectionResetError` suppression in the server/async logic. [b389daf]
 - [x] Task: Conductor - User Manual Verification 'Infrastructure & Preset Updates' (Protocol in workflow.md) [0ce6044]
 
-## Phase 2: QAT Report Stability
+## Phase 2: QAT Report Stability [checkpoint: 950672f]
 Fix the channel mismatch error during quantization reporting.
 
 - [x] Task: Write failing test to reproduce QAT channel mismatch (`tests/reproduce_qat_mismatch.py`). [80e0246]
 - [x] Task: Fix model/input dimension alignment in `src/training/trainer.py` for QAT reporting. [80e0246]
 - [x] Task: Verify QAT report generation works for both HPO trial ends and early stopping. [80e0246]
-- [ ] Task: Conductor - User Manual Verification 'QAT Report Stability' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'QAT Report Stability' (Protocol in workflow.md) [950672f]
 
 ## Phase 3: HPO Profile Persistence
 Implement the "Load Latest" functionality in the UI.
