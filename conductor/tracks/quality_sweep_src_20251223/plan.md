@@ -1,6 +1,6 @@
 # Plan - Track: Quality Sweep (src/)
 
-## Phase 1: Tool Validation & Baseline
+## Phase 1: Tool Validation & Baseline [checkpoint: dd9c1fd]
 Establish that all required quality tools are available and record the initial state.
 
 - [x] Task: Verify tool availability (black, isort, ruff, mypy, pytest)
