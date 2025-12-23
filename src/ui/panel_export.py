@@ -181,6 +181,11 @@ def export_to_onnx(
         if export_tflite and results.get("tflite_success", False):
             status += f"\nTFLite: {results['tflite_size_mb']:.2f} MB"
 
+        # Size warnings
+        if results.get("size_warning", False):
+            status = "⚠️ Export Successful (Size Warning)\n" + status[18:]
+            status += "\n\n⚠️ WARNING: Model exceeds target Flash/RAM limits! Check logs for details."
+
         logger.info("Export complete")
 
         return status, log

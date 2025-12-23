@@ -52,6 +52,13 @@ class WandbCallback:
         else:
             wandb.log(log_dict)
 
+    def log_calibration_stats(self, stats: Dict[str, Any]) -> None:
+        """Logs quantization calibration statistics."""
+        if wandb is not None and wandb.run is not None:
+            # Prefix keys with calibration/
+            prefixed_stats = {f"calibration/{k}": v for k, v in stats.items()}
+            wandb.log(prefixed_stats)
+
     def on_train_end(self) -> None:
         """Called when training finishes."""
         wandb.finish()
