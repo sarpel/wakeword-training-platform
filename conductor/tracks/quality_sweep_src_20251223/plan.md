@@ -12,7 +12,7 @@ Apply non-destructive automated fixes to the `src/` directory.
 
 - [x] Task: Execute `isort src/` to standardize import ordering 8791317
 - [x] Task: Execute `black src/` to enforce PEP 8 style consistency b0de5f9
-- [ ] Task: Execute `ruff check src/ --fix` to resolve automated linting violations
+- [x] Task: Execute `ruff check src/ --fix` to resolve automated linting violations fd181bd
 - [ ] Task: Conductor - User Manual Verification 'Automated Formatting & Linting' (Protocol in workflow.md)
 
 ## Phase 3: Static Type Analysis & Manual Fixes
