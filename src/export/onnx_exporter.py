@@ -306,6 +306,7 @@ def export_model_to_onnx(
     quantize_int8: bool = False,
     export_tflite: bool = False,  # New param
     device: str = "cuda",
+    fixed_export_path: Optional[Path] = None, # New: Support for fixed export paths (e.g. for ESPHome)
 ) -> Dict:
     """
     Export PyTorch model checkpoint to ONNX
@@ -318,6 +319,7 @@ def export_model_to_onnx(
         quantize_fp16: Apply FP16 quantization
         quantize_int8: Apply INT8 quantization
         device: Device for model
+        fixed_export_path: Optional: Copy the final TFLite model to this fixed location
 
     Returns:
         Dictionary with export results
@@ -473,6 +475,17 @@ def export_model_to_onnx(
         results["tflite_size_mb"] = tflite_results.get("file_size_mb")
         results["tflite_success"] = tflite_results.get("success")
         results["tflite_error"] = tflite_results.get("error")
+
+        # Copy to fixed path if requested
+        if fixed_export_path and tflite_results.get("success"):
+            try:
+                fixed_export_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(tflite_path), str(fixed_export_path))
+                logger.info(f"✅ Copied TFLite model to fixed path: {fixed_export_path}")
+                results["fixed_path"] = str(fixed_export_path)
+            except Exception as e:
+                logger.error(f"Failed to copy to fixed path: {e}")
+                results["fixed_path_error"] = str(e)
 
     # Add model info
     results["architecture"] = config.model.architecture
