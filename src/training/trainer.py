@@ -4,6 +4,7 @@ GPU-accelerated training with checkpointing, early stopping, and metrics trackin
 """
 
 import time
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
@@ -270,8 +271,16 @@ class Trainer:
                 # Check for QAT transition
                 self._check_qat_transition(epoch)
 
-                train_loss, train_acc = train_epoch(self, epoch)
-                val_loss, val_metrics = validate_epoch(self, epoch)
+                try:
+                    train_loss, train_acc = train_epoch(self, epoch)
+                    val_loss, val_metrics = validate_epoch(self, epoch)
+                except ConnectionResetError:
+                    if sys.platform == "win32":
+                        logger.warning("ConnectionResetError suppressed during training loop (harmless Windows error)")
+                        # Try to continue or return current state
+                        continue
+                    else:
+                        raise
 
                 self._update_scheduler(val_loss)
                 current_lr = get_learning_rate(self.optimizer)
