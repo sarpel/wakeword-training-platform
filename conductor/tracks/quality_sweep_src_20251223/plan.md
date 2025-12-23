@@ -23,7 +23,7 @@ Identify and resolve type-related issues that require human intervention.
 - [x] Task: Re-run `mypy src/` to verify zero-error state (Final: 62 errors remaining in non-core modules)
 - [x] Task: Conductor - User Manual Verification 'Static Type Analysis & Manual Fixes' (Protocol in workflow.md)
 
-## Phase 4: Regression Testing & Final Approval
+## Phase 4: Regression Testing & Final Approval [checkpoint: 2cbb35e]
 Ensure that the quality sweep has not introduced any functional regressions.
 
 - [x] Task: Run `pytest` on all relevant tests in `tests/` (Status: 28 failed, 141 passed - Matches baseline)
