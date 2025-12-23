@@ -12,11 +12,13 @@ import torch.nn.functional as F
 
 try:
     import torchvision.models as models
+    from torchvision.models import quantization as quantized_models
 
     HAS_TORCHVISION = True
 except ImportError:
     HAS_TORCHVISION = False
     models = None
+    quantized_models = None
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +50,15 @@ class ResNet18Wakeword(nn.Module):
         if not HAS_TORCHVISION:
             raise ImportError("torchvision is required for ResNet18. Please install it.")
 
-        if pretrained:
-            self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        # Use quantized model version if available, as it handles skip connections with FloatFunctional
+        if quantized_models is not None:
+            # We use quantize=False as we handle preparation manually for QAT
+            self.resnet = quantized_models.resnet18(weights=None, quantize=False)
         else:
-            self.resnet = models.resnet18(weights=None)
+            if pretrained:
+                self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            else:
+                self.resnet = models.resnet18(weights=None)
 
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
@@ -60,6 +67,10 @@ class ResNet18Wakeword(nn.Module):
         # Replace final fully connected layer
         num_features = self.resnet.fc.in_features
         self.resnet.fc = nn.Sequential(nn.Dropout(dropout), nn.Linear(num_features, num_classes))
+
+        # NEW: Quantization stubs for QAT support
+        self.quant = torch.ao.quantization.QuantStub()
+        self.dequant = torch.ao.quantization.DeQuantStub()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -71,7 +82,10 @@ class ResNet18Wakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
-        return cast(torch.Tensor, self.resnet(x))
+        x = self.quant(x)
+        x = self.resnet(x)
+        x = self.dequant(x)
+        return cast(torch.Tensor, x)
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -131,10 +145,13 @@ class MobileNetV3Wakeword(nn.Module):
         if not HAS_TORCHVISION:
             raise ImportError("torchvision is required for MobileNetV3. Please install it.")
 
-        if pretrained:
-            self.mobilenet = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
+        if quantized_models is not None:
+            self.mobilenet = quantized_models.mobilenet_v3_small(weights=None, quantize=False)
         else:
-            self.mobilenet = models.mobilenet_v3_small(weights=None)
+            if pretrained:
+                self.mobilenet = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
+            else:
+                self.mobilenet = models.mobilenet_v3_small(weights=None)
 
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
@@ -200,6 +217,10 @@ class MobileNetV3Wakeword(nn.Module):
         # Store whether to use adaptive pooling
         self.use_adaptive_pool = True
 
+        # NEW: Quantization stubs for QAT support
+        self.quant = torch.ao.quantization.QuantStub()
+        self.dequant = torch.ao.quantization.DeQuantStub()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass
@@ -210,6 +231,7 @@ class MobileNetV3Wakeword(nn.Module):
         Returns:
             Output tensor of shape (batch, num_classes)
         """
+        x = self.quant(x)
         # Extract features
         x = self.features(x)
         
@@ -230,6 +252,7 @@ class MobileNetV3Wakeword(nn.Module):
         
         # Apply classifier head
         x = self.classifier(x)
+        x = self.dequant(x)
         
         return x
 
@@ -570,6 +593,7 @@ class TemporalBlock(nn.Module):
         # Downsample for residual connection if needed
         self.downsample = nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels else None
         self.relu = nn.ReLU()
+        self.skip_add = nn.quantized.FloatFunctional()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass"""
@@ -586,7 +610,7 @@ class TemporalBlock(nn.Module):
 
         # Residual connection
         res = x if self.downsample is None else self.downsample(x)
-        return cast(torch.Tensor, self.relu(out + res))
+        return cast(torch.Tensor, self.relu(self.skip_add.add(out, res)))
 
 
 class TCNWakeword(nn.Module):
@@ -762,6 +786,10 @@ class TinyConvWakeword(nn.Module):
             nn.Linear(final_channels, num_classes)
         )
 
+        # NEW: Quantization stubs for QAT support
+        self.quant = torch.ao.quantization.QuantStub()
+        self.dequant = torch.ao.quantization.DeQuantStub()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass
@@ -772,9 +800,11 @@ class TinyConvWakeword(nn.Module):
         Returns:
             Output tensor of shape (batch, num_classes)
         """
+        x = self.quant(x)
         x = self.features(x)
         x = self.pool(x)
         x = self.classifier(x)
+        x = self.dequant(x)
         return x
 
 

@@ -406,7 +406,11 @@ def export_model_to_onnx(
                 # Filter the state dict
                 state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
 
-    model.load_state_dict(state_dict, strict=True)
+    # Load state dict
+    # Using strict=False because QAT models might have extra observers/fake_quants
+    # that aren't in every checkpoint version, or vice versa.
+    model.load_state_dict(state_dict, strict=False)
+    logger.info("Successfully loaded model state dict")
     model.to(device)
     model.eval()
 

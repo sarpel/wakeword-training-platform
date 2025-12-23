@@ -266,6 +266,9 @@ class Trainer:
                 self.state.epoch = epoch
                 self._call_callbacks("on_epoch_start", epoch)
 
+                # Check for QAT transition
+                self._check_qat_transition(epoch)
+
                 train_loss, train_acc = train_epoch(self, epoch)
                 val_loss, val_metrics = validate_epoch(self, epoch)
 
@@ -346,9 +349,65 @@ class Trainer:
             "best_fpr_epoch": best_fpr_epoch,
         }
 
+        # Final QAT reporting if enabled
+        if getattr(self.config.qat, "enabled", False):
+            try:
+                from src.training.qat_utils import compare_model_accuracy, convert_model_to_quantized
+                
+                logger.info("Generating Quantization Error Report...")
+                # We need a copy of the model to convert it to quantized without destroying the original
+                # However, for the report, we can just convert it since training is done.
+                fp32_model = self.model # This is actually the QAT model (with fake quants)
+                
+                # To get true INT8 performance, we convert
+                # Moving to CPU first is safer for quantization conversion in some PyTorch versions
+                self.model.to("cpu")
+                quantized_model = convert_model_to_quantized(self.model)
+                
+                qat_report = compare_model_accuracy(
+                    fp32_model, 
+                    quantized_model, 
+                    self.val_loader, 
+                    device="cpu"
+                )
+                results["qat_report"] = qat_report
+            except Exception as e:
+                logger.warning(f"Failed to generate QAT report: {e}")
+
         self._call_callbacks("on_train_end")
 
         return results
+
+    def _check_qat_transition(self, epoch: int) -> None:
+        """Check and handle transition to QAT fine-tuning"""
+        if not getattr(self.config.qat, "enabled", False):
+            return
+
+        if epoch == self.config.qat.start_epoch:
+            logger.info(f"--- QAT Transition Triggered (Epoch {epoch}) ---")
+            
+            # 1. Prepare model for QAT (inserts observers)
+            from src.training.qat_utils import prepare_model_for_qat
+            self.model.train()
+            self.model = prepare_model_for_qat(self.model, self.config.qat)
+            self.model.to(self.device)
+            
+            # 2. Calibrate model to initialize observers with statistics
+            from src.training.qat_utils import calibrate_model
+            logger.info("Calibrating QAT observers...")
+            calibrate_model(self.model, self.val_loader, device=self.device)
+            
+            # 3. Re-initialize optimizer for the new model parameters (fake quants)
+            # Use lower learning rate for QAT fine-tuning if desired
+            self.optimizer, self.scheduler = create_optimizer_and_scheduler(
+                self.model, self.config, steps_per_epoch=len(self.train_loader)
+            )
+            
+            # 4. Disable mixed precision as it can interfere with QAT observers
+            if self.use_mixed_precision:
+                logger.info("Disabling mixed precision for QAT fine-tuning")
+                self.use_mixed_precision = False
+                self.scaler = create_grad_scaler(enabled=False)
 
     def _update_scheduler(self, val_loss: float) -> None:
         """Update learning rate scheduler"""
