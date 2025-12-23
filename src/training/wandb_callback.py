@@ -25,7 +25,7 @@ class WandbCallback:
         if wandb.run is not None:
             wandb.finish()
 
-        wandb.init(project=project_name, config=config, reinit=True)
+        wandb.init(project=project_name, config=config, reinit="finish_previous")
 
     def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
         """Logs metrics at the end of an epoch."""
