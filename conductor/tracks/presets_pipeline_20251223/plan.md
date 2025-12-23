@@ -24,18 +24,18 @@ Goal: Implement the underlying logic for CMVN and balanced calibration sampling.
     - Write tests to ensure audio features are correctly normalized when CMVN is enabled.
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Feature Normalization & Calibration Logic' (Protocol in workflow.md) ef1c147
 
-## Phase 3: Streaming Stability & Post-Export Validation
+## Phase 3: Streaming Stability & Post-Export Validation [checkpoint: 3bd9181]
 Goal: Implement the logic for stable streaming and hardware limit warnings.
 
-- [ ] **Task: Update Streaming Inference Logic**
+- [x] **Task: Update Streaming Inference Logic** 3bd9181
     - Modify the streaming engine (e.g., `src/data/processor.py` or a dedicated streaming class) to implement hysteresis and temporal smoothing.
-- [ ] **Task: Implement Model Size Post-Check**
+- [x] **Task: Implement Model Size Post-Check** 3bd9181
     - Add a check in the export pipeline (e.g., `src/export/`) to compare the exported file size against `SizeTargetConfig`.
-- [ ] **Task: TDD - Verify Streaming Hysteresis**
+- [x] **Task: TDD - Verify Streaming Hysteresis** 3bd9181
     - Create a test case with oscillating confidence scores to ensure the "Wake" state remains stable according to preset thresholds.
-- [ ] **Task: TDD - Verify Size Warning Trigger**
+- [x] **Task: TDD - Verify Size Warning Trigger** 3bd9181
     - Mock an export that exceeds targets and verify that a warning is logged without halting the process.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Streaming Stability & Post-Export Validation' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Streaming Stability & Post-Export Validation' (Protocol in workflow.md) 3bd9181
 
 ## Phase 4: UI/Dashboard Integration
 Goal: Expose these new metrics and warnings to the user.
