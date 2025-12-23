@@ -4,5 +4,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [ ] Track: Presets & Pipeline Integration (CMVN, Thresholds, Streaming, & Size Targets)
+## [x] Track: Presets & Pipeline Integration (CMVN, Thresholds, Streaming, & Size Targets)
 *Link: [./conductor/tracks/presets_pipeline_20251223/](./conductor/tracks/presets_pipeline_20251223/)*
