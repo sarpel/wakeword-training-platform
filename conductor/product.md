@@ -29,5 +29,6 @@ The Wakeword Training Platform is designed to democratize high-quality, producti
 *   **Automated Simplicity:** Default presets that allow users to launch high-quality training pipelines with minimal manual configuration.
 *   **Expert Granularity:** Deep-dive panels for advanced users to fine-tune hyper-parameters, loss functions, and distillation schedules.
 *   **High-Performance Execution:** Hardware-aware optimizations (channels_last, non_blocking transfers) and real-time VRAM telemetry to maximize throughput on consumer-grade GPUs.
-*   **Interactive HPO Results:** A structured, editable results table for HPO trials, allowing users to review, modify, and apply discovered configurations directly to their training session or save them as new profiles.
+*   **Persistent HPO Results:** A structured, editable results table for HPO trials with one-click loading of the latest results from disk, ensuring optimization progress is never lost between sessions.
+*   **Windows Stability Suite:** Environment-aware error handling to suppress harmless connection resets and ensure clean terminal output on Win32 systems.
 *   **Live Verification:** Real-time streaming detection and metric visualization to provide immediate confidence in model improvements.

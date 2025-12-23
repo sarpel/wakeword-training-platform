@@ -26,11 +26,3 @@ This file tracks all major tracks for the project. Each track has its own detail
 *Link: [./conductor/tracks/startup_hpo_fixes_20251223/](./conductor/tracks/startup_hpo_fixes_20251223/)*
 
 
-
----
-
-
-
-## [~] Track: Stability & UX Enhancement Suite
-
-*Link: [./conductor/tracks/stability_ux_fixes_20251223/](./conductor/tracks/stability_ux_fixes_20251223/)*
