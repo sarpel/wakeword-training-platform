@@ -1,11 +1,11 @@
 # Implementation Plan - Stability & UX Enhancement Suite
 
-## Phase 1: Infrastructure & Preset Updates
+## Phase 1: Infrastructure & Preset Updates [checkpoint: 0ce6044]
 Update existing configuration presets and suppress terminal noise to establish a stable baseline.
 
 - [x] Task: Update `tiny_conv (esp32s3)` preset defaults in configuration files. [b3ab1d3]
 - [x] Task: Implement `ConnectionResetError` suppression in the server/async logic. [b389daf]
-- [ ] Task: Conductor - User Manual Verification 'Infrastructure & Preset Updates' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Infrastructure & Preset Updates' (Protocol in workflow.md) [0ce6044]
 
 ## Phase 2: QAT Report Stability
 Fix the channel mismatch error during quantization reporting.
