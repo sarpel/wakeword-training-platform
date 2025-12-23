@@ -37,11 +37,11 @@ Goal: Implement the logic for stable streaming and hardware limit warnings.
     - Mock an export that exceeds targets and verify that a warning is logged without halting the process.
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Streaming Stability & Post-Export Validation' (Protocol in workflow.md) 3bd9181
 
-## Phase 4: UI/Dashboard Integration
+## Phase 4: UI/Dashboard Integration (Red/Green/Refactor) [checkpoint: fff8043]
 Goal: Expose these new metrics and warnings to the user.
 
-- [ ] **Task: Update UI to Display Size Warnings**
+- [x] **Task: Update UI to Display Size Warnings** fff8043
     - Modify the Gradio dashboard to show a warning badge if model size targets are exceeded.
-- [ ] **Task: Log Calibration Metrics**
+- [x] **Task: Log Calibration Metrics** fff8043
     - Ensure quantization calibration statistics are visible in logs/Weights & Biases.
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: UI/Dashboard Integration' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 4: UI/Dashboard Integration' (Protocol in workflow.md) fff8043
