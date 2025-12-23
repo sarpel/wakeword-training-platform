@@ -7,12 +7,16 @@ from typing import Callable, Dict
 
 from src.config.defaults import (
     AugmentationConfig,
+    CalibrationConfig,
+    CMVNConfig,
     DataConfig,
     DistillationConfig,
     LossConfig,
     ModelConfig,
     OptimizerConfig,
     QATConfig,
+    SizeTargetConfig,
+    StreamingConfig,
     TrainingConfig,
     WakewordConfig,
 )
@@ -38,6 +42,10 @@ def get_default_preset() -> WakewordConfig:
             weight_decay=0.01,
         ),
         loss=LossConfig(),
+        cmvn=CMVNConfig(enabled=True),
+        streaming=StreamingConfig(),
+        size_targets=SizeTargetConfig(),
+        calibration=CalibrationConfig(),
     )
 
 
@@ -91,7 +99,19 @@ def get_ha_wyoming_preset() -> WakewordConfig:
             enabled=True,
             backend="qnnpack",
             start_epoch=10,
-        )
+        ),
+        cmvn=CMVNConfig(enabled=True),
+        streaming=StreamingConfig(
+            hysteresis_high=0.7,
+            hysteresis_low=0.3,
+            buffer_length_ms=1500,
+            smoothing_window=5,
+        ),
+        size_targets=SizeTargetConfig(
+            max_flash_kb=512,
+            max_ram_kb=256,
+        ),
+        calibration=CalibrationConfig(num_samples=200, positive_ratio=0.5),
     )
 
 
@@ -114,7 +134,7 @@ def get_esp32s3_production_preset() -> WakewordConfig:
             hop_length=160,
         ),
         training=TrainingConfig(
-            batch_size=32,
+            batch_size=64,
             epochs=150,
             learning_rate=0.0008,
             early_stopping_patience=20,
@@ -143,7 +163,19 @@ def get_esp32s3_production_preset() -> WakewordConfig:
             enabled=True,
             backend="qnnpack",
             start_epoch=5,
-        )
+        ),
+        cmvn=CMVNConfig(enabled=True),
+        streaming=StreamingConfig(
+            hysteresis_high=0.75,
+            hysteresis_low=0.35,
+            buffer_length_ms=1000,
+            smoothing_window=4,
+        ),
+        size_targets=SizeTargetConfig(
+            max_flash_kb=1024,
+            max_ram_kb=512,
+        ),
+        calibration=CalibrationConfig(num_samples=250, positive_ratio=0.4),
     )
 
 
@@ -166,9 +198,9 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             hop_length=160,
         ),
         training=TrainingConfig(
-            batch_size=32,
+            batch_size=64,
             epochs=200,
-            learning_rate=0.001,
+            learning_rate=0.0005,
             early_stopping_patience=25,
         ),
         model=ModelConfig(
@@ -178,25 +210,38 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             tcn_num_channels=[64, 64, 64, 64],
         ),
         augmentation=AugmentationConfig(
-            background_noise_prob=0.7,
-            rir_prob=0.4,
-            time_shift_prob=0.6,
+            background_noise_prob=0.8,
+            rir_prob=0.5,
+            time_shift_prob=0.7,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=0.01,
-            mixed_precision=True,
+            weight_decay=5e-5,
+            mixed_precision=False,
         ),
         loss=LossConfig(
-            loss_function="focal_loss",
+            loss_function="cross_entropy",
+            label_smoothing=0.02,         # ⬇️ Much less smoothing
             class_weights="balanced",
-            hard_negative_weight=4.0,
+            hard_negative_weight=5.0,
         ),
         qat=QATConfig(
             enabled=True,
             backend="qnnpack",
             start_epoch=10,
-        )
+        ),
+        cmvn=CMVNConfig(enabled=True),
+        streaming=StreamingConfig(
+            hysteresis_high=0.8,
+            hysteresis_low=0.4,
+            buffer_length_ms=1000,
+            smoothing_window=3,
+        ),
+        size_targets=SizeTargetConfig(
+            max_flash_kb=100,
+            max_ram_kb=80,
+        ),
+        calibration=CalibrationConfig(num_samples=300, positive_ratio=0.3),
     )
 
 
@@ -239,7 +284,19 @@ def get_server_judge_preset() -> WakewordConfig:
             label_smoothing=0.1,
             class_weights="balanced",
             hard_negative_weight=2.0,
-        )
+        ),
+        cmvn=CMVNConfig(enabled=True),
+        streaming=StreamingConfig(
+            hysteresis_high=0.6,
+            hysteresis_low=0.2,
+            buffer_length_ms=2000,
+            smoothing_window=8,
+        ),
+        size_targets=SizeTargetConfig(
+            max_flash_kb=0,
+            max_ram_kb=0,
+        ),
+        calibration=CalibrationConfig(num_samples=500, positive_ratio=0.5),
     )
 
 
@@ -293,7 +350,19 @@ def get_rpi_zero2w_preset() -> WakewordConfig:
             enabled=True,
             backend="fbgemm", # x86 for training, but convertible to arm-optimized TFLite
             start_epoch=10,
-        )
+        ),
+        cmvn=CMVNConfig(enabled=True),
+        streaming=StreamingConfig(
+            hysteresis_high=0.7,
+            hysteresis_low=0.3,
+            buffer_length_ms=1500,
+            smoothing_window=5,
+        ),
+        size_targets=SizeTargetConfig(
+            max_flash_kb=2048,
+            max_ram_kb=1024,
+        ),
+        calibration=CalibrationConfig(num_samples=200, positive_ratio=0.5),
     )
 
 
@@ -349,7 +418,19 @@ def get_ultimate_accuracy_preset() -> WakewordConfig:
         ),
         qat=QATConfig(
             enabled=False, # Priorities FP32 accuracy for desktop/server
-        )
+        ),
+        cmvn=CMVNConfig(enabled=True),
+        streaming=StreamingConfig(
+            hysteresis_high=0.6,
+            hysteresis_low=0.2,
+            buffer_length_ms=2000,
+            smoothing_window=10,
+        ),
+        size_targets=SizeTargetConfig(
+            max_flash_kb=0,
+            max_ram_kb=0,
+        ),
+        calibration=CalibrationConfig(num_samples=500, positive_ratio=0.5),
     )
 
 

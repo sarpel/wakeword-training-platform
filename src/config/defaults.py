@@ -278,6 +278,58 @@ class DistillationConfig:
 
 
 @dataclass
+class CMVNConfig:
+    """CMVN configuration"""
+
+    enabled: bool = True
+    stats_path: str = "data/cache/cmvn_stats.json"
+    calculate_on_fly: bool = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class StreamingConfig:
+    """Streaming detection configuration"""
+
+    hysteresis_high: float = 0.7
+    hysteresis_low: float = 0.3
+    buffer_length_ms: int = 1500
+    smoothing_window: int = 5
+    cooldown_ms: int = 500
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class SizeTargetConfig:
+    """Model size target configuration"""
+
+    max_flash_kb: int = 0  # 0 means no limit
+    max_ram_kb: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class CalibrationConfig:
+    """Quantization calibration configuration"""
+
+    num_samples: int = 100
+    positive_ratio: float = 0.5
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
 class WakewordConfig:
     """Complete wakeword training configuration"""
 
@@ -292,6 +344,10 @@ class WakewordConfig:
     # New optional configurations
     qat: QATConfig = field(default_factory=QATConfig)
     distillation: DistillationConfig = field(default_factory=DistillationConfig)
+    cmvn: CMVNConfig = field(default_factory=CMVNConfig)
+    streaming: StreamingConfig = field(default_factory=StreamingConfig)
+    size_targets: SizeTargetConfig = field(default_factory=SizeTargetConfig)
+    calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
 
     # Metadata
     config_name: str = "default"
@@ -310,6 +366,10 @@ class WakewordConfig:
             "loss": self.loss.to_dict(),
             "qat": self.qat.to_dict(),
             "distillation": self.distillation.to_dict(),
+            "cmvn": self.cmvn.to_dict(),
+            "streaming": self.streaming.to_dict(),
+            "size_targets": self.size_targets.to_dict(),
+            "calibration": self.calibration.to_dict(),
         }
 
     @classmethod
@@ -326,6 +386,10 @@ class WakewordConfig:
             loss=LossConfig(**config_dict.get("loss", {})),
             qat=QATConfig(**config_dict.get("qat", {})),
             distillation=DistillationConfig(**config_dict.get("distillation", {})),
+            cmvn=CMVNConfig(**config_dict.get("cmvn", {})),
+            streaming=StreamingConfig(**config_dict.get("streaming", {})),
+            size_targets=SizeTargetConfig(**config_dict.get("size_targets", {})),
+            calibration=CalibrationConfig(**config_dict.get("calibration", {})),
         )
 
     def save(self, path: Path) -> None:

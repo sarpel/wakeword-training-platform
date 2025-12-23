@@ -4,5 +4,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [~] Track: Weights & Biases Maintenance
-*Link: [./conductor/tracks/wandb_updates_20251222/](./conductor/tracks/wandb_updates_20251222/)*
+## [ ] Track: Presets & Pipeline Integration (CMVN, Thresholds, Streaming, & Size Targets)
+*Link: [./conductor/tracks/presets_pipeline_20251223/](./conductor/tracks/presets_pipeline_20251223/)*

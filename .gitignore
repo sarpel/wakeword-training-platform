@@ -80,7 +80,6 @@ server/venv/
 # OS Generated
 .DS_Store
 Thumbs.db
-conductor/
 *.7z
 *.zip
 docs/current_dataset_info.json
@@ -96,3 +95,4 @@ cache/
 .mypy_cache/
 .env.zai
 quality_warning_dataset/
+*.ps1

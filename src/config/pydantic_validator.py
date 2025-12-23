@@ -194,9 +194,41 @@ class DistillationConfig(BaseModel):
     teacher_on_cpu: bool = False
     teacher_mixed_precision: bool = True
     log_memory_usage: bool = False
-    teacher_architecture: Literal["wav2vec2"] = "wav2vec2"
+    teacher_architecture: Literal["wav2vec2", "conformer", "dual"] = "dual"
     temperature: float = Field(2.0, ge=1.0, le=10.0)
     alpha: float = Field(0.5, ge=0.0, le=1.0)
+
+
+class CMVNConfig(BaseModel):
+    """Pydantic model for CMVN configuration"""
+
+    enabled: bool = True
+    stats_path: str = "data/cache/cmvn_stats.json"
+    calculate_on_fly: bool = True
+
+
+class StreamingConfig(BaseModel):
+    """Pydantic model for streaming detection configuration"""
+
+    hysteresis_high: float = Field(0.7, ge=0.0, le=1.0)
+    hysteresis_low: float = Field(0.3, ge=0.0, le=1.0)
+    buffer_length_ms: int = Field(1500, gt=0)
+    smoothing_window: int = Field(5, ge=1)
+    cooldown_ms: int = Field(500, ge=0)
+
+
+class SizeTargetConfig(BaseModel):
+    """Pydantic model for model size target configuration"""
+
+    max_flash_kb: int = Field(0, ge=0)
+    max_ram_kb: int = Field(0, ge=0)
+
+
+class CalibrationConfig(BaseModel):
+    """Pydantic model for quantization calibration configuration"""
+
+    num_samples: int = Field(100, ge=10)
+    positive_ratio: float = Field(0.5, ge=0.0, le=1.0)
 
 
 class WakewordPydanticConfig(BaseModel):
@@ -212,6 +244,10 @@ class WakewordPydanticConfig(BaseModel):
     loss: LossConfig = Field(default_factory=lambda: LossConfig())  # type: ignore
     qat: QATConfig = Field(default_factory=lambda: QATConfig())  # type: ignore
     distillation: DistillationConfig = Field(default_factory=lambda: DistillationConfig())  # type: ignore
+    cmvn: CMVNConfig = Field(default_factory=lambda: CMVNConfig())  # type: ignore
+    streaming: StreamingConfig = Field(default_factory=lambda: StreamingConfig())  # type: ignore
+    size_targets: SizeTargetConfig = Field(default_factory=lambda: SizeTargetConfig())  # type: ignore
+    calibration: CalibrationConfig = Field(default_factory=lambda: CalibrationConfig())  # type: ignore
 
     @root_validator(skip_on_failure=True)
     def cross_dependencies(cls, values: Dict[str, Any]) -> Dict[str, Any]:
