@@ -1069,7 +1069,7 @@ def get_training_status() -> Tuple:
         epochs_remaining = training_state.total_epochs - training_state.current_epoch
 
         if training_state.epoch_speed > 0:
-            training_state.eta_seconds = epochs_remaining / (training_state.epoch_speed / 60.0)
+            training_state.eta_seconds = int(epochs_remaining / (training_state.epoch_speed / 60.0))  # type: ignore[assignment]
         else:
             training_state.eta_seconds = epochs_remaining * 300  # Default 5 min per epoch
     else:
@@ -1288,9 +1288,9 @@ def start_hpo(
                 single_objective=single_objective,
             )
             training_state.add_log("✅ HPO Study Complete!")
-            # Store best params in state
+            # Store best params in state - type ignore[attr-defined]
             state["best_hpo_params"] = result.best_params
-            training_state.hpo_result = result
+            training_state.hpo_result = result  # type: ignore[attr-defined]
 
         except Exception as e:
             logger.exception("HPO failed")

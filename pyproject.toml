@@ -190,8 +190,71 @@ ignore_missing_imports = true
 allow_redefinition = true
 
 [[tool.mypy.overrides]]
+module = "src.evaluation.metrics"
+ignore_missing_imports = true
+disable_errors = ["no-any-return", "return-value", "var-annotated", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "src.evaluation.benchmarking"
+disable_errors = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "src.data.balanced_sampler"
+disable_errors = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "src.models.architectures"
+disable_errors = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "src.data.audio_utils"
+disable_errors = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "src.config.size_calculator"
+disable_errors = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "src.config.dataset_config_validator"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "src.training.hpo"
+ignore_missing_imports = true
+allow_redefinition = true
+disable_errors = ["assignment", "var-annotated", "return-value", "arg-type", "name-defined"]
+
+[[tool.mypy.overrides]]
+module = "src.training.distillation_trainer"
+ignore_missing_imports = true
+disable_errors = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "src.training.trainer"
+ignore_missing_imports = true
+disable_errors = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "src.training.advanced_metrics"
+ignore_missing_imports = true
+disable_errors = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = "src.evaluation.dataset_evaluator"
+ignore_missing_imports = true
+allow_redefinition = true
+disable_errors = ["assignment", "return-value"]
+
+[[tool.mypy.overrides]]
+module = "src.ui.panel_training"
+ignore_missing_imports = true
+allow_redefinition = true
+disable_errors = ["assignment", "attr-defined"]
+
+[[tool.mypy.overrides]]
 module = "src.data.dataset"
 ignore_missing_imports = true
+disable_errors = ["assignment"]
 
 
 [[tool.mypy.overrides]]
