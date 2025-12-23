@@ -4,7 +4,7 @@ Supports: ResNet18, MobileNetV3, LSTM, GRU, TCN
 """
 
 import logging
-from typing import Any, cast
+from typing import Any, List, Optional, cast
 
 import torch
 import torch.nn as nn
@@ -166,7 +166,7 @@ class MobileNetV3Wakeword(nn.Module):
         num_features = self.mobilenet.classifier[0].in_features
 
         # Build hybrid head based on config
-        head_layers = []
+        head_layers: List[nn.Module] = []
 
         # Add RNN layers if configured
         self.use_rnn = num_layers > 0
@@ -175,7 +175,7 @@ class MobileNetV3Wakeword(nn.Module):
             # hidden_size, num_layers, bidirectional are now passed as args
 
             if rnn_type == "lstm":
-                self.rnn = nn.LSTM(
+                self.rnn: Any = nn.LSTM(
                     input_size=num_features,
                     hidden_size=hidden_size,
                     num_layers=num_layers,
@@ -619,7 +619,7 @@ class TCNWakeword(nn.Module):
     def __init__(
         self,
         input_size: int = 64,
-        num_channels: list = None,
+        num_channels: Optional[list] = None,
         kernel_size: int = 3,
         num_classes: int = 2,
         dropout: float = 0.3,
@@ -725,7 +725,7 @@ class TinyConvWakeword(nn.Module):
         num_classes: int = 2,
         input_channels: int = 1,
         dropout: float = 0.3,
-        tcn_num_channels: list = None,
+        tcn_num_channels: Optional[list] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -749,7 +749,7 @@ class TinyConvWakeword(nn.Module):
         conv_dropout = kwargs.get("tcn_dropout", dropout)
 
         # Build dynamic feature extraction layers
-        layers = []
+        layers: List[nn.Module] = []
         in_channels = input_channels
 
         for i, out_channels in enumerate(channels):
@@ -816,8 +816,8 @@ class CDDNNWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = None,
-        hidden_layers: list = None,
+        input_size: Optional[int] = None,
+        hidden_layers: Optional[list] = None,
         num_classes: int = 2,
         dropout: float = 0.3,
         **kwargs: Any,

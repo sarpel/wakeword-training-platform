@@ -248,7 +248,7 @@ def create_scheduler(
         raise ValueError(f"Unknown scheduler: {scheduler_name}. " f"Supported: cosine, step, plateau, onecycle, none")
 
     # Wrap with warmup if needed
-    scheduler: Union[WarmupScheduler, CosineAnnealingLR, StepLR, ReduceLROnPlateau]
+    scheduler: Union[WarmupScheduler, CosineAnnealingLR, StepLR, ReduceLROnPlateau, optim.lr_scheduler.OneCycleLR]
     if warmup_epochs > 0:
         logger.info(f"  Using warmup: {warmup_epochs} epochs")
         scheduler = WarmupScheduler(optimizer, warmup_epochs=warmup_epochs, base_scheduler=base_scheduler)

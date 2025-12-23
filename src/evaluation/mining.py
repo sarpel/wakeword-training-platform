@@ -29,10 +29,11 @@ class HardNegativeMiner:
     def _load_queue(self) -> List[Dict[str, Any]]:
         if self.queue_path.exists():
             with open(self.queue_path, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                return list(data) if isinstance(data, list) else []
         return []
 
-    def _save_queue(self):
+    def _save_queue(self) -> None:
         with open(self.queue_path, "w") as f:
             json.dump(self.queue, f, indent=2)
 
@@ -75,14 +76,14 @@ class HardNegativeMiner:
     def get_pending(self) -> List[Dict[str, Any]]:
         return [item for item in self.queue if item["status"] == "pending"]
 
-    def update_status(self, full_path: str, status: str):
+    def update_status(self, full_path: str, status: str) -> None:
         for item in self.queue:
             if item["full_path"] == full_path:
                 item["status"] = status
                 break
         self._save_queue()
 
-    def inject_to_dataset(self, target_dir: str = "data/mined_negatives"):
+    def inject_to_dataset(self, target_dir: str = "data/mined_negatives") -> int:
         """
         Copy confirmed hard negatives to a target directory for retraining.
         """

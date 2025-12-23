@@ -247,7 +247,7 @@ class DistillationConfig:
     # Indices of layers to match (implementation dependent)
     alignment_layers: List[int] = field(default_factory=lambda: [1, 2, 3])
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate parameters after initialization"""
         if not isinstance(self.temperature, (int, float)):
             raise TypeError(f"temperature must be numeric, got {type(self.temperature)}")

@@ -24,7 +24,7 @@ class InferenceEngine(ABC):
     """Base class for the orchestration engine"""
 
     @abstractmethod
-    def add_stage(self, stage: StageBase):
+    def add_stage(self, stage: StageBase) -> None:
         """Add a stage to the pipeline"""
         pass
 

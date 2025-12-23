@@ -26,18 +26,19 @@ class FalsePositiveCollector:
         self.index_file = self.output_dir / "index.json"
         self._load_index()
 
-    def _load_index(self):
+    def _load_index(self) -> None:
         if self.index_file.exists():
             with open(self.index_file, "r") as f:
-                self.index = json.load(f)
+                data = json.load(f)
+                self.index = list(data) if isinstance(data, list) else []
         else:
             self.index = []
 
-    def _save_index(self):
+    def _save_index(self) -> None:
         with open(self.index_file, "w") as f:
             json.dump(self.index, f, indent=2)
 
-    def add_sample(self, audio: np.ndarray, metadata: Dict[str, Any], sample_rate: int = 16000):
+    def add_sample(self, audio: np.ndarray, metadata: Dict[str, Any], sample_rate: int = 16000) -> None:
         """
         Add a new sample to the collection.
 
@@ -70,7 +71,7 @@ class FalsePositiveCollector:
         """Return the list of collected samples."""
         return self.index
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all collected samples."""
         # Delete files
         for entry in self.index:

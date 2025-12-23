@@ -132,7 +132,7 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
             is_weight = hasattr(module, "ch_axis") and module.ch_axis == 0
 
             if is_weight:
-                obs_cls = MovingAveragePerChannelMinMaxObserver
+                obs_cls: type = MovingAveragePerChannelMinMaxObserver
 
                 # Safeguard: Per-channel observer only supports specific qschemes
                 valid_per_ch_schemes = [
@@ -272,7 +272,7 @@ def compare_model_accuracy(
         Dictionary with accuracy results and drop
     """
 
-    def evaluate(model, data):
+    def evaluate(model: nn.Module, data: Any) -> float:
         # Move to CPU for quantized models if requested
         model.eval()
 

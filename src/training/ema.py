@@ -3,7 +3,11 @@ Exponential Moving Average (EMA) for model parameters
 Maintains shadow copy of model weights for more stable inference
 """
 
-from typing import Any, Dict, Optional, Tuple
+import time
+
+from typing import Any, Dict, Optional, Tuple, cast
+
+
 
 import structlog
 import torch
@@ -50,7 +54,8 @@ class EMA:
             if param.requires_grad:
                 # Clone parameter and move to device
                 # Mypy: Explicitly cast device to ensure proper .to() overload
-                self.shadow_params[name] = param.data.clone().to(device=self.device)  # type: ignore[arg-type]
+                target_device = cast(Any, self.device)
+                self.shadow_params[name] = param.data.clone().to(device=target_device)
 
     def update(self, decay: Optional[float] = None) -> None:
         """
