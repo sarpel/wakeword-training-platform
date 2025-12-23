@@ -66,7 +66,5 @@ def get_platform_constraints(platform_name: str) -> PlatformConstraints:
         ValueError: If platform_name is not recognized
     """
     if platform_name not in PLATFORMS:
-        raise ValueError(
-            f"Unknown platform: {platform_name}. Available: {list(PLATFORMS.keys())}"
-        )
+        raise ValueError(f"Unknown platform: {platform_name}. Available: {list(PLATFORMS.keys())}")
     return PLATFORMS[platform_name]

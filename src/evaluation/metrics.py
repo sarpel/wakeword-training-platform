@@ -80,8 +80,8 @@ def calculate_pauc(
     else:
         # Fallback implementation without sklearn
         thresholds = np.sort(np.unique(np.concatenate(([0.0, 1.0], probs))))[::-1]
-        fpr_list = []
-        tpr_list = []
+        fpr_list: list[float] = []
+        tpr_list: list[float] = []
 
         for t in thresholds:
             preds = (probs >= t).astype(int)
@@ -146,7 +146,7 @@ def calculate_eer(
         return float(eer)
     else:
         # Simple fallback: find closest point
-        thresholds = np.sort(np.unique(np.concatenate(([0.0, 1.0], probs))))[::-1]
+        thresholds: np.ndarray = np.sort(np.unique(np.concatenate(([0.0, 1.0], probs))))[::-1]
         min_diff = 1.0
         eer = 0.5
 

@@ -72,7 +72,7 @@ class FileCache:
 
         # Create key from path and mtime
         key_data = f"{file_path}_{stat.st_mtime}_{stat.st_size}"
-        key_hash = hashlib.md5(key_data.encode()).hexdigest()
+        key_hash = hashlib.sha256(key_data.encode()).hexdigest()
 
         return key_hash
 

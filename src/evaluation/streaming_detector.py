@@ -32,10 +32,10 @@ class CascadeInferenceEngine(InferenceEngine):
     the logic for passing results between them.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.stages: List[StageBase] = []
 
-    def add_stage(self, stage: StageBase):
+    def add_stage(self, stage: StageBase) -> None:
         """Add an inference stage to the cascade"""
         self.stages.append(stage)
         logger.info(f"Added stage to cascade: {stage.name}")

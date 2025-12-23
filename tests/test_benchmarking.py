@@ -24,7 +24,7 @@ def test_benchmark_runner_latency():
     assert metrics["name"] == "slow_stage"
     assert metrics["mean_latency_ms"] >= 50
     assert metrics["iterations"] == 5
-    assert "memory_allocated_mb" in metrics
+    assert "gpu_memory_allocated_mb" in metrics
 
 def test_benchmark_runner_invalid_input():
     """Test BenchmarkRunner with invalid input."""

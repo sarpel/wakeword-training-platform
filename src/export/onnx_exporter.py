@@ -335,8 +335,8 @@ def export_model_to_onnx(
     """
     logger.info(f"Loading checkpoint: {checkpoint_path}")
 
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Load checkpoint with security: weights_only=True
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
     if "config" not in checkpoint:
         raise ValueError("Checkpoint does not contain configuration")

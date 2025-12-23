@@ -136,7 +136,7 @@ class CheckpointManager:
         for checkpoint_path in self.checkpoint_dir.glob("*.pt"):
             try:
                 # Load checkpoint metadata
-                checkpoint = torch.load(checkpoint_path, map_location="cpu")
+                checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
 
                 # Extract metadata
                 epoch = checkpoint.get("epoch", 0)
@@ -217,7 +217,7 @@ class CheckpointManager:
         """
         logger.info(f"Loading checkpoint: {checkpoint_path}")
 
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
         # Load model weights
         if model is not None:
@@ -371,7 +371,7 @@ class CheckpointManager:
 
         logger.info(f"Loading model snapshot: {snapshot_path}")
 
-        snapshot = torch.load(snapshot_path, map_location=device)
+        snapshot = torch.load(snapshot_path, map_location=device, weights_only=True)
         model.load_state_dict(snapshot["model_state_dict"])
 
         return cast(Dict[str, Any], snapshot.get("metadata", {}))
@@ -389,7 +389,7 @@ def extract_model_for_inference(checkpoint_path: Path, output_path: Path, device
     logger.info(f"Extracting model from: {checkpoint_path}")
 
     # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
     # Create inference-only checkpoint
     inference_checkpoint = {
@@ -427,7 +427,7 @@ def compare_checkpoints(checkpoint_paths: List[Path], metric: str = "val_f1") ->
 
     for path in checkpoint_paths:
         try:
-            checkpoint = torch.load(path, map_location="cpu")
+            checkpoint = torch.load(path, map_location="cpu", weights_only=True)
             val_metrics = checkpoint.get("val_metrics", {})
 
             # Map metric name

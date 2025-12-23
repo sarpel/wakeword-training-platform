@@ -166,7 +166,7 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     logger.info(f"Loading model from: {checkpoint_path}")
 
     # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
     # Get config
     if "config" not in checkpoint:

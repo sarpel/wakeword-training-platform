@@ -31,9 +31,11 @@ class DistillationTrainer(Trainer):
             arch = self.config.distillation.teacher_architecture
             if arch == "dual":
                 arch = f"wav2vec2 + {self.config.distillation.secondary_teacher_architecture}"
-            
-            logger.info(f"Distillation ACTIVE (Teacher: {arch}, Alpha: {self.config.distillation.alpha}, T: {self.config.distillation.temperature})")
-            
+
+            logger.info(
+                f"Distillation ACTIVE (Teacher: {arch}, Alpha: {self.config.distillation.alpha}, T: {self.config.distillation.temperature})"
+            )
+
             logger.debug(f"  Temperature Scheduler: {self.config.distillation.temperature_scheduler}")
             if self.config.distillation.feature_alignment_enabled:
                 logger.debug(

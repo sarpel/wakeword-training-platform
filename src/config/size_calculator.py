@@ -4,13 +4,10 @@ Estimates model size (Flash/RAM) based on configuration.
 """
 
 import logging
-from typing import Dict, Optional, Tuple, Any
-
-import torch
-import torch.nn as nn
+from typing import Any, Dict, Optional, Tuple
 
 from src.config.defaults import WakewordConfig
-from src.config.platform_constraints import PlatformConstraints, get_platform_constraints
+from src.config.platform_constraints import get_platform_constraints
 from src.models.architectures import create_model
 
 logger = logging.getLogger(__name__)
@@ -49,7 +46,7 @@ class SizeCalculator:
                 pretrained=pretrained,
                 input_channels=1,  # Default for spectrograms
                 input_size=self.config.data.n_mels or self.config.data.n_mfcc or 64,
-                **model_params
+                **model_params,
             )
 
             total_params = sum(p.numel() for p in model.parameters())
@@ -72,28 +69,28 @@ class SizeCalculator:
         # Flash estimation
         # FP32 = 4 bytes, INT8 = 1 byte
         bytes_per_param = 1 if self.config.qat.enabled else 4
-        
+
         # Add ~10% overhead for model metadata/structure (TFLite/ONNX)
         overhead_factor = 1.1
         flash_kb = (params * bytes_per_param * overhead_factor) / 1024
 
         # RAM estimation (Rule of thumb)
         # RAM usage = Weights (if copied to RAM) + Activations + Audio Buffers
-        # For microcontrollers, weights are often in Flash (XIP), 
+        # For microcontrollers, weights are often in Flash (XIP),
         # but let's assume worst case where some weights or buffers are in RAM.
         # Activation size depends on architecture and input size.
-        
+
         # Simple heuristic for activations: ~2x the largest layer or ~20% of model size
-        activations_kb = (params * 0.2 * 4) / 1024 # Assuming FP32 activations
-        
+        activations_kb = (params * 0.2 * 4) / 1024  # Assuming FP32 activations
+
         # Audio buffer (e.g., 1.5s @ 16kHz)
         audio_buffer_kb = (self.config.data.audio_duration * self.config.data.sample_rate * 4) / 1024
-        
+
         ram_kb = activations_kb + audio_buffer_kb
-        
+
         # If QAT is NOT enabled, we might need more RAM for FP32 weights if they don't fit in Flash
         if not self.config.qat.enabled:
-            ram_kb += flash_kb * 0.5 # Assume some weights need to be in RAM
+            ram_kb += flash_kb * 0.5  # Assume some weights need to be in RAM
 
         return flash_kb, ram_kb
 
@@ -109,7 +106,7 @@ class SizeCalculator:
             Dictionary with comparison results
         """
         flash_est, ram_est = self.calculate_estimated_size_kb()
-        
+
         max_flash = self.config.size_targets.max_flash_kb
         max_ram = self.config.size_targets.max_ram_kb
         p_name = "Custom Targets"
@@ -139,23 +136,23 @@ class SizeCalculator:
     def get_summary_report(self, platform_name: Optional[str] = None) -> str:
         """Generate a human-readable summary report"""
         res = self.compare_with_platform(platform_name)
-        
+
         report = [
             f"--- Model Size Insight: {res['platform_name']} ---",
             f"Architecture: {self.config.model.architecture}",
             f"Parameters: {res['params_count']:,}",
             f"Quantization: {'Enabled (INT8)' if self.config.qat.enabled else 'Disabled (FP32)'}",
-            f"Estimated Flash: {res['estimated_flash_kb']} KB / {res['max_flash_kb'] or '∞'} KB " + 
-            f"({'✅' if res['flash_ok'] else '❌'})",
-            f"Estimated RAM:   {res['estimated_ram_kb']} KB / {res['max_ram_kb'] or '∞'} KB " + 
-            f"({'✅' if res['ram_ok'] else '❌'})",
+            f"Estimated Flash: {res['estimated_flash_kb']} KB / {res['max_flash_kb'] or '∞'} KB "
+            + f"({'✅' if res['flash_ok'] else '❌'})",
+            f"Estimated RAM:   {res['estimated_ram_kb']} KB / {res['max_ram_kb'] or '∞'} KB "
+            + f"({'✅' if res['ram_ok'] else '❌'})",
         ]
-        
-        if not res['flash_ok']:
+
+        if not res["flash_ok"]:
             report.append("⚠️ WARNING: Model might be too large for Flash!")
-        if not res['ram_ok']:
+        if not res["ram_ok"]:
             report.append("⚠️ WARNING: Model might exceed available RAM!")
-            
+
         return "\n".join(report)
 
 

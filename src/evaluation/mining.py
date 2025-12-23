@@ -28,13 +28,13 @@ class HardNegativeMiner:
 
     def _load_queue(self) -> List[Dict[str, Any]]:
         if self.queue_path.exists():
-            with open(self.queue_path, "r") as f:
+            with open(self.queue_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return list(data) if isinstance(data, list) else []
         return []
 
     def _save_queue(self) -> None:
-        with open(self.queue_path, "w") as f:
+        with open(self.queue_path, "w", encoding="utf-8") as f:
             json.dump(self.queue, f, indent=2)
 
     def mine_from_results(self, results: List[EvaluationResult], confidence_threshold: float = 0.7) -> int:

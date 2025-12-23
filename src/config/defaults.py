@@ -398,7 +398,7 @@ class WakewordConfig:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)  # <-- safe_dump
 
     @classmethod
@@ -409,7 +409,7 @@ class WakewordConfig:
         if not path.exists():
             raise FileNotFoundError(f"Configuration file not found: {path}")
 
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             config_dict = yaml.safe_load(f)
 
         return cls.from_dict(config_dict)

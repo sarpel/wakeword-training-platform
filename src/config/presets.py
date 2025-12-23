@@ -518,12 +518,71 @@ def get_fast_training_preset() -> WakewordConfig:
     )
 
 
+def get_hard_negative_refinement_preset() -> WakewordConfig:
+    """
+    Strategy A: Hard Negative Refinement
+    Optimized for re-training after mining false positives.
+    """
+    return WakewordConfig(
+        config_name="hard_negative_refinement",
+        description="Strategy A: Refine model using mined hard negatives (High Loss Weight)",
+        training=TrainingConfig(
+            epochs=50,
+            learning_rate=0.0001,  # Lower LR for refinement
+            early_stopping_patience=10,
+            include_mined_negatives=True,
+        ),
+        optimizer=OptimizerConfig(
+            optimizer="adamw",
+            weight_decay=0.05,  # Higher regularization
+            warmup_epochs=2,
+        ),
+        loss=LossConfig(
+            loss_function="focal_loss",
+            focal_gamma=3.0,  # Focus more on hard samples
+            hard_negative_weight=10.0,  # Extremely high weight for mined samples
+        ),
+        augmentation=AugmentationConfig(
+            background_noise_prob=0.8,  # More noise to challenge the model
+            time_shift_prob=0.5,
+        ),
+    )
+
+
+def get_low_lr_finetune_preset() -> WakewordConfig:
+    """
+    Strategy B: Low-LR Fine Tuning
+    Squeeze out the last % of performance with a very low learning rate.
+    """
+    return WakewordConfig(
+        config_name="low_lr_finetune",
+        description="Strategy B: Fine-tune with ultra-low LR (1e-6) for maximum stability",
+        training=TrainingConfig(
+            epochs=30,
+            learning_rate=0.000001,  # Ultra-low LR
+            early_stopping_patience=30,  # Don't stop early, let it converge slowly
+            use_ema=True,
+        ),
+        optimizer=OptimizerConfig(
+            optimizer="adamw",
+            weight_decay=0.01,
+            scheduler="none",  # Constant low LR
+        ),
+        loss=LossConfig(
+            label_smoothing=0.02,  # Minimal smoothing for final polish
+        ),
+    )
+
+
 # Preset registry - Simplified to 3 main target platforms
 PRESETS: Dict[str, Callable[[], WakewordConfig]] = {
     # === MAIN PRODUCTION PROFILES ===
     "MCU (ESP32-S3 No-PSRAM)": get_mcu_tiny_production_preset,
     "RPI (Raspberry Pi / Wyoming Satellite)": get_rpi_zero2w_preset,
     "x86_64 (Desktop / Server)": get_ultimate_accuracy_preset,
+    # === STRATEGY PROFILES ===
+    "Strategy A: Hard Negative Refinement": get_hard_negative_refinement_preset,
+    "Strategy B: Low-LR Fine-Tuning": get_low_lr_finetune_preset,
     # === UTILITY PROFILES ===
     "Utility: Small Dataset (<10k)": get_small_dataset_preset,
     "Utility: Fast Training (Prototyping)": get_fast_training_preset,

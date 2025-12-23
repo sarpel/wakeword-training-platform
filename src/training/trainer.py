@@ -111,6 +111,14 @@ class Trainer:
             self.model = self.model.to(memory_format=torch.channels_last)  # type: ignore
             logger.info("Using channels_last memory format for model")
 
+            # Torch.compile optimization for PyTorch 2.0+
+            if hasattr(torch, "compile"):
+                try:
+                    self.model = torch.compile(self.model, mode="max-autotune")  # type: ignore[assignment]
+                    logger.info("Torch.compile enabled with max-autotune mode")
+                except Exception as e:
+                    logger.warning(f"Torch.compile failed: {e}, continuing without compilation")
+
         # Data loaders
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -553,9 +561,9 @@ if __name__ == "__main__":
     print("✅ Created model: ResNet18")
 
     # Create dummy config
-    from src.config.defaults import WakewordConfig
+    from src.config.defaults import WakewordConfig as WakewordCfg
 
-    config = WakewordConfig()
+    config = WakewordCfg()
     print("✅ Created config")
 
     # Create dummy data loaders

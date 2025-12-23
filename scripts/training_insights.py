@@ -57,7 +57,7 @@ class TrainingInsightsAnalyzer:
             return self.insights
 
         try:
-            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
         except Exception as e:
             self.insights.append(TrainingInsight(
                 category="critical",

@@ -297,6 +297,7 @@ def create_metrics_plot() -> plt.Figure:
     plt.tight_layout()
     return fig
 
+
 def create_lr_plot() -> plt.Figure:
     """Create learning rate curve plot"""
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -697,7 +698,7 @@ def start_training(
                 try:
                     import json
 
-                    with open(cmvn_path, "r") as f:
+                    with open(cmvn_path, "r", encoding="utf-8") as f:
                         stats = json.load(f)
                     loaded_dim = len(stats["mean"])
                     if loaded_dim != expected_dim:
@@ -956,7 +957,7 @@ def start_training(
                 training_state.trainer.device,
             )
             # Load state
-            checkpoint = torch.load(resume_path, map_location="cpu")
+            checkpoint = torch.load(resume_path, map_location="cpu", weights_only=True)
             start_epoch = checkpoint.get("epoch", 0) + 1
             training_state.current_epoch = start_epoch
             training_state.add_log(f"✅ Resumed training from epoch {start_epoch}")
@@ -1064,12 +1065,11 @@ def get_training_status() -> Tuple:
     # Calculate ETA (improved estimation)
     if training_state.is_training and training_state.current_epoch > 0:
         # Calculate time per epoch based on elapsed time and current progress
-        elapsed = time.time() - training_state.epoch_start_time # This is not quite right as it resets every epoch
-        # Let's use a better way if we have history
+        # Let's use epoch speed if we have history
         epochs_remaining = training_state.total_epochs - training_state.current_epoch
-        
+
         if training_state.epoch_speed > 0:
-            training_state.eta_seconds = (epochs_remaining / (training_state.epoch_speed / 60.0))
+            training_state.eta_seconds = epochs_remaining / (training_state.epoch_speed / 60.0)
         else:
             training_state.eta_seconds = epochs_remaining * 300  # Default 5 min per epoch
     else:
@@ -1474,10 +1474,9 @@ def check_cmvn_status(state: gr.State) -> str:
     try:
         import json
 
-        with open(cmvn_path, "r") as f:
+        with open(cmvn_path, "r", encoding="utf-8") as f:
             stats = json.load(f)
-
-        feature_type = "mel" if config.data.feature_type in ["mel", "mel_spectrogram"] else config.data.feature_type
+        feature_type = config.data.feature_type
         expected_dim = config.data.n_mels if feature_type == "mel" else config.data.n_mfcc
         loaded_dim = len(stats["mean"])
 
@@ -1557,7 +1556,7 @@ def calculate_dataset_ratios() -> Tuple[str, float, float, float]:
 
         import json
 
-        with open(train_manifest, "r") as f:
+        with open(train_manifest, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # Count classes
@@ -1893,7 +1892,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         start_training_btn.click(
             fn=start_training_wrapper,
             inputs=[
-                config_state,
+                state,
                 use_cmvn,
                 use_ema,
                 ema_decay,

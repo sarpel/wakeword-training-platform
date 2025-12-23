@@ -28,14 +28,14 @@ class FalsePositiveCollector:
 
     def _load_index(self) -> None:
         if self.index_file.exists():
-            with open(self.index_file, "r") as f:
+            with open(self.index_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.index = list(data) if isinstance(data, list) else []
         else:
             self.index = []
 
     def _save_index(self) -> None:
-        with open(self.index_file, "w") as f:
+        with open(self.index_file, "w", encoding="utf-8") as f:
             json.dump(self.index, f, indent=2)
 
     def add_sample(self, audio: np.ndarray, metadata: Dict[str, Any], sample_rate: int = 16000) -> None:

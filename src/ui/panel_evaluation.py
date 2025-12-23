@@ -298,7 +298,26 @@ def mine_hard_negatives_handler() -> str:
         return "❌ Run test set evaluation first."
 
     count = eval_state.miner.mine_from_results(eval_state.test_results)
-    return f"✅ Mined {count} new potential hard negatives. Check the 'Mining Queue' tab."
+
+    if count > 0:
+        try:
+            from src.config.presets import get_preset
+
+            # Auto-generate a Strategy A refinement config
+            config = get_preset("Strategy A: Hard Negative Refinement")
+            config_path = Path("configs/strategy_a_auto_refinement.yaml")
+            config.save(config_path)
+
+            return (
+                f"✅ Mined {count} new potential hard negatives.\n"
+                f"📂 Special Profile Saved: {config_path.name}\n"
+                f"💡 Tip: Go to Config tab and load this profile for your next run."
+            )
+        except Exception as e:
+            logger.error(f"Error saving auto-refinement config: {e}")
+            return f"✅ Mined {count} samples, but failed to save profile: {e}"
+
+    return "ℹ️ No new hard negatives found above threshold."
 
 
 def get_mining_gallery_html() -> str:
@@ -930,7 +949,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
         clear_fp_btn.click(fn=clear_false_positives, outputs=[fp_gallery])
 
         # Mining handlers
-        mine_fp_btn.click(fn=mine_hard_negatives_handler, outputs=[mining_status])
+        mine_fp_btn.click(fn=mine_hard_negatives_handler, inputs=[state], outputs=[mining_status])
         refresh_queue_btn.click(fn=get_mining_gallery_html, outputs=[mining_queue_html])
         inject_mined_btn.click(fn=inject_mined_samples_handler, outputs=[injection_status])
 

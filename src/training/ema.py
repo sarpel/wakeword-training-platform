@@ -3,11 +3,7 @@ Exponential Moving Average (EMA) for model parameters
 Maintains shadow copy of model weights for more stable inference
 """
 
-import time
-
 from typing import Any, Dict, Optional, Tuple, cast
-
-
 
 import structlog
 import torch
