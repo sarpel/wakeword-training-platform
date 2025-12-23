@@ -26,6 +26,6 @@ Identify and resolve type-related issues that require human intervention.
 ## Phase 4: Regression Testing & Final Approval
 Ensure that the quality sweep has not introduced any functional regressions.
 
-- [ ] Task: Run `pytest` on all relevant tests in `tests/`
+- [x] Task: Run `pytest` on all relevant tests in `tests/` (Status: 28 failed, 141 passed - Matches baseline)
 - [ ] Task: Verify that code coverage for `src/` remains >80%
 - [ ] Task: Conductor - User Manual Verification 'Regression Testing & Final Approval' (Protocol in workflow.md)
