@@ -283,7 +283,11 @@ def generate_fp_gallery_html() -> str:
         return "<p>No samples.</p>"
     html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px;">'
     for s in samples:
-        audio_url = f"file/{eval_state.fp_collector.output_dir}/{s['audio_path']}"
+        # Resolve absolute path and sanitize for URL (Windows support)
+        full_path = (eval_state.fp_collector.output_dir / s['audio_path']).resolve()
+        safe_path = str(full_path).replace("\\", "/")
+        audio_url = f"/file={safe_path}"
+        
         html += f'<div style="background: #2d2d2d; padding: 10px;"><p>File: {s["metadata"]["filename"]}</p><audio src="{audio_url}" controls></audio></div>'
     return html + "</div>"
 
@@ -294,6 +298,11 @@ def clear_false_positives() -> str:
 
 
 def mine_hard_negatives_handler() -> str:
+    """
+    Find false positives from test results.
+    These are samples where model predicted "Positive" (wakeword detected) but the actual label is Negative.
+    Users will then verify if these are truly NOT wakewords (to add as hard negatives for training).
+    """
     if not eval_state.test_results:
         return "❌ Run test set evaluation first."
 
@@ -309,73 +318,41 @@ def mine_hard_negatives_handler() -> str:
             config.save(config_path)
 
             return (
-                f"✅ Mined {count} new potential hard negatives.\n"
-                f"📂 Special Profile Saved: {config_path.name}\n"
-                f"💡 Tip: Go to Config tab and load this profile for your next run."
+                f"✅ Found {count} false positives (sounds model detected as wakeword but are NOT).\n"
+                f"📂 Training profile saved: {config_path.name}\n"
+                f"💡 Go to 'Mining Queue' tab to review these samples."
             )
         except Exception as e:
             logger.error(f"Error saving auto-refinement config: {e}")
-            return f"✅ Mined {count} samples, but failed to save profile: {e}"
+            return f"✅ Found {count} false positives, but failed to save training profile: {e}"
 
-    return "ℹ️ No new hard negatives found above threshold."
+    return "ℹ️ No false positives found. Model performed well on this test set."
 
 
-def get_mining_gallery_html() -> str:
+def get_mining_queue_data() -> list:
+    """Get pending mining items for Dataframe display."""
     pending = eval_state.miner.get_pending()
     if not pending:
-        return "<p style='text-align: center; padding: 20px;'>Queue is empty. Use the 'Mine Hard Negatives' button in evaluation results.</p>"
+        return []
+    # Return list of [Filename, Confidence, Full Path]
+    return [[item["filename"], f"{item['confidence']:.2%}", item["full_path"]] for item in pending]
 
-    html = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">'
-    for item in pending:
-        # We assume files are accessible via Gradio or absolute path (if local)
-        # For simplicity, we just display the info and path for now
-        html += f"""
-        <div style="background: #2d2d2d; border-radius: 8px; padding: 15px; border: 1px solid #444; display: flex; justify-content: space-between; align-items: center;">
-            <div style="flex: 1;">
-                <p style="margin: 0; font-weight: bold;">{item["filename"]}</p>
-                <p style="margin: 5px 0; font-size: 0.85em; color: #aaa;">Confidence: {item["confidence"]:.2%}</p>
-                <p style="margin: 0; font-size: 0.7em; color: #888;">Path: {item["full_path"]}</p>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button onclick="confirmSample('{item["full_path"]}')" style="background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">✅ Confirm</button>
-                <button onclick="discardSample('{item["full_path"]}')" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">❌ Discard</button>
-            </div>
-        </div>
-        """
-    html += "</div>"
 
-    # Add JS for buttons
-    html += """
-    <script>
-    function confirmSample(path) {
-        let pathEl = document.querySelector("#mining_verify_path input");
-        let statusEl = document.querySelector("#mining_verify_status input");
-        pathEl.value = path;
-        pathEl.dispatchEvent(new Event('input', { bubbles: true }));
-        statusEl.value = "confirmed";
-        statusEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    function discardSample(path) {
-        let pathEl = document.querySelector("#mining_verify_path input");
-        let statusEl = document.querySelector("#mining_verify_status input");
-        pathEl.value = path;
-        pathEl.dispatchEvent(new Event('input', { bubbles: true }));
-        statusEl.value = "discarded";
-        statusEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    </script>
+def verify_sample_action(path: str, status: str):
     """
-    return html
-
-
-def verify_sample_handler(path: str, status: str) -> str:
+    Update verification status for a sample and refresh the list.
+    """
+    if not path:
+        return get_mining_queue_data(), ""
+    
+    # Update the sample status
     eval_state.miner.update_status(path, status)
-    return get_mining_gallery_html()
+    return get_mining_queue_data(), ""
 
 
 def inject_mined_samples_handler() -> str:
     count = eval_state.miner.inject_to_dataset()
-    return f"✅ Injected {count} confirmed negatives into training data."
+    return f"✅ Successfully added {count} verified hard negative samples to training data."
 
 
 def evaluate_test_set(
@@ -816,7 +793,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             label="Test Set Metrics",
                             value={"status": "Click 'Run Test Evaluation' to start"},
                         )
-                        mine_fp_btn = gr.Button("⛏️ Mine Hard Negatives", variant="secondary")
+                        mine_fp_btn = gr.Button("⛏️ Find False Positives (Not Wakewords)", variant="secondary")
                         mining_status = gr.Markdown("")
 
                     with gr.Column():
@@ -837,19 +814,31 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             # Mining Queue Tab
             with gr.TabItem("⛏️ Mining Queue"):
                 gr.Markdown("### Hard Negative Verification Queue")
-                gr.Markdown("Review mined false positives and confirm them for the next training run.")
+                gr.Markdown("**Review false positives (model detected as wakeword but they are NOT).**")
+                gr.Markdown("Confirm samples that are NOT wakewords (hard negatives) to add them to your training data and improve accuracy.")
 
                 with gr.Row():
                     refresh_queue_btn = gr.Button("🔄 Refresh Queue")
-                    inject_mined_btn = gr.Button("💉 Inject Confirmed to Dataset", variant="primary")
+                    inject_mined_btn = gr.Button("💉 Add Verified Samples to Dataset", variant="primary")
 
                 injection_status = gr.Markdown("")
 
-                mining_queue_html = gr.HTML(value=get_mining_gallery_html(), label="Verification Queue")
+                # Dataframe for displaying queue
+                mining_queue_df = gr.Dataframe(
+                    headers=["Filename", "Confidence", "Full Path"],
+                    datatype=["str", "str", "str"],
+                    value=get_mining_queue_data(),
+                    interactive=False,
+                    label="Verification Queue (Select a row to verify)",
+                    wrap=True
+                )
 
-                # Hidden state for verifying samples via JS
-                verify_path = gr.Textbox(visible=False, elem_id="mining_verify_path")
-                verify_status = gr.Textbox(visible=False, elem_id="mining_verify_status")
+                gr.Markdown("### Verification Actions")
+                selected_sample_box = gr.Textbox(label="Selected Sample Path", interactive=False, placeholder="Select a row from the table above...")
+                
+                with gr.Row():
+                    confirm_btn = gr.Button("✅ Confirm (Not Wakeword)", variant="primary")
+                    discard_btn = gr.Button("❌ Reject Sample", variant="stop")
 
             # Analysis Dashboard
             with gr.TabItem("🔍 Analysis Dashboard"):
@@ -950,17 +939,44 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
         # Mining handlers
         mine_fp_btn.click(fn=mine_hard_negatives_handler, outputs=[mining_status])
-        refresh_queue_btn.click(fn=get_mining_gallery_html, outputs=[mining_queue_html])
+        refresh_queue_btn.click(fn=get_mining_queue_data, outputs=[mining_queue_df])
         inject_mined_btn.click(fn=inject_mined_samples_handler, outputs=[injection_status])
 
-        # JS bridge for verification
-        def js_bridge_verify(path, status):
-            return verify_sample_handler(path, status)
+        # Selection handler
+        def on_queue_select(df, evt: gr.EventData):
+            try:
+                # df is usually a pandas DataFrame when passed as input
+                # Use EventData to avoid KeyError if 'value' is missing in SelectData
+                data = evt._data
+                if not data or "index" not in data:
+                    return ""
+                    
+                # Index is usually [row, col] for Dataframe
+                row_idx = data["index"][0]
+                
+                # Column 2 is "Full Path" (0-based index)
+                return df.iloc[row_idx, 2]
+            except Exception as e:
+                print(f"Error selecting row: {e}")
+                return ""
 
-        # We need a way to trigger verification from JS.
-        # Gradio doesn't easily allow arbitrary JS -> Python calls without a hidden component.
-        # I'll use a hidden button or similar if needed, but for now I'll just refresh.
-        # Actually, let's use the hidden textboxes.
-        verify_status.change(fn=js_bridge_verify, inputs=[verify_path, verify_status], outputs=[mining_queue_html])
+        mining_queue_df.select(
+            fn=on_queue_select,
+            inputs=[mining_queue_df],
+            outputs=[selected_sample_box]
+        )
+
+        # Action buttons
+        confirm_btn.click(
+            fn=lambda path: verify_sample_action(path, "confirmed"),
+            inputs=[selected_sample_box],
+            outputs=[mining_queue_df, selected_sample_box]
+        )
+
+        discard_btn.click(
+            fn=lambda path: verify_sample_action(path, "discarded"),
+            inputs=[selected_sample_box],
+            outputs=[mining_queue_df, selected_sample_box]
+        )
 
     return panel

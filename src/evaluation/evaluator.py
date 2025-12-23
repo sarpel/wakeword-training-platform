@@ -173,8 +173,8 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
 
     # Get allowed checkpoint directories
     allowed_directories = [
-        paths.MODELS_DIR.resolve(),
-        paths.CHECKPOINTS_DIR.resolve() if hasattr(paths, "CHECKPOINTS_DIR") else paths.MODELS_DIR.resolve(),
+        paths.MODELS.resolve(),
+        paths.CHECKPOINTS.resolve(),
     ]
 
     # Restrict loading to trusted directories only

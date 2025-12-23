@@ -2,7 +2,12 @@
 Quick Launcher for Wakeword Training Platform
 Production-Ready Wakeword Detection Training System v2.0.0
 """
-import sys
+import asyncio  # Mevcutsa, yoksa ekle
+import sys  # Mevcutsa, yoksa ekle
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import os
 from pathlib import Path
 import warnings
@@ -10,6 +15,8 @@ import warnings
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+
 
 # Add src to path
 project_root = Path(__file__).parent

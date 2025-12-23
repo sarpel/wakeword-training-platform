@@ -4,8 +4,9 @@ Distillation Trainer.
 Implements Knowledge Distillation from a Teacher (Wav2Vec2) to a Student (MobileNet/ResNet).
 """
 
-from src.config.logger import setup_logger 
 from typing import Any, Optional
+
+from src.config.logger import get_logger
 
 import torch
 import torch.nn as nn
@@ -15,7 +16,7 @@ from src.models.architectures import create_model
 from src.models.huggingface import Wav2VecWakeword
 from src.training.trainer import Trainer
 
-logger = setup_logger(__name__)
+logger = get_logger(__name__)
 
 
 class DistillationTrainer(Trainer):

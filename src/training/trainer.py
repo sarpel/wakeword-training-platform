@@ -3,7 +3,13 @@ Wakeword Training Loop
 GPU-accelerated training with checkpointing, early stopping, and metrics tracking
 """
 
-import sys
+import asyncio  # Mevcutsa, yoksa ekle
+import sys  # Mevcutsa, yoksa ekle
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    
 import threading
 import time
 from dataclasses import dataclass

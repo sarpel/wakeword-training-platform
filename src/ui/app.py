@@ -5,6 +5,10 @@ Wakeword Training Platform with 6 panels
 
 import asyncio
 import sys
+
+if __name__ == "__main__" or sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
 import warnings
 from pathlib import Path
 from typing import Optional

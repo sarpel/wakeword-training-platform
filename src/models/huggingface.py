@@ -13,7 +13,7 @@ from typing import cast
 import torch
 import torch.nn as nn
 
-from src.config.logger import setup_logger 
+from src.config.logger import get_logger
 
 # Set default teacher model cache directory
 TEACHER_CACHE_DIR = Path("models/teachers")
@@ -34,7 +34,7 @@ except ImportError as e:
     Wav2Vec2Model = None
     Wav2Vec2Config = None
 
-logger = setup_logger(__name__)  
+logger = get_logger(__name__)  
 
 
 def get_teacher_cache_dir() -> Path:
