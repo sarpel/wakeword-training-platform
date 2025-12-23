@@ -26,7 +26,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 from src.config.cuda_utils import get_cuda_validator
-from src.config.defaults import WakewordConfig
+from src.config.defaults import WakewordConfig, load_latest_hpo_profile
 from src.config.paths import paths  # NEW: Centralized paths
 from src.data.balanced_sampler import create_balanced_sampler_from_dataset
 from src.data.cmvn import compute_cmvn_from_dataset
@@ -1246,6 +1246,52 @@ def save_best_profile(state: gr.State, edited_results: pd.DataFrame) -> str:
         return f"❌ Failed to save profile: {e}"
 
 
+def load_latest_hpo_handler(state: gr.State) -> Tuple[str, pd.DataFrame]:
+    """Load latest HPO profile from disk and update results table"""
+    if "config" not in state or state["config"] is None:
+        return "⚠️ No configuration loaded", pd.DataFrame()
+
+    config = state["config"]
+    success = load_latest_hpo_profile(config)
+    
+    if not success:
+        return "❌ No HPO profile found on disk", pd.DataFrame()
+    
+    # Map config back to params for display
+    params = []
+    
+    # Training
+    params.append({"Parameter": "learning_rate", "Value": config.training.learning_rate})
+    params.append({"Parameter": "batch_size", "Value": config.training.batch_size})
+    
+    # Optimizer
+    params.append({"Parameter": "weight_decay", "Value": config.optimizer.weight_decay})
+    params.append({"Parameter": "optimizer", "Value": config.optimizer.optimizer})
+    
+    # Model
+    params.append({"Parameter": "dropout", "Value": config.model.dropout})
+    
+    # Augmentation
+    params.append({"Parameter": "background_noise_prob", "Value": config.augmentation.background_noise_prob})
+    params.append({"Parameter": "rir_prob", "Value": config.augmentation.rir_prob})
+    params.append({"Parameter": "time_stretch_min", "Value": config.augmentation.time_stretch_min})
+    params.append({"Parameter": "time_stretch_max", "Value": config.augmentation.time_stretch_max})
+    params.append({"Parameter": "freq_mask_param", "Value": config.augmentation.freq_mask_param})
+    params.append({"Parameter": "time_mask_param", "Value": config.augmentation.time_mask_param})
+    
+    if hasattr(config.augmentation, "pitch_shift_max"):
+        params.append({"Parameter": "pitch_shift_range", "Value": config.augmentation.pitch_shift_max})
+
+    # Data
+    params.append({"Parameter": "n_mels", "Value": config.data.n_mels})
+    
+    # Loss
+    params.append({"Parameter": "loss_function", "Value": config.loss.loss_function})
+    
+    df = pd.DataFrame(params)
+    return "✅ Loaded latest HPO profile from disk", df
+
+
 def check_cmvn_status(state: gr.State) -> str:
     """Check if CMVN stats match current configuration"""
     if "config" not in state or state["config"] is None:
@@ -1563,6 +1609,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                     start_hpo_btn = gr.Button("🚀 Start HPO Study", variant="primary")
 
                 with gr.Row():
+                    load_hpo_btn = gr.Button("📥 Load Latest HPO Profile", size="sm", variant="secondary")
                     apply_params_btn = gr.Button("✅ Apply Best Params", size="sm")
                     save_profile_btn = gr.Button("💾 Save as Profile", size="sm")
                     hpo_action_status = gr.Textbox(label="Action Status", interactive=False)
@@ -1722,6 +1769,12 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
             fn=start_hpo,
             inputs=[state, n_trials, n_jobs, study_name, hpo_param_groups, single_objective_hpo],
             outputs=[hpo_status, hpo_results],
+        )
+
+        load_hpo_btn.click(
+            fn=load_latest_hpo_handler,
+            inputs=[state],
+            outputs=[hpo_action_status, hpo_results]
         )
 
         apply_params_btn.click(
