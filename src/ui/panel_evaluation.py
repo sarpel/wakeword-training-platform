@@ -949,7 +949,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
         clear_fp_btn.click(fn=clear_false_positives, outputs=[fp_gallery])
 
         # Mining handlers
-        mine_fp_btn.click(fn=mine_hard_negatives_handler, inputs=[state], outputs=[mining_status])
+        mine_fp_btn.click(fn=mine_hard_negatives_handler, outputs=[mining_status])
         refresh_queue_btn.click(fn=get_mining_gallery_html, outputs=[mining_queue_html])
         inject_mined_btn.click(fn=inject_mined_samples_handler, outputs=[injection_status])
 

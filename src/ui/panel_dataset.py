@@ -45,7 +45,9 @@ def sanitize_path(user_path: str, allowed_root: Path) -> Path:
     full_path = Path(user_path).resolve()
     allowed_root = allowed_root.resolve()
 
-    if not str(full_path).startswith(str(allowed_root)):
+    try:
+        full_path.relative_to(allowed_root)
+    except ValueError:
         raise ValueError(f"Path {user_path} outside allowed directory {allowed_root}")
 
     return full_path

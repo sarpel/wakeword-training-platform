@@ -174,20 +174,39 @@ class ONNXExporter:
         logger.info(f"Exporting to TFLite: {output_path} (INT8={quantize_int8}, QAT={is_qat})")
 
         try:
+            # Validate and sanitize paths to prevent command injection
+            expected_base = Path("exports").resolve()
+            resolved_onnx_path = onnx_path.resolve()
+
+            if not str(resolved_onnx_path).startswith(str(expected_base)):
+                raise ValueError(f"ONNX path must be within {expected_base}, got: {onnx_path}")
+
             output_folder = output_path.parent / "tflite_export"
+            resolved_output_folder = output_folder.resolve()
+
+            if not str(resolved_output_folder).startswith(str(expected_base)):
+                raise ValueError(f"Output path must be within {expected_base}, got: {output_folder}")
+
             output_folder.mkdir(parents=True, exist_ok=True)
 
+            # Validate input shape string format (must be comma-separated positive integers)
             input_shape_str = ",".join(map(str, self.sample_input_shape))
+            try:
+                for dim in self.sample_input_shape:
+                    if not isinstance(dim, int) or dim <= 0:
+                        raise ValueError(f"Input shape dimensions must be positive integers, got: {dim}")
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid input shape: {self.sample_input_shape}") from e
 
-            # Base command
+            # Base command with validated paths
             cmd = [
                 sys.executable,
                 "-m",
                 "onnx2tf",
                 "-i",
-                str(onnx_path),
+                str(resolved_onnx_path),
                 "-o",
-                str(output_folder),
+                str(resolved_output_folder),
                 "-ois",
                 f"input:{input_shape_str}",
                 "--non_verbose",  # Reduce log noise
@@ -335,8 +354,15 @@ def export_model_to_onnx(
     """
     logger.info(f"Loading checkpoint: {checkpoint_path}")
 
+    # Validate checkpoint path to prevent traversal attacks
+    expected_base = Path("exports").resolve()
+    resolved_checkpoint_path = checkpoint_path.resolve()
+
+    if not str(resolved_checkpoint_path).startswith(str(expected_base)):
+        raise ValueError(f"Checkpoint path must be within {expected_base}, got: {checkpoint_path}")
+
     # Load checkpoint with security: weights_only=True
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    checkpoint = torch.load(str(resolved_checkpoint_path), map_location=device, weights_only=True)
 
     if "config" not in checkpoint:
         raise ValueError("Checkpoint does not contain configuration")
@@ -498,12 +524,18 @@ def export_model_to_onnx(
         # Copy to fixed path if requested
         if fixed_export_path and tflite_results.get("success"):
             try:
+                                # Validate the path is within expected export directory  
+                expected_base = Path("exports").resolve()  
+                resolved_path = fixed_export_path.resolve()  
+                if not str(resolved_path).startswith(str(expected_base)):  
+                    raise ValueError(f"Export path must be within {expected_base}")  
+                
                 fixed_export_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(str(tflite_path), str(fixed_export_path))
                 logger.info(f"✅ Copied TFLite model to fixed path: {fixed_export_path}")
                 results["fixed_path"] = str(fixed_export_path)
             except Exception as e:
-                logger.error(f"Failed to copy to fixed path: {e}")
+                logger.exception(f"Failed to copy to fixed path: {e}")
                 results["fixed_path_error"] = str(e)
 
     # Add model info

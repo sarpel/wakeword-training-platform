@@ -9,6 +9,7 @@ except ImportError:
     weave = None  # type: ignore
 
 from typing import Any, Dict, Optional
+from venv import logger
 
 from src.training.metrics import MetricResults
 
@@ -34,8 +35,8 @@ class WandbCallback:
         if weave is not None:
             try:
                 weave.init(project_name)
-            except Exception:
-                pass
+            except (ImportError, RuntimeError, ValueError) as e:  
+                logger.warning(f"Failed to initialize Weave: {e}", exc_info=True)
 
         wandb.init(project=project_name, config=config, reinit="finish_previous")
 

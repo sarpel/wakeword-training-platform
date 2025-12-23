@@ -135,7 +135,7 @@ class CheckpointManager:
 
         for checkpoint_path in self.checkpoint_dir.glob("*.pt"):
             try:
-                # Load checkpoint metadata
+                # Load checkpoint metadata (only need epoch/metrics, weights_only is fine here)
                 checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
 
                 # Extract metadata

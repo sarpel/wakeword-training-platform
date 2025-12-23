@@ -4,7 +4,7 @@ Distillation Trainer.
 Implements Knowledge Distillation from a Teacher (Wav2Vec2) to a Student (MobileNet/ResNet).
 """
 
-import logging
+from src.config.logger import setup_logger 
 from typing import Any, Optional
 
 import torch
@@ -15,7 +15,7 @@ from src.models.architectures import create_model
 from src.models.huggingface import Wav2VecWakeword
 from src.training.trainer import Trainer
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class DistillationTrainer(Trainer):
@@ -105,8 +105,8 @@ class DistillationTrainer(Trainer):
             )
         except TypeError:
             # Fallback for older PyTorch versions that don't support weights_only
-            # But we know requirements.txt says 2.1.2 so this should be fine.
-            # Just in case user has older env:
+            # setup.py requires torch>=2.1.0 so the fallback is generally unnecessary
+            # but kept as a safety for older environments:
             logger.warning("torch.load doesn't support weights_only=True, loading unsafely (upgrade PyTorch!)")
             checkpoint = torch.load(checkpoint_path_obj, map_location="cpu")
         except Exception as e:

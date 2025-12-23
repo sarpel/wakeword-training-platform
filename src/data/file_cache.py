@@ -42,8 +42,11 @@ class FileCache:
                 with open(self.cache_file, "r") as f:
                     self.cache = json.load(f)
                 logger.info(f"Loaded cache with {len(self.cache)} entries")
-            except Exception as e:
-                logger.warning(f"Failed to load cache: {e}")
+            except (IOError, OSError) as e:
+                logger.warning(f"Failed to load cache (I/O error): {e}")
+                self.cache = {}
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to load cache (invalid JSON): {e}")
                 self.cache = {}
         else:
             self.cache = {}
@@ -54,8 +57,8 @@ class FileCache:
             with open(self.cache_file, "w") as f:
                 json.dump(self.cache, f, indent=2)
             logger.debug(f"Saved cache with {len(self.cache)} entries")
-        except Exception as e:
-            logger.error(f"Failed to save cache: {e}")
+        except (IOError, OSError) as e:
+            logger.error(f"Failed to save cache (I/O error): {e}")
 
     def _get_file_key(self, file_path: Path) -> str:
         """
@@ -70,7 +73,7 @@ class FileCache:
         file_path = Path(file_path)
         stat = file_path.stat()
 
-        # Create key from path and mtime
+        # Create key from path, mtime, and file size
         key_data = f"{file_path}_{stat.st_mtime}_{stat.st_size}"
         key_hash = hashlib.sha256(key_data.encode()).hexdigest()
 
@@ -102,8 +105,8 @@ class FileCache:
 
             return None
 
-        except Exception as e:
-            logger.debug(f"Cache get error for {file_path}: {e}")
+        except (IOError, OSError) as e:
+            logger.debug(f"Cache get error for {file_path} (I/O error): {e}")
             return None
 
     def set(self, file_path: Path, metadata: Dict[str, Any]) -> None:
@@ -124,8 +127,8 @@ class FileCache:
             self.cache[key] = metadata
             logger.debug(f"Cached metadata for {file_path.name}")
 
-        except Exception as e:
-            logger.debug(f"Cache set error for {file_path}: {e}")
+        except (IOError, OSError) as e:
+            logger.debug(f"Cache set error for {file_path} (I/O error): {e}")
 
     def save(self) -> None:
         """Save cache to disk"""

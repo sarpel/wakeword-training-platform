@@ -3,14 +3,14 @@ Model Size Calculator for Wakeword Detection
 Estimates model size (Flash/RAM) based on configuration.
 """
 
-import logging
 from typing import Any, Dict, Optional, Tuple
 
 from src.config.defaults import WakewordConfig
+from src.config.logger import setup_logger
 from src.config.platform_constraints import get_platform_constraints
 from src.models.architectures import create_model
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class SizeCalculator:
@@ -52,7 +52,7 @@ class SizeCalculator:
             total_params = sum(p.numel() for p in model.parameters())
             return total_params
         except Exception as e:
-            logger.error(f"Error creating model for parameter estimation: {e}")
+            logger.exception(f"Error creating model for parameter estimation: {e}")
             return 0
 
     def calculate_estimated_size_kb(self) -> Tuple[float, float]:

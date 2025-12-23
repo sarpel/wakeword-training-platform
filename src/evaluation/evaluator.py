@@ -165,7 +165,39 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     """
     logger.info(f"Loading model from: {checkpoint_path}")
 
-    # Load checkpoint
+    # Security: Validate checkpoint path to prevent loading from untrusted locations
+    from src.config.paths import paths
+
+    # Resolve to absolute path for validation
+    checkpoint_path = checkpoint_path.resolve()
+
+    # Get allowed checkpoint directories
+    allowed_directories = [
+        paths.MODELS_DIR.resolve(),
+        paths.CHECKPOINTS_DIR.resolve() if hasattr(paths, "CHECKPOINTS_DIR") else paths.MODELS_DIR.resolve(),
+    ]
+
+    # Restrict loading to trusted directories only
+    is_allowed = False
+    for allowed_dir in allowed_directories:
+        try:
+            checkpoint_path.relative_to(allowed_dir)
+            is_allowed = True
+            break
+        except ValueError:
+            continue
+
+    if not is_allowed:
+        raise ValueError(
+            f"Security: Loading from untrusted location not allowed. "
+            f"Checkpoint path '{checkpoint_path}' must be within one of the allowed directories: {allowed_directories}"
+        )
+
+    # Security: Verify file exists before loading
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+    # Load checkpoint with weights_only=True to prevent arbitrary code execution
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
     # Get config

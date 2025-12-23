@@ -169,6 +169,26 @@ class CUDAValidator:
         """
         # Base model sizes in GB (rough estimates for FP16/Mixed Precision)
         # Note: Activations grow with batch size
+        #
+        # ⚠️  MAINTENANCE WARNING: These values are hardcoded estimates based on the
+        # approximate memory footprint of each model architecture at initialization time
+        # (excluding activation memory and gradients which are calculated separately).
+        #
+        # How these values were derived:
+        #   - Based on parameter count and typical layer configurations for each architecture
+        #   - Measured from standard PyTorch/HuggingFace implementations in FP16 mode
+        #   - Account for both model weights and optimizer state overhead
+        #
+        # IMPORTANT: These estimates MUST be kept in sync with actual model implementations.
+        # If you modify model architectures (layer sizes, hidden dimensions, etc.),
+        # you MUST update the corresponding values here. Otherwise, VRAM estimates will
+        # be inaccurate, potentially leading to OOM errors or inefficient GPU utilization.
+        #
+        # Future improvement: For dynamic and accurate VRAM estimation, consider
+        # instantiating models on a torch.device('meta') and calculating parameter count:
+        #   model = ModelClass().to('meta')
+        #   param_size = sum(p.numel() * p.element_size() for p in model.parameters())
+        # This would provide exact sizes but requires model class imports and initialization.
         model_sizes = {
             "wav2vec2": 1.2,
             "conformer": 0.6,

@@ -334,7 +334,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 "The active configuration does not match the features extracted in the dataset. This will cause errors during training."
             )
             with gr.Row():
-                reextract_btn = gr.Button("⚡ Go to Dataset Panel to Re-extract", variant="primary")
+                reextract_btn = gr.Button("✖️ Dismiss Warning", variant="primary")
                 revert_btn = gr.Button("🔄 Revert to Defaults", variant="secondary")
 
         # Collect all inputs for easier handling

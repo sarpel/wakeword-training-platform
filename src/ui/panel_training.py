@@ -637,8 +637,9 @@ def start_training(
                 if estimate > limit:
                     msg = f"⚠️ {msg} - WARNING: This may trigger Out-of-Memory!"
                 training_state.add_log(msg)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("VRAM estimation skipped", exc_info=True)
+            training_state.add_log("⚠️ VRAM estimate unavailable")
 
         # Check if dataset splits exist
         # Use centralized paths
@@ -956,7 +957,7 @@ def start_training(
                 training_state.trainer.optimizer,
                 training_state.trainer.device,
             )
-            # Load state
+            # Load state (only need epoch, safe with weights_only)
             checkpoint = torch.load(resume_path, map_location="cpu", weights_only=True)
             start_epoch = checkpoint.get("epoch", 0) + 1
             training_state.current_epoch = start_epoch

@@ -59,8 +59,8 @@ def evaluate_dataset(
         collate_fn=collate_fn,
     )
     # Calculate overall metrics
-    all_preds: list[torch.Tensor] = []  # type: ignore[assignment]
-    all_targs = []  # type: ignore[assignment]
+    all_preds: List[torch.Tensor] = []
+    all_targs: List[torch.Tensor] = []
     all_logits = []
     results = []
 
@@ -124,8 +124,8 @@ def evaluate_dataset(
                 )
 
     # Calculate overall metrics - accumulate in lists first
-    all_preds_raw = torch.cat([torch.stack([p["logits"] for p in results])], dim=0)
-    all_targs_raw = torch.cat([torch.tensor([r["label"] for r in results])], dim=0)
+    all_preds_raw = torch.stack([torch.tensor(r.logits) for r in results]) 
+    all_targs_raw = torch.tensor([r.label for r in results])
 
     # Log label distribution for verification
     pos_count = (all_targs_raw == 1).sum().item()

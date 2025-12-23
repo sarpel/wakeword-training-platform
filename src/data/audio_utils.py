@@ -465,7 +465,7 @@ class SilentDetector:
 
             return result
         except Exception as e:
-            logger.error(f"Error analyzing file {file_path}: {e}")
+            logger.exception(f"Error analyzing file {file_path}")
             return None
 
     def analyze_directory(self, directory: Path, recursive: bool = True) -> List[Dict[str, Any]]:
@@ -592,7 +592,7 @@ class SilentDetector:
                 )
 
             except Exception as e:
-                logger.error(f"Failed to process {src_path}: {e}")
+                logger.exception(f"Failed to process {src_path}")
 
         logger.info(f"Processed {moved_count} silent files to {silent_root} (dry_run={dry_run})")
         return moved_count, {"silent_files": report_data}

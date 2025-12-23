@@ -229,7 +229,7 @@ class TripletLoss(nn.Module):
 
         # Create mask for positive and negative pairs
         # mask[i, j] = 1 if target[i] == target[j]
-        embeddings.size(0)
+        # embeddings.size(0)
         target = target.unsqueeze(1)  # (B, 1)
         mask_pos = target.eq(target.t())  # (B, B)
 

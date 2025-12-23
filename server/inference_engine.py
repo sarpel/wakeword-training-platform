@@ -4,6 +4,7 @@ import os
 import sys
 import io
 import soundfile as sf
+import pickle
 from pathlib import Path
 from typing import Dict, Any
 
@@ -47,10 +48,14 @@ class InferenceEngine:
 
         logger.info(f"Loading checkpoint from {model_path}")
         try:
-            checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
+            # weights_only=False required because checkpoint contains non-tensor data (config, metrics, etc.)
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
         except TypeError:
-            # Fallback for older torch versions if necessary
+            # Fallback for older torch versions
             checkpoint = torch.load(model_path, map_location=self.device)
+        except Exception as e:
+            logger.exception(f"Failed to load checkpoint from {model_path}")
+            raise FileNotFoundError(f"Model not found or corrupted at {model_path}") from e
         
         # Reconstruct Config
         config_data = checkpoint.get("config")

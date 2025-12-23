@@ -57,4 +57,4 @@ def test_qat_mismatch_fix():
 
 
 if __name__ == "__main__":
-    test_qat_mismatch_reproduction()
+    test_qat_mismatch_fix()

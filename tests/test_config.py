@@ -38,7 +38,8 @@ class TestDefaultConfig:
         assert data.n_mels == 64
         assert data.feature_type == "mel"
 
-    def test_training_config_defaults(self):
+    @pytest.mark.unit
+    def test_training_config_defaults(self): 
         """Verify training configuration default values"""
         training = TrainingConfig()
         assert training.batch_size == 64

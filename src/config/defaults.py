@@ -489,8 +489,14 @@ def load_latest_hpo_profile(config: WakewordConfig, profile_dir: Optional[Path] 
                     setattr(config.loss, k, v)
 
         return True
-    except Exception as e:
-        print(f"Error loading HPO profile: {e}")
+    except FileNotFoundError:
+        # Silently ignore if profile file doesn't exist
+        return False
+    except json.JSONDecodeError as e:
+        print(f"Error decoding HPO profile JSON: {e}")
+        return False
+    except KeyError as e:
+        print(f"Error accessing HPO profile data - missing key: {e}")
         return False
 
 

@@ -216,6 +216,16 @@ class StreamingConfig(BaseModel):
     smoothing_window: int = Field(5, ge=1)
     cooldown_ms: int = Field(500, ge=0)
 
+    @root_validator(skip_on_failure=True)
+    def hysteresis_order(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        low = values.get("hysteresis_low")
+        high = values.get("hysteresis_high")
+        if low is not None and high is not None and low >= high:
+            raise ValueError(
+                f"hysteresis_low ({low}) must be less than hysteresis_high ({high})"
+            )
+        return values
+
 
 class SizeTargetConfig(BaseModel):
     """Pydantic model for model size target configuration"""

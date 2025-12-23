@@ -2,10 +2,12 @@
 Evaluation Metrics for Wakeword Detection
 """
 
-from typing import Union
+from typing import List, Union
 
 import numpy as np
 import torch
+
+from src.training.advanced_metrics import _probs_from_logits, calculate_eer as _calculate_eer_advanced
 
 try:
     from sklearn.metrics import auc, roc_curve
@@ -15,31 +17,12 @@ except ImportError:
     _HAS_SK = False
 
 
-def _probs_from_logits(logits: Union[torch.Tensor, np.ndarray], positive_index: int = 1) -> np.ndarray:
-    """
-    Converts logits to positive class probabilities.
-    """
-    if isinstance(logits, torch.Tensor):
-        logits = logits.detach().cpu().numpy()
-
-    if logits.ndim == 2 and logits.shape[1] == 2:
-        # Softmax
-        exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))
-        probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
-        return probs[:, positive_index]
-    elif logits.ndim == 1:
-        # Assume these are already probabilities
-        return logits
-    else:
-        raise ValueError(f"Unexpected logits shape: {logits.shape}")
-
-
 def calculate_pauc(
     logits: Union[torch.Tensor, np.ndarray],
     labels: Union[torch.Tensor, np.ndarray],
     fpr_max: float = 0.1,
     positive_index: int = 1,
-) -> np.ndarray:  # type: ignore[return-value]
+) -> float:  
     """
     Calculate the Partial Area Under the ROC Curve (pAUC) up to a max FPR.
 

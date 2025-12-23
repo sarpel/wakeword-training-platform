@@ -13,6 +13,8 @@ from typing import cast
 import torch
 import torch.nn as nn
 
+from src.config.logger import setup_logger 
+
 # Set default teacher model cache directory
 TEACHER_CACHE_DIR = Path("models/teachers")
 TEACHER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -24,7 +26,7 @@ os.environ.setdefault("HF_HOME", str(TEACHER_CACHE_DIR))
 try:
     from transformers import Wav2Vec2Config, Wav2Vec2Model, utils
 
-    utils.logging.set_verbosity_error()  # Silence initialization warnings
+    utils.logging.set_verbosity_warning()  
     TRANSFORMERS_IMPORT_ERROR = None
 except ImportError as e:
     logging.getLogger(__name__).warning(f"Failed to import transformers: {e}")
@@ -32,7 +34,7 @@ except ImportError as e:
     Wav2Vec2Model = None
     Wav2Vec2Config = None
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)  
 
 
 def get_teacher_cache_dir() -> Path:

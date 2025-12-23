@@ -3,7 +3,7 @@ Balanced Batch Sampler for controlling class ratios in batches
 Ensures each batch has specified proportions of positive, negative, and hard negative samples
 """
 
-from typing import Iterator, List
+from typing import Iterator, List, Optional
 
 import numpy as np
 import structlog
@@ -136,10 +136,12 @@ class CalibrationSampler:
         self,
         idx_pos: List[int],
         idx_neg: List[int],
-        idx_hard_neg: List[int] = [],
+        idx_hard_neg: Optional[List[int]] = None,
         num_samples: int = 100,
         positive_ratio: float = 0.5,
     ):
+        if idx_hard_neg is None:
+            idx_hard_neg = []
         """
         Initialize calibration sampler
 
@@ -296,6 +298,7 @@ def create_calibration_sampler_from_dataset(
                 elif category == "hard_negative":
                     idx_hard_neg.append(i)
             except Exception:
+                # Skip indices where metadata cannot be retrieved; calibration can proceed with available samples
                 pass
 
     return CalibrationSampler(

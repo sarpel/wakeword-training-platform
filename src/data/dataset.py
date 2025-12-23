@@ -111,7 +111,14 @@ class WakewordDataset(Dataset):
             logger.info("CMVN enabled but deferred to GPU pipeline (return_raw_audio=True)")
 
         # Load manifest
-        with open(self.manifest_path, "r", encoding="utf-8") as f:  # type: ignore[assignment]
+        # Security: Validate manifest_path to prevent path traversal attacks
+        abs_manifest_path = Path(self.manifest_path).resolve()
+        if not abs_manifest_path.is_file():
+            raise FileNotFoundError(f"Manifest file not found: {self.manifest_path}")
+        if not abs_manifest_path.suffix.lower() == ".json":
+            raise ValueError(f"Manifest file must be a JSON file: {self.manifest_path}")
+
+        with open(abs_manifest_path, "r", encoding="utf-8") as f:  # type: ignore[assignment]
             manifest = json.load(f)
 
         self.files: List[Dict[str, Any]] = manifest["files"]

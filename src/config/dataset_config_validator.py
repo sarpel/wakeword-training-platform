@@ -4,7 +4,7 @@ Checks for consistency between configuration and dataset features.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Tuple, cast
 
 import numpy as np
 import structlog

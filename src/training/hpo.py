@@ -44,7 +44,7 @@ import math
 import shutil
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast 
 
 import numpy as np
 import optuna
@@ -519,7 +519,6 @@ class Objective:
 
         # Initialize result variables early to avoid UnboundLocalError in finally block
         best_f1 = 0.0
-        best_fpr = 1.0
         pauc_val = 0.0
         latency_val = 1000.0
 
@@ -832,8 +831,13 @@ def run_hpo(
 
     # Prepare results
     if len(study.directions) > 1:
-        best_value: float = float([t.values for t in study.best_trials]) ** 0.9  # type: ignore[assignment]
-        best_params = study.best_trials[0].params if study.best_trials else {}
+        # For multi-objective, return list of values from first Pareto optimal trial
+        if study.best_trials:
+            best_value = list(study.best_trials[0].values)
+            best_params = study.best_trials[0].params
+        else:
+            best_value = [0.0, 1000.0]  # Default values (pauc, latency)
+            best_params = {}
         best_trials_data = [{"number": t.number, "values": t.values, "params": t.params} for t in study.best_trials]
     else:
         best_value = study.best_value

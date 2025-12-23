@@ -296,8 +296,11 @@ def compare_model_accuracy(
                     torch.backends.quantized.engine = "fbgemm"
                 elif "qnnpack" in torch.backends.quantized.supported_engines:
                     torch.backends.quantized.engine = "qnnpack"
-            except Exception as e:
-                logger.warning(f"Could not set quantized engine: {e}")
+            except (RuntimeError, AttributeError) as e:
+                logger.warning("Could not set quantized engine", exc_info=True)
+                if str(e):
+                    # Log error message separately if useful for debugging
+                    logger.debug(f"Quantized engine error details: {e}")
         else:
             model.to(device)
 
@@ -331,7 +334,7 @@ def compare_model_accuracy(
         return correct / total if total > 0 else 0.0
 
     logger.info("Evaluating FP32 model...")
-    # Keep FP32 on its original device for speed if it's CUDA
+    # Both models evaluated on CPU - quantized (INT8) inference requires CPU in PyTorch
     fp32_acc = evaluate(fp32_model, val_loader_or_list)
 
     logger.info("Evaluating Quantized model...")

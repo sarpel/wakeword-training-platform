@@ -3,7 +3,6 @@ from pathlib import Path
 import shutil
 import logging
 import argparse
-from typing import Dict, List, Tuple
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

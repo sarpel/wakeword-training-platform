@@ -45,7 +45,7 @@ class BenchmarkRunner:
             self.stage.predict(audio)
 
         # Benchmark loop
-        self._get_memory_usage()
+        start_mem = self._get_memory_usage()
 
         for i in range(num_iterations):
             start_time = time.perf_counter()
@@ -53,7 +53,7 @@ class BenchmarkRunner:
             end_time = time.perf_counter()
             latencies.append((end_time - start_time) * 1000)
 
-        self._get_memory_usage()
+        end_mem = self._get_memory_usage()
 
         metrics = {
             "name": self.stage.name,
@@ -62,7 +62,8 @@ class BenchmarkRunner:
             "min_latency_ms": np.min(latencies),
             "max_latency_ms": np.max(latencies),
             "iterations": num_iterations,
-            "process_memory_mb": self._get_memory_usage(),
+            "process_memory_mb": end_mem,
+            "memory_delta_mb": end_mem - start_mem,
         }
 
         # Add GPU memory if applicable

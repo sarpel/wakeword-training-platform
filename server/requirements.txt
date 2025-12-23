@@ -1,5 +1,5 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.1.2+cpu
+# Note: Use --extra-index-url when installing: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+torch>=2.1.2
 torchaudio==2.1.2+cpu
 torchvision==0.16.2+cpu
 transformers==4.35.2

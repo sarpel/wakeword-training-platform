@@ -284,6 +284,7 @@ class Trainer:
                     if sys.platform == "win32":
                         logger.warning("ConnectionResetError suppressed during training loop (harmless Windows error)")
                         # Try to continue or return current state
+                        logger.warning(f"Epoch {epoch+1} metrics may be incomplete")
                         continue
                     else:
                         raise
@@ -358,7 +359,7 @@ class Trainer:
 
         if best_f1_metrics:
             logger.info(f"\n🏆 BEST F1 SCORE: {best_f1_metrics.f1_score:.4f} ⭐ (Epoch {best_f1_epoch+1})")
-        if best_fpr_metrics:
+        if best_fpr_metrics and best_fpr_epoch + 1 > 1:
             logger.info(f"BEST FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
 
         results = {
@@ -392,7 +393,7 @@ class Trainer:
                 )
                 results["qat_report"] = qat_report
             except Exception as e:
-                logger.warning(f"Failed to generate QAT report: {e}")
+                logger.warning(f"Failed to generate QAT report: {e}", exc_info=True)
 
         self._call_callbacks("on_train_end")
 
