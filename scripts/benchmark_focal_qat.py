@@ -7,10 +7,8 @@ Compares:
 """
 
 import torch
-import torch.nn as nn
-import time
 from pathlib import Path
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 from src.config.defaults import WakewordConfig
 from src.training.trainer import Trainer
 from src.training.checkpoint_manager import CheckpointManager

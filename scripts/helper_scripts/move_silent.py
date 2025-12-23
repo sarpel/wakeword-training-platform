@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import os
 import shutil
 from pathlib import Path
 
@@ -185,9 +184,9 @@ def main():
                 rep.write(f"silent\t{fpath}\t{dur}\t{rms}\t{peak}\t{note}\n")
                 if not args.dry_run:
                     if args.copy:
-                        target = safe_copy(fpath, out_dir, args.keep_structure, in_dir)
+                        safe_copy(fpath, out_dir, args.keep_structure, in_dir)
                     else:
-                        target = safe_move(fpath, out_dir, args.keep_structure, in_dir)
+                        safe_move(fpath, out_dir, args.keep_structure, in_dir)
                     moved += 1
             else:
                 rep.write(f"keep\t{fpath}\t{dur}\t{rms}\t{peak}\t{note}\n")

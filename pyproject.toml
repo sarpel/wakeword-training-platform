@@ -288,7 +288,7 @@ allow_redefinition = true
 
 [[tool.mypy.overrides]]
 module = "src.evaluation.dataset_evaluator"
- ignore_missing_imports = true
+ignore_missing_imports = true
 allow_redefinition = true
 
 [[tool.mypy.overrides]]
