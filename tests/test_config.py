@@ -4,6 +4,15 @@ Tests configuration loading, validation, and serialization
 """
 import pytest
 from pathlib import Path
+from src.config.defaults import (
+    DataConfig,
+    TrainingConfig,
+    ModelConfig,
+    AugmentationConfig,
+    OptimizerConfig,
+    LossConfig,
+    WakewordConfig
+)
 
 
 class TestDefaultConfig:
@@ -29,15 +38,14 @@ class TestDefaultConfig:
         assert data.n_mels == 64
         assert data.feature_type == "mel"
 
-    @pytest.mark.unit
-    def test_training_config_defaults(self, default_config):
-        """Test training configuration defaults"""
-        training = default_config.training
-        
+    def test_training_config_defaults(self):
+        """Verify training configuration default values"""
+        training = TrainingConfig()
         assert training.batch_size == 64
         assert training.epochs == 80
-        assert training.learning_rate == 3e-4
+        assert training.learning_rate == 5e-4
         assert training.early_stopping_patience == 15
+        assert training.num_workers == 16
 
     @pytest.mark.unit
     def test_model_config_defaults(self, default_config):

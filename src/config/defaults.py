@@ -4,9 +4,10 @@ Defines basic and advanced training hyperparameters
 """
 
 import copy
+import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -429,6 +430,68 @@ def get_default_config() -> WakewordConfig:
         config_name="default",
         description="Default balanced configuration for general use",
     )
+
+
+def load_latest_hpo_profile(config: WakewordConfig, profile_dir: Optional[Path] = None) -> bool:
+    """
+    Load the latest complete HPO profile from disk into an existing config instance.
+
+    Args:
+        config: The WakewordConfig instance to update
+        profile_dir: Optional custom directory to search for profiles
+
+    Returns:
+        bool: True if profile was successfully loaded, False otherwise
+    """
+    if profile_dir is None:
+        profile_dir = Path("configs/profiles")
+    else:
+        profile_dir = Path(profile_dir)
+
+    profile_path = profile_dir / "hpo_best_complete.json"
+
+    if not profile_path.exists():
+        return False
+
+    try:
+        with open(profile_path, "r", encoding="utf-8") as f:
+            profile_data = json.load(f)
+
+        if "parameters" not in profile_data:
+            return False
+
+        params = profile_data["parameters"]
+
+        # Update config sections
+        if "training" in params:
+            for k, v in params["training"].items():
+                if hasattr(config.training, k):
+                    setattr(config.training, k, v)
+
+        if "optimizer" in params:
+            for k, v in params["optimizer"].items():
+                if hasattr(config.optimizer, k):
+                    setattr(config.optimizer, k, v)
+
+        if "model" in params:
+            for k, v in params["model"].items():
+                if hasattr(config.model, k):
+                    setattr(config.model, k, v)
+
+        if "augmentation" in params:
+            for k, v in params["augmentation"].items():
+                if hasattr(config.augmentation, k):
+                    setattr(config.augmentation, k, v)
+
+        if "loss" in params:
+            for k, v in params["loss"].items():
+                if hasattr(config.loss, k):
+                    setattr(config.loss, k, v)
+
+        return True
+    except Exception as e:
+        print(f"Error loading HPO profile: {e}")
+        return False
 
 
 # Export all configurations

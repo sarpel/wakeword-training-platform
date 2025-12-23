@@ -18,7 +18,7 @@ Fix the channel mismatch error during quantization reporting.
 ## Phase 3: HPO Profile Persistence
 Implement the "Load Latest" functionality in the UI.
 
-- [ ] Task: Write unit tests for `ConfigManager` to load the most recent HPO profile from disk.
-- [ ] Task: Add "Load Latest HPO Profile" button to the Gradio UI (`src/ui/panels/training.py`).
-- [ ] Task: Connect UI button to the backend loading logic and ensure state synchronization.
+- [x] Task: Write unit tests for `ConfigManager` to load the most recent HPO profile from disk. [b8a41bf]
+- [x] Task: Add "Load Latest HPO Profile" button to the Gradio UI (`src/ui/panel_training.py`). [b8a41bf]
+- [x] Task: Connect UI button to the backend loading logic and ensure state synchronization. [b8a41bf]
 - [ ] Task: Conductor - User Manual Verification 'HPO Profile Persistence' (Protocol in workflow.md)
