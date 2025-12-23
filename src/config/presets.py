@@ -185,7 +185,7 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
 
     Optimized for:
     - ESP32-S3 (Atom Echo) without PSRAM
-    - TinyConv [64, 128, 128, 128] (Optimized for S3 Memory)
+    - TinyConv [64, 64, 64, 64] (Optimized for S3 Memory)
     - 64 Mel bands for higher resolution
     - Knowledge Distillation enabled by default
     - <250KB Peak RAM
@@ -195,7 +195,7 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
         description="Production: ESP32-S3 (Atom Echo) - TinyConv High-Quality",
         data=DataConfig(
             sample_rate=16000,
-            audio_duration=1.0,
+            audio_duration=1.5,
             n_mels=64,             # ⬆️ Increased resolution (40 -> 64)
             hop_length=160,
         ),
@@ -210,7 +210,7 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             architecture="tiny_conv",
             num_classes=2,
             dropout=0.2,           # ⬆️ Slightly increased dropout for larger model
-            tcn_num_channels=[64, 128, 128, 128], # ⬆️ Increased capacity
+            tcn_num_channels=[64, 64, 64, 64], # ⬆️ Optimized for ESP32S3
         ),
         augmentation=AugmentationConfig(
             background_noise_prob=0.8,

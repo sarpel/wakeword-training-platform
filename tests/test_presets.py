@@ -9,11 +9,12 @@ def test_mcu_tiny_production_preset():
     """Verify the MCU Tiny Production preset has high-quality settings"""
     config = get_preset("MCU (ESP32-S3 No-PSRAM)")
     
-    # Check updated resolution
+    # Check updated resolution and duration
     assert config.data.n_mels == 64
+    assert config.data.audio_duration == 1.5
     
     # Check updated capacity
-    assert config.model.tcn_num_channels == [64, 128, 128, 128]
+    assert config.model.tcn_num_channels == [64, 64, 64, 64]
     
     # Check distillation enabled
     assert config.distillation.enabled is True
