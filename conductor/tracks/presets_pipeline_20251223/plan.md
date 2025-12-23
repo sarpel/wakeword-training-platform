@@ -13,16 +13,16 @@ Goal: Define the new parameters in the configuration system and ensure they are 
     - Write tests to ensure the new parameters are correctly loaded and validated when a profile is selected.
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Configuration & Validation Schema' (Protocol in workflow.md) e35a807
 
-## Phase 2: Feature Normalization & Calibration Logic
+## Phase 2: Feature Normalization & Calibration Logic [checkpoint: ef1c147]
 Goal: Implement the underlying logic for CMVN and balanced calibration sampling.
 
-- [ ] **Task: Implement/Integrate CMVN in Feature Pipeline**
+- [x] **Task: Implement/Integrate CMVN in Feature Pipeline** ef1c147
     - Update `src/data/feature_extraction.py` or `processor.py` to apply CMVN using the preset configuration.
-- [ ] **Task: Implement Balanced Calibration Sampler**
+- [x] **Task: Implement Balanced Calibration Sampler** ef1c147
     - Update `src/data/balanced_sampler.py` or create a utility to select the "Representative Mix" for quantization calibration.
-- [ ] **Task: TDD - Verification of Feature Scaling**
+- [x] **Task: TDD - Verification of Feature Scaling** ef1c147
     - Write tests to ensure audio features are correctly normalized when CMVN is enabled.
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Feature Normalization & Calibration Logic' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Feature Normalization & Calibration Logic' (Protocol in workflow.md) ef1c147
 
 ## Phase 3: Streaming Stability & Post-Export Validation
 Goal: Implement the logic for stable streaming and hardware limit warnings.
