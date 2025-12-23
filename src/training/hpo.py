@@ -42,6 +42,8 @@ Usage:
 
 import shutil
 import time
+import math
+import numpy as np
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -201,15 +203,23 @@ class OptunaPruningCallback:
         self.performance_history.append(current_score)
 
         # Report to Optuna for pruning decisions
-        self.trial.report(current_score, epoch)
+        # CRITICAL: trial.report and should_prune are NOT supported for multi-objective optimization
+        is_multi_objective = len(self.trial.study.directions) > 1
+        
+        if not is_multi_objective:
+            self.trial.report(current_score, epoch)
 
-        # Check if trial should be pruned
-        if self.trial.should_prune():
-            message = f"Trial pruned at epoch {epoch} with {self.monitor}={current_score:.4f}"
-            logger.info(message)
-            if self.log_callback:
-                self.log_callback(f"✂️ {message}")
-            raise optuna.TrialPruned(message)
+            # Check if trial should be pruned
+            if self.trial.should_prune():
+                message = f"Trial pruned at epoch {epoch} with {self.monitor}={current_score:.4f}"
+                logger.info(message)
+                if self.log_callback:
+                    self.log_callback(f"✂️ {message}")
+                raise optuna.TrialPruned(message)
+        else:
+            # For multi-objective, we can still log progress but can't use trial.report()
+            if self.log_callback and epoch % 5 == 0:
+                self.log_callback(f"📊 Progress [Trial {self.trial.number}]: {self.monitor}={current_score:.4f}")
 
         # Adaptive epoch extension for promising trials
         if self.adaptive_epochs and epoch == self.initial_epochs - 1:
@@ -249,6 +259,7 @@ class Objective:
         cache_dir: Optional[Path] = None,
         enable_profiling: bool = False,
         n_jobs: int = 1,
+        single_objective: bool = False,
     ):
         """
         Initialize the objective function.
@@ -262,6 +273,7 @@ class Objective:
             cache_dir: Directory for caching checkpoints
             enable_profiling: Whether to enable PyTorch profiling
             n_jobs: Number of parallel jobs
+            single_objective: Whether to optimize for F1 score only (maximize)
         """
         self.config = config
         # Default to Training + Model + Augmentation for backwards compatibility
@@ -272,6 +284,7 @@ class Objective:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.enable_profiling = enable_profiling
         self.n_jobs = n_jobs
+        self.single_objective = single_objective
 
         # Performance tracking
         self.trial_times = []
@@ -360,7 +373,7 @@ class Objective:
             shuffle=True,
             num_workers=num_workers,
             pin_memory=self.config.training.pin_memory,
-            persistent_workers=False
+            persistent_workers=True if num_workers > 0 else False
         )
         
         val_loader = DataLoader(
@@ -369,7 +382,7 @@ class Objective:
             shuffle=False,
             num_workers=num_workers,
             pin_memory=self.config.training.pin_memory,
-            persistent_workers=False
+            persistent_workers=True if num_workers > 0 else False
         )
         return train_loader, val_loader
 
@@ -545,9 +558,15 @@ class Objective:
             trial: Optuna trial object
 
         Returns:
-            Best F1 score achieved in this trial
+            Best F1 score achieved in this trial or tuple of (pAUC, Latency)
         """
         trial_start_time = time.time()
+        
+        # Initialize result variables early to avoid UnboundLocalError in finally block
+        best_f1 = 0.0
+        best_fpr = 1.0
+        pauc_val = 0.0
+        latency_val = 1000.0
 
         # Create a copy of the config to avoid side effects
         trial_config = self.config.copy()
@@ -658,15 +677,15 @@ class Objective:
             else:
                 results = trainer.train()
 
-            best_f1 = results["best_val_f1"]
-            best_fpr = results["best_val_fpr"]
+            best_f1 = results.get("best_val_f1", 0.0)
+            best_fpr = results.get("best_val_fpr", 1.0)
             
             # Retrieve best pAUC and Latency from tracker
             best_pauc_epoch, best_pauc_metrics = trainer.val_metrics_tracker.get_best_epoch("pauc")
             
             if best_pauc_metrics:
-                pauc_val = best_pauc_metrics.pauc
-                latency_val = best_pauc_metrics.latency_ms
+                pauc_val = getattr(best_pauc_metrics, "pauc", 0.0)
+                latency_val = getattr(best_pauc_metrics, "latency_ms", 1000.0)
             else:
                 pauc_val = 0.0
                 latency_val = 1000.0 # Penalty
@@ -692,10 +711,10 @@ class Objective:
 
             self._log(
                 f"✅ Trial {trial.number} completed in {trial_time:.1f}s "
-                f"(pAUC: {pauc_val:.4f}, Latency: {latency_val:.2f}ms)"
+                f"(F1: {best_f1:.4f}, pAUC: {pauc_val:.4f}, Latency: {latency_val:.2f}ms)"
             )
 
-            # Store multi-objective results in trial attributes for reference
+            # Store results in trial attributes for reference
             trial.set_user_attr("pauc", pauc_val)
             trial.set_user_attr("latency", latency_val)
             trial.set_user_attr("f1", best_f1)
@@ -709,13 +728,16 @@ class Objective:
             self._log(f"❌ Trial {trial.number} failed: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            pauc_val = 0.0
-            latency_val = 1000.0
+            # Result variables are already initialized to defaults
         finally:
             # Clean up non-best trials to save disk space
+            # best_f1 is guaranteed to be defined here due to early initialization
             if checkpoint_dir.exists() and best_f1 < self.best_f1:
                 shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
+        # Return values based on objective type
+        if self.single_objective:
+            return best_f1
         return pauc_val, latency_val
 
     def cleanup(self):
@@ -758,6 +780,7 @@ def run_hpo(
     n_jobs: int = 1,
     cache_dir: Optional[Path] = None,
     enable_profiling: bool = False,
+    single_objective: bool = False,
 ) -> HPOResult:
     """
     Run optimized hyperparameter optimization using Optuna.
@@ -773,6 +796,7 @@ def run_hpo(
         n_jobs: Number of parallel trials (default: 1)
         cache_dir: Directory for caching checkpoints
         enable_profiling: Enable PyTorch profiling
+        single_objective: Whether to optimize for F1 score only (maximize)
 
     Returns:
         HPOResult object with standardized results
@@ -789,6 +813,7 @@ def run_hpo(
         cache_dir=cache_dir,
         enable_profiling=enable_profiling,
         n_jobs=n_jobs,
+        single_objective=single_objective,
     )
 
     # Use HyperbandPruner for better resource-efficient pruning
@@ -798,15 +823,20 @@ def run_hpo(
         reduction_factor=3,
     )
 
-    # Use NSGA-II for multi-objective optimization
-    sampler = optuna.samplers.NSGAIISampler(
-        population_size=20,
-        mutation_prob=0.1,
-    )
+    # Use NSGA-II for multi-objective, TPE for single objective
+    if single_objective:
+        sampler = optuna.samplers.TPESampler()
+        directions = ["maximize"]
+    else:
+        sampler = optuna.samplers.NSGAIISampler(
+            population_size=20,
+            mutation_prob=0.1,
+        )
+        directions = ["maximize", "minimize"]
 
-    # Create or load study with multiple objectives: pAUC (maximize) and Latency (minimize)
+    # Create or load study
     study = optuna.create_study(
-        directions=["maximize", "minimize"],
+        directions=directions,
         study_name=study_name,
         pruner=pruner,
         sampler=sampler,

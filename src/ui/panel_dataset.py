@@ -144,7 +144,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                         with gr.Row():
                             extract_n_mels = gr.Number(
                                 label="Mel Channels",
-                                value=40,
+                                value=64,
                                 precision=0,
                                 info="Number of mel filterbanks (frequency resolution)",
                             )
@@ -202,7 +202,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                         with gr.Row():
                             val_sample_rate = gr.Number(label="Target Sample Rate", value=16000)
                             val_duration = gr.Number(label="Target Duration (s)", value=1.0, precision=1)
-                            val_n_mels = gr.Number(label="Mel Channels", value=40, precision=0)
+                            val_n_mels = gr.Number(label="Mel Channels", value=64, precision=0)
                             val_hop_length = gr.Number(label="Hop Length", value=160)
 
                         validate_shape_checkbox = gr.Checkbox(

@@ -43,7 +43,7 @@ class TrainingState:
     epoch: int = 0
     global_step: int = 0
     best_val_loss: float = float("inf")
-    best_val_f1: float = 0.0
+    best_val_f1: float = -1.0
     best_val_fpr: float = 1.0
     best_val_pauc: float = 0.0
     epochs_without_improvement: int = 0
@@ -110,6 +110,7 @@ class Trainer:
         # channels_last bellek düzeni (Ampere+ için throughput ↑) - Only on CUDA
         if device == "cuda":
             self.model = self.model.to(memory_format=torch.channels_last)  # type: ignore
+            logger.info("Using channels_last memory format for model")
 
         # Data loaders
         self.train_loader = train_loader

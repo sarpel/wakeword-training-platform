@@ -138,14 +138,20 @@ class DistillationTrainer(Trainer):
             for param in t.parameters():
                 param.requires_grad = False
             
-            # Device placement
-            if dist_config.teacher_on_cpu:
+            # Device placement: Default to GPU if available and not explicitly forced to CPU
+            # However, for this high-perf track, we prioritize GPU.
+            use_gpu = not dist_config.teacher_on_cpu and torch.cuda.is_available()
+            
+            if use_gpu:
+                t.to(self.device)
+                if self.device == "cuda" or (isinstance(self.device, str) and "cuda" in self.device):
+                    t.to(memory_format=torch.channels_last)
+                dev = torch.device(self.device) if isinstance(self.device, str) else self.device
+                logger.info(f"Teacher {arch} moved to GPU ({dev}) with channels_last")
+            else:
                 t.to("cpu")
                 dev = torch.device("cpu")
-            else:
-                t.to(self.device)
-                # self.device might be a string or torch.device
-                dev = torch.device(self.device) if isinstance(self.device, str) else self.device
+                logger.info(f"Teacher {arch} placed on CPU")
             
             if dist_config.teacher_mixed_precision and dev.type == "cuda":
                 t.half()

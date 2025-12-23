@@ -145,7 +145,7 @@ class MobileNetV3Wakeword(nn.Module):
         if not HAS_TORCHVISION:
             raise ImportError("torchvision is required for MobileNetV3. Please install it.")
 
-        if quantized_models is not None:
+        if quantized_models is not None and hasattr(quantized_models, "mobilenet_v3_small"):
             self.mobilenet = quantized_models.mobilenet_v3_small(weights=None, quantize=False)
         else:
             if pretrained:
@@ -294,7 +294,7 @@ class LSTMWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 40,  # n_mfcc
+        input_size: int = 64,  # n_mfcc
         hidden_size: int = 128,
         num_layers: int = 2,
         num_classes: int = 2,
@@ -398,7 +398,7 @@ class GRUWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 40,
+        input_size: int = 64,
         hidden_size: int = 128,
         num_layers: int = 2,
         num_classes: int = 2,
@@ -501,7 +501,7 @@ class TemporalConvNet(nn.Module):
 
     def __init__(
         self,
-        input_channels: int = 40,
+        input_channels: int = 64,
         num_channels: list = [64, 128, 256],
         kernel_size: int = 3,
         dropout: float = 0.3,
@@ -618,7 +618,7 @@ class TCNWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 40,
+        input_size: int = 64,
         num_channels: list = None,
         kernel_size: int = 3,
         num_classes: int = 2,
@@ -848,7 +848,7 @@ class CDDNNWakeword(nn.Module):
         # Calculate input size if not provided
         if input_size is None:
             # Get from kwargs or use default
-            feature_size = kwargs.get("input_size", 40)
+            feature_size = kwargs.get("input_size", 64)
             context_frames = kwargs.get("cddnn_context_frames", 50)
             input_size = feature_size * context_frames
 
@@ -896,7 +896,7 @@ class ConformerWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 40,
+        input_size: int = 64,
         num_classes: int = 2,
         encoder_dim: int = 144,
         num_layers: int = 4,
@@ -1110,7 +1110,7 @@ if __name__ == "__main__":
             test_input = torch.randn(2, 1, 64, 50).to(device)
         else:
             # Sequential input (batch, time, features)
-            test_input = torch.randn(2, 50, 40).to(device)
+            test_input = torch.randn(2, 50, 64).to(device)
 
         output = model(test_input)
         print(f"  Input shape: {test_input.shape}")

@@ -41,6 +41,9 @@ def _run_epoch(
 
     pbar = tqdm(dataloader, desc=pbar_desc, leave=False)
 
+    if epoch == 0 and is_training:
+        logger.info("Non-blocking transfers enabled for GPU")
+
     total_latency_ms = 0.0
     total_inference_samples = 0
 

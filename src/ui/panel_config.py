@@ -106,11 +106,12 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         n_fft = gr.Number(label="FFT Size", value=400)
                         hop_length = gr.Number(label="Hop Length", value=160)
                         n_mels = gr.Slider(
-                            minimum=32,
-                            maximum=256,
-                            value=40,
-                            step=1,
+                            minimum=20,
+                            maximum=128,
+                            value=64,
+                            step=4,
                             label="Mel Bands",
+                            info="Frequency resolution (higher = more detail, lower = faster/smaller)",
                         )
 
                 with gr.Group():

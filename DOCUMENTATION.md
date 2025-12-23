@@ -65,13 +65,19 @@ This section explains all the configurable parameters in the training system.
 
 ### 📉 Loss Function (`loss`)
 *   **loss_function**: How the model measures its mistakes.
-    *   `cross_entropy`: Standard.
-    *   `focal_loss`: Focuses more on hard-to-classify examples.
+    *   `cross_entropy`: Standard multi-class cross entropy.
+    *   `focal_loss`: (NEW) Designed to address extreme foreground-background class imbalance by down-weighting easy examples and focusing training on hard negatives.
+*   **focal_alpha**: Weighting factor for Focal Loss (default 0.25). Balances the importance of positive vs negative samples.
+*   **focal_gamma**: Focusing parameter for Focal Loss (default 2.0). Higher values reduce the loss for well-classified examples more aggressively.
 *   **class_weights**: "balanced" makes the model pay equal attention to rare classes.
-*   **hard_negative_weight**: Extra penalty for mistaking a similar word for the wake word.
+*   **hard_negative_weight**: Extra penalty multiplier (e.g. 1.5 - 3.0) applied to samples explicitly marked as hard negatives in the dataset manifest.
 
 ### ⚡ Advanced
 *   **qat**: Quantization Aware Training. Prepares model for running on low-power chips (int8).
+    *   **Accuracy Recovery**: (NEW) Multi-stage fine-tuning pipeline: Standard Training -> QAT Fine-tuning -> INT8 Export.
+    *   **Calibration**: Automatically collects activation statistics prior to quantization to ensure optimal scale/zero-point settings.
+    *   **Error Reporting**: Compares FP32 vs INT8 performance during training to verify that accuracy drop is < 2%.
+    *   **Export Robustness**: Automatically converts per-channel observers to per-tensor for stable ONNX export.
 *   **distillation**: Teaches a small student model from a large teacher model.
 
 ---

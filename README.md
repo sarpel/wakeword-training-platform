@@ -73,8 +73,10 @@ The system will automatically create these directories on first run.
 
 ---
 
-## � What's New in v4.0
+##  What's New in v4.0
 
+- **📉 New**: Focal Loss implementation for superior hard-negative handling
+- **⚡ New**: QAT Accuracy Recovery pipeline (FP32 baseline to INT8 fine-tuning)
 - **✨ New**: Advanced GPU acceleration with Mixed Precision training
 - **🚀 New**: Comprehensive HPO (Hyperparameter Optimization) system
 - **📦 New**: Production-ready ONNX and TFLite export

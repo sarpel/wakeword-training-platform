@@ -1,0 +1,8 @@
+{
+  "track_id": "dynamic_cmvn_dims_20251223",
+  "type": "bug_fix",
+  "status": "completed",
+  "created_at": "2025-12-23T14:00:00Z",
+  "updated_at": "2025-12-23T15:00:00Z",
+  "description": "CMVN stats dimension mismatch! Loaded: 40, Expected: 64. Disabling CMVN for this run. This error shows up anytime i try to train mels other than 40. It is hardcoded, make it not hardcoded"
+}

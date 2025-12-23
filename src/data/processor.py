@@ -45,6 +45,7 @@ class AudioProcessor(nn.Module):
 
         # CMVN
         self.cmvn = None
+        self.cmvn_mismatch = False
         # Check if we should use CMVN (assuming normalize_audio implies normalization)
         # Or check specific flag if available.
         # Existing code passed cmvn_path, so we assume usage if path exists.
@@ -59,6 +60,7 @@ class AudioProcessor(nn.Module):
                         f"CMVN stats dimension mismatch! Loaded: {temp_cmvn.mean.shape[0]}, "
                         f"Expected: {expected_dim}. Disabling CMVN for this run."
                     )
+                    self.cmvn_mismatch = True
                     self.cmvn = None
                 else:
                     self.cmvn = temp_cmvn
