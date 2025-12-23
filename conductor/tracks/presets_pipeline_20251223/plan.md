@@ -2,16 +2,16 @@
 
 This plan outlines the steps to integrate professional-grade parameters (CMVN, Streaming Stability, Size Targets, and Calibration) into the project's configuration and training pipeline.
 
-## Phase 1: Configuration & Validation Schema (Red/Green/Refactor)
+## Phase 1: Configuration & Validation Schema (Red/Green/Refactor) [checkpoint: e35a807]
 Goal: Define the new parameters in the configuration system and ensure they are validated.
 
-- [ ] **Task: Define New Schema in `src/config/validator.py` or `pydantic_validator.py`**
+- [x] **Task: Define New Schema in `src/config/validator.py` or `pydantic_validator.py`** e35a807
     - Add Pydantic models for `CMVNConfig`, `StreamingConfig`, `SizeTargetConfig`, and `CalibrationConfig`.
-- [ ] **Task: Update `presets.py` with New Parameters**
+- [x] **Task: Update `presets.py` with New Parameters** e35a807
     - Inject default values for CMVN, Streaming (Hysteresis, Buffers, Smoothing), Size Targets, and Calibration Mix into existing profiles.
-- [ ] **Task: Verify Configuration Loading**
+- [x] **Task: Verify Configuration Loading** e35a807
     - Write tests to ensure the new parameters are correctly loaded and validated when a profile is selected.
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Configuration & Validation Schema' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Configuration & Validation Schema' (Protocol in workflow.md) e35a807
 
 ## Phase 2: Feature Normalization & Calibration Logic
 Goal: Implement the underlying logic for CMVN and balanced calibration sampling.
