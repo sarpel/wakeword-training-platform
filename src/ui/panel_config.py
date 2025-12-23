@@ -301,7 +301,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     with gr.Row():
                         # Distillation
                         distillation_enabled = gr.Checkbox(label="Enable Distillation", value=False)
-                        teacher_arch = gr.Dropdown(choices=["wav2vec2"], value="wav2vec2", label="Teacher Arch")
+                        teacher_arch = gr.Dropdown(choices=["wav2vec2", "conformer", "dual"], value="wav2vec2", label="Teacher Arch")
                         dist_temp = gr.Slider(minimum=1.0, maximum=10.0, value=2.0, step=0.5, label="Distillation Temp")
                         dist_alpha = gr.Slider(
                             minimum=0.0, maximum=1.0, value=0.5, step=0.1, label="Distillation Alpha"

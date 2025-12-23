@@ -57,6 +57,7 @@ from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.metrics import MetricResults
 from src.training.trainer import Trainer
+from src.training.hpo_results import HPOResult
 
 logger = structlog.get_logger(__name__)
 
@@ -588,7 +589,7 @@ class Objective:
         trial_config.training.early_stopping_patience = max(3, epochs // 4)
 
         self._log(
-            f"🚀 Trial {trial.number} started "
+            f"Trial {trial.number} started "
             f"(epochs: {epochs}, params: {len(params)})"
         )
 
@@ -703,15 +704,16 @@ class Objective:
                 source_path = checkpoint_dir / "best_model.pt"
                 if source_path.exists():
                     shutil.copy(source_path, save_path)
-                    self._log(f"🏆 New best model saved (F1: {best_f1:.4f})")
+                    self._log(f"NEW BEST TRIAL (F1: {str(f'{best_f1:.4f}').replace('.', ',')} ⭐)")
 
             # Track trial time for performance analysis
             trial_time = time.time() - trial_start_time
             self.trial_times.append(trial_time)
 
+            f1_disp = f"{best_f1:.4f}".replace(".", ",")
             self._log(
-                f"✅ Trial {trial.number} completed in {trial_time:.1f}s "
-                f"(F1: {best_f1:.4f}, pAUC: {pauc_val:.4f}, Latency: {latency_val:.2f}ms)"
+                f"Trial {trial.number} finished in {trial_time:.1f}s | "
+                f"F1: {f1_disp} ⭐ | pAUC: {pauc_val:.4f} | Latency: {latency_val:.2f}ms"
             )
 
             # Store results in trial attributes for reference
@@ -766,8 +768,6 @@ class Objective:
 # MAIN HPO FUNCTION
 # =============================================================================
 
-
-from src.training.hpo_results import HPOResult
 
 def run_hpo(
     config: WakewordConfig,
@@ -939,7 +939,7 @@ def run_progressive_hpo(
 
     # Phase 1: Optimize critical parameters only (fast convergence)
     if log_callback:
-        log_callback("🎯 Phase 1: Optimizing critical parameters...")
+        log_callback("🎯 PHASE 1: Optimizing Critical Hyperparameters (LR, Batch Size, Weight Decay)...")
 
     result_phase1 = run_hpo(
         config,
@@ -970,7 +970,7 @@ def run_progressive_hpo(
 
     # Phase 2: Fine-tune with augmentation parameters
     if log_callback:
-        log_callback("🎯 Phase 2: Fine-tuning with augmentation parameters...")
+        log_callback("🎯 PHASE 2: Fine-tuning with Augmentation & Model Architecture parameters...")
 
     final_result = run_hpo(
         best_config,

@@ -5,9 +5,11 @@ GPU-accelerated training with checkpointing, early stopping, and metrics trackin
 
 import time
 import sys
+import shutil
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 if TYPE_CHECKING:
     from src.config.defaults import WakewordConfig
@@ -21,9 +23,6 @@ logger = structlog.get_logger(__name__)
 
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
-
-import shutil
-import threading
 
 from src.config.cuda_utils import enforce_cuda
 from src.config.seed_utils import set_seed
@@ -254,7 +253,7 @@ class Trainer:
         }
 
         logger.info("=" * 80)
-        logger.info("Starting training")
+        logger.info("STARTING TRAINING SESSION")
         logger.info(f"  Epochs: {self.config.training.epochs}")
         logger.info(f"  Training batches: {len(self.train_loader)}")
         logger.info(f"  Validation batches: {len(self.val_loader)}")
@@ -265,7 +264,7 @@ class Trainer:
 
         try:
             for epoch in range(start_epoch, self.config.training.epochs):
-                self.state.epoch = epoch
+                logger.info(f"Epoch {epoch+1}/{self.config.training.epochs} starting")
                 self._call_callbacks("on_epoch_start", epoch)
 
                 # Check for QAT transition
@@ -316,15 +315,22 @@ class Trainer:
 
                 self._call_callbacks("on_epoch_end", epoch, train_loss, val_loss, val_metrics)
 
-                logger.info(f"Epoch {epoch+1}/{self.config.training.epochs}")
+                logger.info(f"Epoch {epoch+1}/{self.config.training.epochs} Results:")
                 logger.info(f"  Train: Loss={train_loss:.4f}, Acc={train_acc:.4f}")
                 logger.info(
                     f"  Val:   Loss={val_loss:.4f}, Acc={val_metrics.accuracy:.4f}, "
                     f"F1={val_metrics.f1_score:.4f}, pAUC={val_metrics.pauc:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}"
                 )
-                logger.info(f"  LR: {current_lr:.6f}")
+                
+                # Standout F1 Score log
+                f1_formatted = f"{val_metrics.f1_score:.3f}".replace(".", ",")
+                logger.info("\n" + "-"*30)
+                logger.info(f"⭐ F1 SCORE: {f1_formatted} ⭐")
+                logger.info("-"*30 + "\n")
+
+                logger.info(f"  Learning Rate: {current_lr:.6f}")
                 if improved:
-                    logger.info(f"  ✅ New best model (improvement detected)")
+                    logger.info(f"  ✅ New best model saved! (F1: {val_metrics.f1_score:.4f})")
 
         except KeyboardInterrupt:
             logger.info("Training interrupted by user")
@@ -333,7 +339,7 @@ class Trainer:
         self.state.training_time = end_time - start_time
 
         logger.info("=" * 80)
-        logger.info("Training complete")
+        logger.info("TRAINING SESSION COMPLETE")
         logger.info(f"  Total time: {self.state.training_time / 3600:.2f} hours")
         logger.info(f"  Best val loss: {self.state.best_val_loss:.4f}")
         logger.info(f"  Best val F1: {self.state.best_val_f1:.4f}")
@@ -344,9 +350,9 @@ class Trainer:
         best_fpr_epoch, best_fpr_metrics = self.val_metrics_tracker.get_best_epoch("fpr")
 
         if best_f1_metrics:
-            logger.info(f"\nBest F1 Score: {best_f1_metrics.f1_score:.4f} (Epoch {best_f1_epoch+1})")
+            logger.info(f"\n🏆 BEST F1 SCORE: {best_f1_metrics.f1_score:.4f} ⭐ (Epoch {best_f1_epoch+1})")
         if best_fpr_metrics:
-            logger.info(f"Best FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
+            logger.info(f"BEST FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
 
         results = {
             "history": history,
