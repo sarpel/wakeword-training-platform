@@ -122,7 +122,7 @@ class CMVN(nn.Module):
         """
         Apply CMVN normalization to features (batch-aware)
         Args:
-            features: Input features (B, C, T) or (C, T)
+            features: Input features (B, 1, C, T), (B, C, T) or (C, T)
         """
         if not self._initialized:
             # If loaded via state_dict, check buffers
@@ -131,21 +131,33 @@ class CMVN(nn.Module):
             else:
                 raise RuntimeError("CMVN stats not computed. Call compute_stats() first.")
 
-        # Handle batch dimension
+        # Handle different input shapes
+        original_shape = features.shape
         original_ndim = features.ndim
+
         if original_ndim == 2:  # (C, T)
-            features = features.unsqueeze(0)
+            # Reshape to (1, 1, C, T) for uniform processing
+            features = features.unsqueeze(0).unsqueeze(0)
+        elif original_ndim == 3:  # (B, C, T)
+            features = features.unsqueeze(1)
+        elif original_ndim == 4:  # (B, 1, C, T)
+            pass
+        else:
+            raise ValueError(f"Unsupported input shape for CMVN: {original_shape}")
 
         # Normalize: (x - mean) / std
         # mean, std: (C,)
-        # features: (B, C, T)
-        mean = self.mean.view(1, -1, 1)
-        std = self.std.view(1, -1, 1)
+        # Reshape mean/std to (1, 1, C, 1) for broadcasting over (B, 1, C, T)
+        mean = self.mean.view(1, 1, -1, 1)
+        std = self.std.view(1, 1, -1, 1)
 
         normalized = (features - mean) / std
 
+        # Restore original shape
         if original_ndim == 2:
-            normalized = normalized.squeeze(0)
+            normalized = normalized.squeeze(0).squeeze(0)
+        elif original_ndim == 3:
+            normalized = normalized.squeeze(1)
 
         return normalized
 

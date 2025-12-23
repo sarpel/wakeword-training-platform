@@ -10,6 +10,8 @@ import torch
 import torch.nn as nn
 import torchaudio.transforms as T
 
+from src.data.cmvn import CMVN
+
 logger = structlog.get_logger(__name__)
 
 
@@ -33,6 +35,7 @@ class FeatureExtractor(nn.Module):
         f_min: float = 0.0,
         f_max: Optional[float] = None,
         device: str = "cpu",  # Kept for API compatibility but unused logic-wise
+        cmvn: Optional[CMVN] = None,
     ):
         """
         Initialize feature extractor
@@ -48,6 +51,7 @@ class FeatureExtractor(nn.Module):
             f_min: Minimum frequency
             f_max: Maximum frequency (None = sample_rate / 2)
             device: Initial device (module can be moved with .to())
+            cmvn: CMVN module for normalization
         """
         super().__init__()
         self.sample_rate = sample_rate
@@ -97,12 +101,17 @@ class FeatureExtractor(nn.Module):
         # Amplitude to DB conversion
         self.amplitude_to_db = T.AmplitudeToDB(stype="power", top_db=80)
 
+        # CMVN
+        self.cmvn = cmvn
+
         # Move to initial device if specified
         if device and device != "cpu":
             self.to(device)
 
         logger.info(
-            f"FeatureExtractor initialized: {feature_type}, " f"n_mels={n_mels}, n_fft={n_fft}, hop_length={hop_length}"
+            f"FeatureExtractor initialized: {feature_type}, "
+            f"n_mels={n_mels}, n_fft={n_fft}, hop_length={hop_length}, "
+            f"cmvn_enabled={cmvn is not None}"
         )
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
@@ -162,6 +171,10 @@ class FeatureExtractor(nn.Module):
 
         else:
             raise ValueError(f"Unknown feature type: {self.feature_type}")
+
+        # Apply CMVN if available
+        if self.cmvn is not None:
+            features = self.cmvn(features)
 
         return cast(torch.Tensor, features)
 
