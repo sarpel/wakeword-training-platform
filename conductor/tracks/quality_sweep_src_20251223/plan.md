@@ -15,7 +15,7 @@ Apply non-destructive automated fixes to the `src/` directory.
 - [x] Task: Execute `ruff check src/ --fix` to resolve automated linting violations fd181bd
 - [x] Task: Conductor - User Manual Verification 'Automated Formatting & Linting' (Protocol in workflow.md)
 
-## Phase 3: Static Type Analysis & Manual Fixes
+## Phase 3: Static Type Analysis & Manual Fixes [checkpoint: 121938a]
 Identify and resolve type-related issues that require human intervention.
 
 - [x] Task: Run `mypy src/` and analyze the error report a8dfe6f
