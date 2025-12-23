@@ -7,7 +7,7 @@ import numpy as np
 
 class StageBase(ABC):
     """Base class for all inference stages (e.g., Sentry, Judge)"""
-    
+
     @abstractmethod
     def predict(self, audio: np.ndarray) -> dict:
         """Run prediction on an audio segment"""
@@ -19,9 +19,10 @@ class StageBase(ABC):
         """Name of the stage"""
         pass
 
+
 class InferenceEngine(ABC):
     """Base class for the orchestration engine"""
-    
+
     @abstractmethod
     def add_stage(self, stage: StageBase):
         """Add a stage to the pipeline"""
@@ -31,6 +32,7 @@ class InferenceEngine(ABC):
     def run(self, audio: np.ndarray) -> list:
         """Execute the full pipeline"""
         pass
+
 
 @dataclass
 class EvaluationResult:

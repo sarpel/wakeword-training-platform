@@ -305,18 +305,19 @@ def training_worker() -> None:
                 training_state.current_val_acc = val_metrics.accuracy
                 training_state.current_fpr = val_metrics.fpr
                 training_state.current_fnr = val_metrics.fnr
-                
+
                 # NEW: Update EER and FAH if available
-                training_state.current_eer = getattr(val_metrics, 'eer', 0.0)
-                training_state.current_fah = getattr(val_metrics, 'fah', 0.0)
-                
+                training_state.current_eer = getattr(val_metrics, "eer", 0.0)
+                training_state.current_fah = getattr(val_metrics, "fah", 0.0)
+
                 # NEW: Get current learning rate from optimizer
                 if trainer.optimizer:
-                    training_state.current_lr = trainer.optimizer.param_groups[0]['lr']
-                
+                    training_state.current_lr = trainer.optimizer.param_groups[0]["lr"]
+
                 # NEW: Get GPU memory usage (Reserved is the actual hardware footprint)
                 try:
                     import torch
+
                     if torch.cuda.is_available():
                         # We use memory_reserved as it's the actual footprint on the GPU hardware
                         training_state.current_gpu_mem = torch.cuda.memory_reserved() / (1024**3)  # GB
@@ -470,12 +471,12 @@ def start_training(
             )
 
         config = config_state["config"]
-        
+
         # Session Overrides (The session settings in Panel 3 take precedence for the duration of this run)
         config.training.use_ema = use_ema
         config.training.ema_decay = ema_decay
         # CMVN is handled by path presence and checkbox
-        
+
         training_state.config = config
         training_state.total_epochs = config.training.epochs
 
@@ -489,7 +490,7 @@ def start_training(
                 estimate = validator.estimate_vram_footprint_gb(
                     teacher_arch=teacher_arch,
                     student_arch=config.model.architecture,
-                    batch_size=config.training.batch_size
+                    batch_size=config.training.batch_size,
                 )
                 limit = 5.5
                 msg = f"Estimated Peak VRAM Usage: {estimate} GB (Device Limit: ~{limit} GB)"
@@ -544,21 +545,24 @@ def start_training(
         cmvn_path = None
         if use_cmvn:
             cmvn_path = paths.CMVN_STATS
-            
+
             # Check if we need to recompute stats (missing or dimension mismatch)
             should_compute_cmvn = False
             expected_dim = config.data.n_mels if feature_type == "mel" else config.data.n_mfcc
-            
+
             if not cmvn_path.exists():
                 should_compute_cmvn = True
             else:
                 try:
                     import json
+
                     with open(cmvn_path, "r") as f:
                         stats = json.load(f)
                     loaded_dim = len(stats["mean"])
                     if loaded_dim != expected_dim:
-                        training_state.add_log(f"⚠️ CMVN stats dimension mismatch (Found {loaded_dim}, Expected {expected_dim}). Recomputing...")
+                        training_state.add_log(
+                            f"⚠️ CMVN stats dimension mismatch (Found {loaded_dim}, Expected {expected_dim}). Recomputing..."
+                        )
                         should_compute_cmvn = True
                 except Exception as e:
                     training_state.add_log(f"⚠️ Failed to verify CMVN stats: {e}. Recomputing...")
@@ -566,7 +570,9 @@ def start_training(
 
             if should_compute_cmvn:
                 # Instead of auto-recomputing, we now provide a warning if it wasn't recomputed
-                training_state.add_log(f"⚠️ CMVN stats dimension mismatch! Disabling CMVN for this run. Please use 'Recompute CMVN Stats' button to fix.")
+                training_state.add_log(
+                    f"⚠️ CMVN stats dimension mismatch! Disabling CMVN for this run. Please use 'Recompute CMVN Stats' button to fix."
+                )
                 use_cmvn = False
                 cmvn_path = None
 
@@ -696,9 +702,9 @@ def start_training(
         # This is critical to avoid shape mismatches when changing n_mels or audio_duration
         input_samples = int(config.data.sample_rate * config.data.audio_duration)
         time_steps = input_samples // config.data.hop_length + 1
-        
+
         feature_dim = config.data.n_mels if feature_type == "mel" else config.data.n_mfcc
-        
+
         # Determine input_size based on architecture
         if config.model.architecture == "cd_dnn":
             # CD-DNN expects flattened input (features * time)
@@ -714,7 +720,7 @@ def start_training(
             pretrained=config.model.pretrained,
             dropout=config.model.dropout,
             input_size=input_size,  # Pass calculated input size
-            input_channels=1,       # Always 1 for spectrograms
+            input_channels=1,  # Always 1 for spectrograms
             hidden_size=config.model.hidden_size,
             num_layers=config.model.num_layers,
             bidirectional=config.model.bidirectional,
@@ -741,7 +747,7 @@ def start_training(
             try:
                 optimizer = torch.optim.AdamW(training_state.model.parameters(), lr=config.training.learning_rate)
                 criterion = torch.nn.CrossEntropyLoss()
-                
+
                 # Wrap model with AudioProcessor if dataset returns raw audio
                 model_for_lr = training_state.model
                 if getattr(train_ds, "return_raw_audio", False):
@@ -750,10 +756,10 @@ def start_training(
                     # Ensure processor is in training mode if needed (though it mostly does stateless ops)
                     processor.train()
                     model_for_lr = torch.nn.Sequential(processor, training_state.model)
-                
+
                 # Ensure model is on the correct device
                 model_for_lr = model_for_lr.to("cuda")
-                
+
                 lr_finder = LRFinder(model_for_lr, optimizer, criterion, device="cuda")
 
                 lrs, losses = lr_finder.range_test(
@@ -1019,7 +1025,9 @@ def format_hpo_results(result: HPOResult) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, param_groups: List[str], single_objective: bool = True) -> Tuple[str, pd.DataFrame]:
+def start_hpo(
+    state: gr.State, n_trials: int, n_jobs: int, study_name: str, param_groups: List[str], single_objective: bool = True
+) -> Tuple[str, pd.DataFrame]:
     """Start HPO study in background"""
     if training_state.is_training:
         return "⚠️ Training already in progress", pd.DataFrame()
@@ -1137,12 +1145,15 @@ def start_hpo(state: gr.State, n_trials: int, n_jobs: int, study_name: str, para
     if training_state.training_thread:
         training_state.training_thread.start()
 
-    return f"🚀 HPO study '{study_name}' started. Optimizing: {', '.join(param_groups)} (Jobs: {n_jobs}, Single: {single_objective})", pd.DataFrame()
+    return (
+        f"🚀 HPO study '{study_name}' started. Optimizing: {', '.join(param_groups)} (Jobs: {n_jobs}, Single: {single_objective})",
+        pd.DataFrame(),
+    )
 
 
 def check_hpo_results() -> pd.DataFrame:
     """Check for HPO results and return DataFrame if available."""
-    if hasattr(training_state, 'hpo_result') and training_state.hpo_result:
+    if hasattr(training_state, "hpo_result") and training_state.hpo_result:
         return format_hpo_results(training_state.hpo_result)
     return pd.DataFrame()
 
@@ -1253,24 +1264,24 @@ def load_latest_hpo_handler(state: gr.State) -> Tuple[str, pd.DataFrame]:
 
     config = state["config"]
     success = load_latest_hpo_profile(config)
-    
+
     if not success:
         return "❌ No HPO profile found on disk", pd.DataFrame()
-    
+
     # Map config back to params for display
     params = []
-    
+
     # Training
     params.append({"Parameter": "learning_rate", "Value": config.training.learning_rate})
     params.append({"Parameter": "batch_size", "Value": config.training.batch_size})
-    
+
     # Optimizer
     params.append({"Parameter": "weight_decay", "Value": config.optimizer.weight_decay})
     params.append({"Parameter": "optimizer", "Value": config.optimizer.optimizer})
-    
+
     # Model
     params.append({"Parameter": "dropout", "Value": config.model.dropout})
-    
+
     # Augmentation
     params.append({"Parameter": "background_noise_prob", "Value": config.augmentation.background_noise_prob})
     params.append({"Parameter": "rir_prob", "Value": config.augmentation.rir_prob})
@@ -1278,16 +1289,16 @@ def load_latest_hpo_handler(state: gr.State) -> Tuple[str, pd.DataFrame]:
     params.append({"Parameter": "time_stretch_max", "Value": config.augmentation.time_stretch_max})
     params.append({"Parameter": "freq_mask_param", "Value": config.augmentation.freq_mask_param})
     params.append({"Parameter": "time_mask_param", "Value": config.augmentation.time_mask_param})
-    
+
     if hasattr(config.augmentation, "pitch_shift_max"):
         params.append({"Parameter": "pitch_shift_range", "Value": config.augmentation.pitch_shift_max})
 
     # Data
     params.append({"Parameter": "n_mels", "Value": config.data.n_mels})
-    
+
     # Loss
     params.append({"Parameter": "loss_function", "Value": config.loss.loss_function})
-    
+
     df = pd.DataFrame(params)
     return "✅ Loaded latest HPO profile from disk", df
 
@@ -1296,25 +1307,26 @@ def check_cmvn_status(state: gr.State) -> str:
     """Check if CMVN stats match current configuration"""
     if "config" not in state or state["config"] is None:
         return "⚠️ Load configuration first"
-    
+
     config = state["config"]
     cmvn_path = paths.CMVN_STATS
-    
+
     if not cmvn_path.exists():
         return "⚠️ CMVN stats missing. Recomputation required."
-    
+
     try:
         import json
+
         with open(cmvn_path, "r") as f:
             stats = json.load(f)
-        
+
         feature_type = "mel" if config.data.feature_type in ["mel", "mel_spectrogram"] else config.data.feature_type
         expected_dim = config.data.n_mels if feature_type == "mel" else config.data.n_mfcc
         loaded_dim = len(stats["mean"])
-        
+
         if loaded_dim != expected_dim:
             return f"❌ Mismatch! Loaded: {loaded_dim}, Expected: {expected_dim}. Recompute needed."
-        
+
         return f"✅ CMVN stats OK (dim={loaded_dim})"
     except Exception as e:
         return f"⚠️ Error checking CMVN: {e}"
@@ -1324,12 +1336,12 @@ def recompute_cmvn_stats(state: gr.State) -> str:
     """Explicitly recompute CMVN statistics"""
     if "config" not in state or state["config"] is None:
         return "❌ Error: Load configuration first"
-    
+
     try:
         config = state["config"]
         cmvn_path = paths.CMVN_STATS
         feature_type = "mel" if config.data.feature_type in ["mel", "mel_spectrogram"] else config.data.feature_type
-        
+
         # Load datasets temporarily without CMVN to compute stats
         train_ds, _, _ = load_dataset_splits(
             data_root=paths.DATA,
@@ -1343,12 +1355,11 @@ def recompute_cmvn_stats(state: gr.State) -> str:
             fallback_to_audio=True,
             apply_cmvn=False,
         )
-        
+
         compute_cmvn_from_dataset(train_ds, cmvn_path, max_samples=1000)
         return f"✅ CMVN stats recomputed successfully (dim={config.data.n_mels if feature_type == 'mel' else config.data.n_mfcc})"
     except Exception as e:
         return f"❌ Recomputation failed: {e}"
-
 
 
 def list_checkpoints() -> List[str]:
@@ -1589,20 +1600,20 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         info="Number of parallel trials (increases RAM usage)",
                     )
                     study_name = gr.Textbox(label="Study Name", value="wakeword-hpo")
-                
+
                 with gr.Row():
                     hpo_param_groups = gr.CheckboxGroup(
                         label="Parameter Groups to Optimize",
                         choices=["Training", "Model", "Augmentation", "Data", "Loss"],
                         value=["Training", "Model"],
                         info="Select which parameters to include in the search space",
-                        scale=2
+                        scale=2,
                     )
                     single_objective_hpo = gr.Checkbox(
                         label="Single Objective (F1 only)",
                         value=True,
                         info="If checked, only F1 score is maximized. If unchecked, pAUC is maximized and Latency is minimized.",
-                        scale=1
+                        scale=1,
                     )
 
                 with gr.Row():
@@ -1616,9 +1627,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
 
                 with gr.Row():
                     hpo_results = gr.DataFrame(
-                        headers=["Parameter", "Value"],
-                        interactive=True,
-                        label="Best Parameters (Editable)"
+                        headers=["Parameter", "Value"], interactive=True, label="Best Parameters (Editable)"
                     )
 
         gr.Markdown("---")
@@ -1771,23 +1780,11 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
             outputs=[hpo_status, hpo_results],
         )
 
-        load_hpo_btn.click(
-            fn=load_latest_hpo_handler,
-            inputs=[state],
-            outputs=[hpo_action_status, hpo_results]
-        )
+        load_hpo_btn.click(fn=load_latest_hpo_handler, inputs=[state], outputs=[hpo_action_status, hpo_results])
 
-        apply_params_btn.click(
-            fn=apply_best_params,
-            inputs=[state, hpo_results],
-            outputs=[hpo_action_status]
-        )
+        apply_params_btn.click(fn=apply_best_params, inputs=[state, hpo_results], outputs=[hpo_action_status])
 
-        save_profile_btn.click(
-            fn=save_best_profile,
-            inputs=[state, hpo_results],
-            outputs=[hpo_action_status]
-        )
+        save_profile_btn.click(fn=save_best_profile, inputs=[state, hpo_results], outputs=[hpo_action_status])
 
         # Auto-refresh for live updates
         status_refresh = gr.Timer(value=2.0, active=True)  # Update every 2 seconds
@@ -1824,10 +1821,7 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
 
         # New timer for HPO results
         hpo_refresh = gr.Timer(value=5.0, active=True)
-        hpo_refresh.tick(
-            fn=check_hpo_results,
-            outputs=[hpo_results]
-        )
+        hpo_refresh.tick(fn=check_hpo_results, outputs=[hpo_results])
 
     # Expose component for app.py
     panel.wandb_api_key = wandb_api_key

@@ -196,7 +196,7 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
         data=DataConfig(
             sample_rate=16000,
             audio_duration=1.5,
-            n_mels=64,             # ⬆️ Increased resolution (40 -> 64)
+            n_mels=64,  # ⬆️ Increased resolution (40 -> 64)
             hop_length=160,
         ),
         training=TrainingConfig(
@@ -204,28 +204,28 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             epochs=200,
             learning_rate=0.0005,
             early_stopping_patience=25,
-            use_ema=True,          # ⬆️ Enabled EMA for better stability
+            use_ema=True,  # ⬆️ Enabled EMA for better stability
         ),
         model=ModelConfig(
             architecture="tiny_conv",
             num_classes=2,
-            dropout=0.2,           # ⬆️ Slightly increased dropout for larger model
-            tcn_num_channels=[64, 64, 64, 64], # ⬆️ Optimized for ESP32S3
+            dropout=0.2,  # ⬆️ Slightly increased dropout for larger model
+            tcn_num_channels=[64, 64, 64, 64],  # ⬆️ Optimized for ESP32S3
         ),
         augmentation=AugmentationConfig(
             background_noise_prob=0.8,
-            rir_prob=0.6,          # ⬆️ Increased RIR for better robustness
+            rir_prob=0.6,  # ⬆️ Increased RIR for better robustness
             time_shift_prob=0.7,
-            noise_snr_min=3,       # ⬆️ Tougher noise cases
+            noise_snr_min=3,  # ⬆️ Tougher noise cases
             noise_snr_max=15,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=0.01,     # ⬆️ Standard weight decay
+            weight_decay=0.01,  # ⬆️ Standard weight decay
             mixed_precision=True,
         ),
         loss=LossConfig(
-            loss_function="focal_loss", # ⬆️ Switch to focal loss for better hard-negative handling
+            loss_function="focal_loss",  # ⬆️ Switch to focal loss for better hard-negative handling
             label_smoothing=0.05,
             class_weights="balanced",
             hard_negative_weight=5.0,
@@ -236,7 +236,7 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             start_epoch=15,
         ),
         distillation=DistillationConfig(
-            enabled=True,          # ⬆️ Enabled Knowledge Distillation
+            enabled=True,  # ⬆️ Enabled Knowledge Distillation
             teacher_architecture="wav2vec2",
             temperature=2.0,
             alpha=0.5,
@@ -249,8 +249,8 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             smoothing_window=3,
         ),
         size_targets=SizeTargetConfig(
-            max_flash_kb=256,      # ⬆️ Updated for ESP32-S3
-            max_ram_kb=192,        # ⬆️ Updated for ESP32-S3 internal RAM limits
+            max_flash_kb=256,  # ⬆️ Updated for ESP32-S3
+            max_ram_kb=192,  # ⬆️ Updated for ESP32-S3 internal RAM limits
         ),
         calibration=CalibrationConfig(num_samples=300, positive_ratio=0.3),
     )
@@ -359,7 +359,7 @@ def get_rpi_zero2w_preset() -> WakewordConfig:
         ),
         qat=QATConfig(
             enabled=True,
-            backend="fbgemm", # x86 for training, but convertible to arm-optimized TFLite
+            backend="fbgemm",  # x86 for training, but convertible to arm-optimized TFLite
             start_epoch=10,
         ),
         cmvn=CMVNConfig(enabled=True),
@@ -401,7 +401,7 @@ def get_ultimate_accuracy_preset() -> WakewordConfig:
             epochs=100,
             learning_rate=0.001,
             early_stopping_patience=20,
-            num_workers=16, # Leverage high CPU count
+            num_workers=16,  # Leverage high CPU count
         ),
         model=ModelConfig(
             architecture="resnet18",
@@ -418,17 +418,17 @@ def get_ultimate_accuracy_preset() -> WakewordConfig:
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=0.02, # Higher regularization
+            weight_decay=0.02,  # Higher regularization
             mixed_precision=True,
         ),
         loss=LossConfig(
             loss_function="focal_loss",
             focal_gamma=2.5,
             class_weights="balanced",
-            hard_negative_weight=5.0, # Extremely strict on false positives
+            hard_negative_weight=5.0,  # Extremely strict on false positives
         ),
         qat=QATConfig(
-            enabled=False, # Priorities FP32 accuracy for desktop/server
+            enabled=False,  # Priorities FP32 accuracy for desktop/server
         ),
         cmvn=CMVNConfig(enabled=True),
         streaming=StreamingConfig(

@@ -301,7 +301,11 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
 
         # Event handlers with full implementation
         def scan_datasets_handler(
-            root_path: str, skip_val: bool, move_unqualified: bool, move_quality_warning: bool = False, progress: gr.Progress = gr.Progress()
+            root_path: str,
+            skip_val: bool,
+            move_unqualified: bool,
+            move_quality_warning: bool = False,
+            progress: gr.Progress = gr.Progress(),
         ) -> Tuple[dict, str, str]:
             """Scan datasets and return statistics and health report"""
             global _current_scanner, _current_dataset_info
@@ -569,12 +573,12 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     logger.info("Updating global configuration with extraction parameters")
                     if state.value is None:
                         state.value = {}
-                    
+
                     # Get existing config or create new
                     current_config = state.value.get("config")
                     if current_config is None:
                         current_config = WakewordConfig()
-                    
+
                     # Update data config
                     current_config.data = data_config
                     state.value["config"] = current_config

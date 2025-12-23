@@ -216,14 +216,14 @@ class DatasetScanner:
         # Iterate through all categories
         for category, data in self.dataset_info["categories"].items():
             files_with_warnings = []
-            
+
             # Find files that have quality warnings
             for file_info in data.get("files", []):
                 quality_score = file_info.get("quality_score", 1.0)
                 # Files with quality_score < 0.8 are considered to have warnings
                 if quality_score < 0.8:
                     files_with_warnings.append(file_info)
-            
+
             if not files_with_warnings:
                 continue
 
@@ -248,7 +248,9 @@ class DatasetScanner:
                 try:
                     shutil.move(str(src_path), str(dest_path))
                     moved_count += 1
-                    logger.info(f"Moved warning file: {src_path.name} (score={file_info.get('quality_score', '?')}) -> {dest_path}")
+                    logger.info(
+                        f"Moved warning file: {src_path.name} (score={file_info.get('quality_score', '?')}) -> {dest_path}"
+                    )
                 except Exception as e:
                     logger.error(f"Failed to move {src_path}: {e}")
 

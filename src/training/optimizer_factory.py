@@ -235,10 +235,10 @@ def create_scheduler(
             epochs=epochs,
             steps_per_epoch=steps_per_epoch,
             pct_start=0.3,
-            anneal_strategy='cos',
+            anneal_strategy="cos",
             div_factor=25.0,
             final_div_factor=10000.0,
-            **kwargs
+            **kwargs,
         )
         logger.info(f"  OneCycleLR: epochs={epochs}, steps_per_epoch={steps_per_epoch}")
 
@@ -259,7 +259,9 @@ def create_scheduler(
 from src.config.defaults import WakewordConfig
 
 
-def create_optimizer_and_scheduler(model: nn.Module, config: WakewordConfig, steps_per_epoch: int = 1) -> Tuple[optim.Optimizer, Optional[Any]]:
+def create_optimizer_and_scheduler(
+    model: nn.Module, config: WakewordConfig, steps_per_epoch: int = 1
+) -> Tuple[optim.Optimizer, Optional[Any]]:
     """
     Create optimizer and scheduler from configuration object.
     Supports steps_per_epoch for OneCycleLR.

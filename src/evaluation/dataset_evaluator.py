@@ -98,7 +98,14 @@ def evaluate_dataset(
             predicted_classes = (confidences >= threshold).astype(int)
 
             for i, (confidence, pred_class, logit, meta, audio, target) in enumerate(
-                zip(confidences, predicted_classes, logits.cpu().numpy(), metadata, inputs.cpu().numpy(), targets.cpu().numpy())
+                zip(
+                    confidences,
+                    predicted_classes,
+                    logits.cpu().numpy(),
+                    metadata,
+                    inputs.cpu().numpy(),
+                    targets.cpu().numpy(),
+                )
             ):
                 results.append(
                     EvaluationResult(
@@ -109,7 +116,7 @@ def evaluate_dataset(
                         logits=logit,
                         label=int(target),
                         raw_audio=audio.squeeze() if audio.ndim > 1 else audio,
-                        full_path=str(meta["path"]) if "path" in meta else None
+                        full_path=str(meta["path"]) if "path" in meta else None,
                     )
                 )
 

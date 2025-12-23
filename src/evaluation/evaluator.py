@@ -74,10 +74,13 @@ class ModelEvaluator:
         # Audio processor
         # Create CMVN path
         from src.config.paths import paths
+
         cmvn_path = paths.CMVN_STATS
 
         if not cmvn_path.exists():
-            logger.warning(f"CMVN stats not found at {cmvn_path}. Evaluation might be inaccurate if model was trained with CMVN.")
+            logger.warning(
+                f"CMVN stats not found at {cmvn_path}. Evaluation might be inaccurate if model was trained with CMVN."
+            )
 
         processor_config: Optional["WakewordConfig"] = None
         if config is not None:
@@ -94,9 +97,7 @@ class ModelEvaluator:
             processor_config = WakewordConfig()
 
         self.audio_processor = GpuAudioProcessor(
-            config=processor_config,
-            cmvn_path=cmvn_path if cmvn_path.exists() else None,
-            device=device
+            config=processor_config, cmvn_path=cmvn_path if cmvn_path.exists() else None, device=device
         )
 
         # CPU Audio Processor for file loading
@@ -190,9 +191,13 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     # Calculate input size for model
     input_samples = int(config.data.sample_rate * config.data.audio_duration)
     time_steps = input_samples // config.data.hop_length + 1
-    
-    feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
-    
+
+    feature_dim = (
+        config.data.n_mels
+        if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel"
+        else config.data.n_mfcc
+    )
+
     if config.model.architecture == "cd_dnn":
         input_size = feature_dim * time_steps
     else:
@@ -225,7 +230,7 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     # --- Robust Loading Logic ---
     model_state = model.state_dict()
     new_state_dict = {}
-    
+
     for k, v in state_dict.items():
         # Handle MobileNetV3 remapping
         # Old checkpoints might have 'mobilenet.features.X' but model expects 'features.X'
@@ -254,10 +259,10 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     # Handle QAT checkpoints loaded into FP32 models
     # Filter out quantization keys that are not in the model
     # (Existing logic preserved/merged)
-    
+
     # Load with strict=False to allow missing unused keys (like mobilenet.classifier)
     missing, unexpected = model.load_state_dict(final_state_dict, strict=False)
-    
+
     if missing:
         logger.warning(f"Missing keys (some may be expected if architecture changed): {missing[:5]}...")
     if unexpected:

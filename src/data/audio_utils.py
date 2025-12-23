@@ -174,7 +174,7 @@ class AudioValidator:
         # RIRs are naturally short (impulses), so they have separate duration limits
         if is_rir:
             min_duration = 0.05  # Very short impulse
-            max_duration = 3.0   # Allow longer RIRs
+            max_duration = 3.0  # Allow longer RIRs
         else:
             min_duration = 0.4
             max_duration = 2.5
@@ -361,12 +361,13 @@ def scan_audio_files(directory: Path, recursive: bool = True) -> List[Path]:
 
 class SilentDetector:
     """Detects and moves silent or near-silent audio files"""
-    
-    def __init__(self, rms_threshold: float = -50.0, peak_threshold: Optional[float] = None, 
-                 min_duration: float = 0.25) -> None:
+
+    def __init__(
+        self, rms_threshold: float = -50.0, peak_threshold: Optional[float] = None, min_duration: float = 0.25
+    ) -> None:
         """
         Initialize silent detector
-        
+
         Args:
             rms_threshold: RMS threshold in dB (default: -50dB)
             peak_threshold: Peak threshold in dB (optional)
@@ -376,75 +377,71 @@ class SilentDetector:
         self.peak_threshold = peak_threshold
         self.min_duration = min_duration
         self.silent_files: List[Dict[str, Any]] = []
-        
+
     def _to_mono(self, audio: np.ndarray) -> np.ndarray:
         """Convert to mono if needed"""
         if audio.ndim == 1:
             return audio.astype(np.float32, copy=False)
         return audio.mean(axis=1).astype(np.float32, copy=False)
-    
+
     def _dbfs_from_rms(self, audio: np.ndarray, eps: float = 1e-12) -> float:
         """Calculate dBFS from RMS"""
         rms = float(np.sqrt(np.mean(audio * audio)) + eps)
         return 20.0 * np.log10(rms)
-    
+
     def _dbfs_from_peak(self, audio: np.ndarray, eps: float = 1e-12) -> float:
         """Calculate dBFS from peak"""
         peak = float(np.max(np.abs(audio)) + eps)
         return 20.0 * np.log10(peak)
-    
+
     def is_silent(self, audio: np.ndarray, sr: int, duration: Optional[float] = None) -> Tuple[bool, Dict[str, Any]]:
         """
         Check if audio is silent or near-silent
-        
+
         Args:
             audio: Audio array
             sr: Sample rate
             duration: Override duration (calculated from audio if None)
-            
+
         Returns:
             Tuple of (is_silent, info_dict)
         """
         if duration is None:
             duration = len(audio) / sr
-            
+
         # Skip files shorter than minimum duration
         if duration < self.min_duration:
             return False, {"reason": f"duration<{self.min_duration}s"}
-        
+
         # Convert to mono
         audio_mono = self._to_mono(audio)
-        
+
         # Check for empty audio
         if audio_mono.size == 0:
             return True, {"reason": "empty"}
-            
+
         # Calculate RMS and Peak dBFS
         rms_dbfs = self._dbfs_from_rms(audio_mono)
         peak_dbfs = self._dbfs_from_peak(audio_mono)
-        
-        info = {
-            "duration_sec": duration,
-            "rms_dbfs": rms_dbfs,
-            "peak_dbfs": peak_dbfs
-        }
-        
+
+        info = {"duration_sec": duration, "rms_dbfs": rms_dbfs, "peak_dbfs": peak_dbfs}
+
         # Check RMS threshold
         is_silent = rms_dbfs <= self.rms_threshold
-        
+
         # Check peak threshold if specified
         if self.peak_threshold is not None:
             is_silent = is_silent and (peak_dbfs <= self.peak_threshold)
-            
+
         return is_silent, info
-        
+
     def analyze_file(self, file_path: Path) -> Optional[Dict[str, Any]]:
         """
         Analyze a single audio file for silence
-        
+
         Args:
             file_path: Path to audio file
-            
+
         Returns:
             Dictionary with results or None if file cannot be processed
         """
@@ -453,86 +450,90 @@ class SilentDetector:
             audio, sr = AudioValidator.load_audio(file_path, mono=True)
             duration = len(audio) / sr
             is_silent, info = self.is_silent(audio, sr, duration)
-            
+
             result = {
                 "path": str(file_path),
                 "filename": file_path.name,
                 "is_silent": is_silent,
                 "duration": duration,
-                **info  # Include rms_dbfs, peak_dbfs, reason, etc.
+                **info,  # Include rms_dbfs, peak_dbfs, reason, etc.
             }
-            
+
             # For backward compatibility
             if "rms_dbfs" in info:
                 result["rms_db"] = float(info["rms_dbfs"])
-                
+
             return result
         except Exception as e:
             logger.error(f"Error analyzing file {file_path}: {e}")
             return None
-            
+
     def analyze_directory(self, directory: Path, recursive: bool = True) -> List[Dict[str, Any]]:
         """
         Analyze all audio files in directory for silence
-        
+
         Args:
             directory: Directory to analyze
             recursive: Search recursively
-            
+
         Returns:
             List of silent file analyses
         """
         audio_files = scan_audio_files(directory, recursive)
         silent_files = []
-        
+
         logger.info(f"Analyzing {len(audio_files)} files for silence...")
-        
+
         for file_path in audio_files:
             result = self.analyze_file(file_path)
             if result and result["is_silent"]:
                 silent_files.append(result)
-                
+
         self.silent_files = silent_files
         logger.info(f"Found {len(silent_files)} silent files")
-        
+
         return silent_files
-        
-    def move_silent_files(self, silent_root: Path = Path("silent_dataset"), 
-                         source_dirs: Optional[List[Path]] = None,
-                         copy_mode: bool = False, dry_run: bool = False,
-                         keep_structure: bool = True) -> Tuple[int, Dict[str, Any]]:
+
+    def move_silent_files(
+        self,
+        silent_root: Path = Path("silent_dataset"),
+        source_dirs: Optional[List[Path]] = None,
+        copy_mode: bool = False,
+        dry_run: bool = False,
+        keep_structure: bool = True,
+    ) -> Tuple[int, Dict[str, Any]]:
         """
         Move or copy silent files to a separate directory
-        
+
         Args:
             silent_root: Directory to move silent files to
             source_dirs: List of source directories to preserve structure
             copy_mode: Copy instead of move (default: False)
             dry_run: Only report, don't actually move files (default: False)
             keep_structure: Preserve directory structure (default: True)
-            
+
         Returns:
             Tuple of (files_processed, report_data)
         """
         if not self.silent_files:
             logger.warning("No silent files found. Run analyze_directory() first.")
             return 0, {}
-            
+
         silent_root = Path(silent_root)
         if not dry_run:
             silent_root.mkdir(parents=True, exist_ok=True)
         logger.info(f"{'Copying' if copy_mode else 'Moving'} silent files to: {silent_root}")
-        
+
         moved_count = 0
         report_data = []
-        
+
         for file_info in self.silent_files:
             src_path = Path(file_info["path"])
-            
+
             if not src_path.exists():
                 logger.warning(f"File not found: {src_path}")
                 continue
-                
+
             # Create destination path
             if keep_structure and source_dirs:
                 for source_dir in source_dirs:
@@ -549,10 +550,10 @@ class SilentDetector:
             else:
                 category = src_path.parent.name
                 dest_dir = silent_root / category
-                
+
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest_path = dest_dir / src_path.name
-            
+
             # Handle duplicates
             if dest_path.exists():
                 stem, suf = src_path.stem, src_path.suffix
@@ -563,7 +564,7 @@ class SilentDetector:
                         dest_path = cand
                         break
                     i += 1
-            
+
             # Process file
             try:
                 if not dry_run:
@@ -571,9 +572,9 @@ class SilentDetector:
                         shutil.copy2(str(src_path), str(dest_path))
                     else:
                         shutil.move(str(src_path), str(dest_path))
-                
+
                 moved_count += 1
-                
+
                 # Add to report
                 report_entry = {
                     "status": "processed",
@@ -582,21 +583,24 @@ class SilentDetector:
                     "rms_dbfs": file_info.get("rms_dbfs", ""),
                     "peak_dbfs": file_info.get("peak_dbfs", ""),
                     "reason": file_info.get("reason", ""),
-                    "target": str(dest_path)
+                    "target": str(dest_path),
                 }
                 report_data.append(report_entry)
-                
-                logger.info(f"{'Copied' if copy_mode else 'Moved'} silent file: {src_path.name} (RMS: {file_info.get('rms_dbfs', '?'):.1f}dB) -> {dest_path}")
-                
+
+                logger.info(
+                    f"{'Copied' if copy_mode else 'Moved'} silent file: {src_path.name} (RMS: {file_info.get('rms_dbfs', '?'):.1f}dB) -> {dest_path}"
+                )
+
             except Exception as e:
                 logger.error(f"Failed to process {src_path}: {e}")
-        
+
         logger.info(f"Processed {moved_count} silent files to {silent_root} (dry_run={dry_run})")
         return moved_count, {"silent_files": report_data}
 
+
 def move_silent_files_from_directory(
-    directory: Path, 
-    silent_root: Path = Path("silent_dataset"), 
+    directory: Path,
+    silent_root: Path = Path("silent_dataset"),
     rms_threshold: float = -50.0,
     peak_threshold: Optional[float] = None,
     min_duration: float = 0.25,
@@ -605,11 +609,11 @@ def move_silent_files_from_directory(
     dry_run: bool = False,
     keep_structure: bool = True,
     save_report: bool = True,
-    report_name: str = "silent_report.tsv"
+    report_name: str = "silent_report.tsv",
 ) -> Tuple[int, Dict[str, Any]]:
     """
     Utility function to detect and move silent files from a directory
-    
+
     Args:
         directory: Directory to scan for silent files
         silent_root: Directory to move silent files to
@@ -622,50 +626,44 @@ def move_silent_files_from_directory(
         keep_structure: Preserve directory structure (default: True)
         save_report: Save TSV report file (default: True)
         report_name: Report file name (default: "silent_report.tsv")
-        
+
     Returns:
         Tuple of (files_processed, report_data)
     """
-    detector = SilentDetector(
-        rms_threshold=rms_threshold,
-        peak_threshold=peak_threshold,
-        min_duration=min_duration
-    )
-    
+    detector = SilentDetector(rms_threshold=rms_threshold, peak_threshold=peak_threshold, min_duration=min_duration)
+
     silent_files = detector.analyze_directory(directory, recursive)
-    
+
     if not silent_files:
         logger.info("No silent files found")
         return 0, {"silent_files": [], "total_scanned": 0}
-    
+
     moved_count, report_data = detector.move_silent_files(
-        silent_root, 
-        source_dirs=[directory],
-        copy_mode=copy_mode,
-        dry_run=dry_run,
-        keep_structure=keep_structure
+        silent_root, source_dirs=[directory], copy_mode=copy_mode, dry_run=dry_run, keep_structure=keep_structure
     )
-    
+
     # Save report if requested
     if save_report and not dry_run:
         report_path = Path(silent_root) / report_name
         with report_path.open("w", encoding="utf-8") as f:
             f.write("status\tpath\tduration_sec\trms_dbfs\tpeak_dbfs\treason\ttarget\n")
-            
+
             for entry in report_data.get("silent_files", []):
-                f.write(f"silent\t{entry['path']}\t{entry['duration_sec']}\t"
-                       f"{entry['rms_dbfs']}\t{entry['peak_dbfs']}\t"
-                       f"{entry['reason']}\t{entry['target']}\n")
-        
+                f.write(
+                    f"silent\t{entry['path']}\t{entry['duration_sec']}\t"
+                    f"{entry['rms_dbfs']}\t{entry['peak_dbfs']}\t"
+                    f"{entry['reason']}\t{entry['target']}\n"
+                )
+
         logger.info(f"Report saved to: {report_path}")
-    
+
     total_scanned = len(scan_audio_files(directory, recursive))
     logger.info(f"Silent files processed: {moved_count}/{total_scanned} (dry_run={dry_run})")
-    
+
     return moved_count, {
         **report_data,
         "total_scanned": total_scanned,
-        "report_path": str(Path(silent_root) / report_name) if save_report else None
+        "report_path": str(Path(silent_root) / report_name) if save_report else None,
     }
 
 

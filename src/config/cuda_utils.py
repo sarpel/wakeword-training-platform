@@ -159,12 +159,12 @@ class CUDAValidator:
     def estimate_vram_footprint_gb(self, teacher_arch: Optional[str], student_arch: str, batch_size: int) -> float:
         """
         Estimate the peak VRAM footprint in GB.
-        
+
         Args:
             teacher_arch: Architecture of the teacher model (if any)
             student_arch: Architecture of the student model
             batch_size: Training batch size
-            
+
         Returns:
             Estimated GB of VRAM required
         """
@@ -179,29 +179,29 @@ class CUDAValidator:
             "lstm": 0.1,
             "gru": 0.1,
             "tcn": 0.15,
-            "cd_dnn": 0.1
+            "cd_dnn": 0.1,
         }
-        
+
         total_est = 0.0
-        
+
         # Student footprint
         total_est += model_sizes.get(student_arch.lower(), 0.2)
         # activations + gradients (rough linear scale)
-        total_est += (batch_size * 0.01) # ~10MB per sample for small models
-        
+        total_est += batch_size * 0.01  # ~10MB per sample for small models
+
         # Teacher footprint (inference only, no gradients)
         if teacher_arch:
             if teacher_arch.lower() == "dual":
                 total_est += model_sizes["wav2vec2"] + model_sizes["conformer"]
             else:
                 total_est += model_sizes.get(teacher_arch.lower(), 0.5)
-            
+
             # Teacher activations
-            total_est += (batch_size * 0.005)
-            
+            total_est += batch_size * 0.005
+
         # Add 0.5GB for CUDA context and system overhead
         total_est += 0.5
-        
+
         return round(total_est, 2)
 
     def clear_cache(self) -> None:

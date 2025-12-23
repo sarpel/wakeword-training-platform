@@ -151,12 +151,12 @@ class ONNXExporter:
             return {"success": False, "error": str(e)}
 
     def export_to_tflite(
-        self, 
-        onnx_path: Path, 
-        output_path: Path, 
+        self,
+        onnx_path: Path,
+        output_path: Path,
         sample_input: Optional[torch.Tensor] = None,
         quantize_int8: bool = False,
-        is_qat: bool = False
+        is_qat: bool = False,
     ) -> Dict[str, Any]:
         """
         Export ONNX model to TFLite using onnx2tf
@@ -184,25 +184,34 @@ class ONNXExporter:
                 sys.executable,
                 "-m",
                 "onnx2tf",
-                "-i", str(onnx_path),
-                "-o", str(output_folder),
-                "-ois", f"input:{input_shape_str}",
-                "--non_verbose", # Reduce log noise
+                "-i",
+                str(onnx_path),
+                "-o",
+                str(output_folder),
+                "-ois",
+                f"input:{input_shape_str}",
+                "--non_verbose",  # Reduce log noise
             ]
 
             # QAT / Quantization specific flags
             if is_qat:
                 # For QAT models, we want to preserve the fake quantization nodes or convert them correctly
-                cmd.extend([
-                    "--copy_onnx_input_output_names_to_tflite", # Feature keeping
-                    "--output_integer_quantized_tflite" if quantize_int8 else ""
-                ])
-            
+                cmd.extend(
+                    [
+                        "--copy_onnx_input_output_names_to_tflite",  # Feature keeping
+                        "--output_integer_quantized_tflite" if quantize_int8 else "",
+                    ]
+                )
+
             if quantize_int8:
-                cmd.extend([
-                    "-qt", "int8",
-                    "--overwrite_input_dtype", "uint8" if is_qat else "float32", # Optional: hardware dependent
-                ])
+                cmd.extend(
+                    [
+                        "-qt",
+                        "int8",
+                        "--overwrite_input_dtype",
+                        "uint8" if is_qat else "float32",  # Optional: hardware dependent
+                    ]
+                )
 
             # Filter out empty strings
             cmd = [c for c in cmd if c]
@@ -306,7 +315,7 @@ def export_model_to_onnx(
     quantize_int8: bool = False,
     export_tflite: bool = False,  # New param
     device: str = "cuda",
-    fixed_export_path: Optional[Path] = None, # New: Support for fixed export paths (e.g. for ESPHome)
+    fixed_export_path: Optional[Path] = None,  # New: Support for fixed export paths (e.g. for ESPHome)
 ) -> Dict:
     """
     Export PyTorch model checkpoint to ONNX
@@ -350,9 +359,13 @@ def export_model_to_onnx(
     # Calculate input size for model
     input_samples = int(config.data.sample_rate * config.data.audio_duration)
     time_steps = input_samples // config.data.hop_length + 1
-    
-    feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
-    
+
+    feature_dim = (
+        config.data.n_mels
+        if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel"
+        else config.data.n_mfcc
+    )
+
     if config.model.architecture == "cd_dnn":
         input_size = feature_dim * time_steps
     else:
@@ -399,8 +412,10 @@ def export_model_to_onnx(
 
         if unexpected_keys:
             # Check if these are quantization keys
-            quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
-            
+            quant_keys = [
+                k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k
+            ]
+
             if quant_keys:
                 logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
                 # Filter the state dict
@@ -469,10 +484,10 @@ def export_model_to_onnx(
 
         # Perform TFLite conversion with quantization if requested OR if model is QAT
         tflite_results = exporter.export_to_tflite(
-            onnx_path=onnx_base_path, 
+            onnx_path=onnx_base_path,
             output_path=tflite_path,
             quantize_int8=quantize_int8 or is_qat_model,
-            is_qat=is_qat_model
+            is_qat=is_qat_model,
         )
 
         results["tflite_path"] = tflite_results.get("path")
@@ -509,7 +524,7 @@ def export_model_to_onnx(
                 "ONNX model size target exceeded",
                 actual_kb=f"{onnx_size_kb:.1f}",
                 target_kb=targets.max_flash_kb,
-                severity="warning"
+                severity="warning",
             )
             results["size_warning"] = True
 
@@ -521,7 +536,7 @@ def export_model_to_onnx(
                     "TFLite model size target exceeded",
                     actual_kb=f"{tflite_size_kb:.1f}",
                     target_kb=targets.max_flash_kb,
-                    severity="warning"
+                    severity="warning",
                 )
                 results["size_warning"] = True
 

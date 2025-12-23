@@ -35,19 +35,13 @@ def _save_checkpoint(
         return
 
     # Convert config to dict if it has to_dict method, otherwise save as is
-    config_dict = (
-        trainer.config.to_dict()
-        if hasattr(trainer.config, "to_dict")
-        else trainer.config
-    )
+    config_dict = trainer.config.to_dict() if hasattr(trainer.config, "to_dict") else trainer.config
 
     checkpoint = {
         "epoch": epoch,
         "model_state_dict": trainer.model.state_dict(),
         "optimizer_state_dict": trainer.optimizer.state_dict(),
-        "scheduler_state_dict": trainer.scheduler.state_dict()
-        if trainer.scheduler
-        else None,
+        "scheduler_state_dict": trainer.scheduler.state_dict() if trainer.scheduler else None,
         "scaler_state_dict": trainer.scaler.state_dict(),
         "state": trainer.state,
         "config": config_dict,

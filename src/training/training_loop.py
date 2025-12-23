@@ -22,9 +22,7 @@ def _run_epoch(
     epoch: int,
 ) -> Tuple[float, MetricResults]:
     """Run one epoch of training or validation."""
-    metrics_tracker = (
-        trainer.train_metrics_tracker if is_training else trainer.val_metrics_tracker
-    )
+    metrics_tracker = trainer.train_metrics_tracker if is_training else trainer.val_metrics_tracker
     metrics_tracker.reset()
 
     epoch_loss = 0.0
@@ -82,7 +80,7 @@ def _run_epoch(
                 if inputs.ndim <= 3:
                     trainer.audio_processor.train(is_training)
                     inputs = trainer.audio_processor(inputs)
-                
+
                 # Apply memory format optimization (now inputs are definitely 4D features)
                 inputs = inputs.to(memory_format=torch.channels_last)
 
@@ -102,7 +100,7 @@ def _run_epoch(
                     # Ensure inference is finished before measuring time
                     if not is_training and trainer.device == "cuda":
                         torch.cuda.synchronize()
-                    
+
                     if not is_training:
                         batch_end_time = time.perf_counter()
                         total_latency_ms += (batch_end_time - batch_start_time) * 1000
@@ -130,7 +128,7 @@ def _run_epoch(
                         if trainer.gradient_clip > 0:
                             clip_gradients(trainer.model, trainer.gradient_clip)
                         trainer.optimizer.step()
-                    
+
                     if trainer.ema is not None:
                         trainer.ema.update()
 
@@ -158,15 +156,16 @@ def _run_epoch(
                     pbar.set_postfix({"loss": f"{loss.item():.4f}"})
     except ConnectionResetError:
         import sys
+
         if sys.platform == "win32":
-             logger.warning("ConnectionResetError during batch iteration suppressed")
-             # We just break out of the epoch early but keep what we have
+            logger.warning("ConnectionResetError during batch iteration suppressed")
+            # We just break out of the epoch early but keep what we have
         else:
             raise
 
     avg_loss = epoch_loss / max(1, num_batches)
     metrics = metrics_tracker.compute()
-    
+
     # Add latency info
     if not is_training and total_inference_samples > 0:
         metrics.latency_ms = total_latency_ms / total_inference_samples
@@ -180,9 +179,7 @@ def _run_epoch(
 def train_epoch(trainer: "Trainer", epoch: int) -> Tuple[float, float]:
     """Train for one epoch"""
     trainer.model.train()
-    avg_loss, metrics = _run_epoch(
-        trainer, trainer.train_loader, is_training=True, epoch=epoch
-    )
+    avg_loss, metrics = _run_epoch(trainer, trainer.train_loader, is_training=True, epoch=epoch)
     return avg_loss, metrics.accuracy
 
 
@@ -194,9 +191,7 @@ def validate_epoch(trainer: "Trainer", epoch: int) -> Tuple[float, MetricResults
         original_params = trainer.ema.apply_shadow()
 
     try:
-        avg_loss, val_metrics = _run_epoch(
-            trainer, trainer.val_loader, is_training=False, epoch=epoch
-        )
+        avg_loss, val_metrics = _run_epoch(trainer, trainer.val_loader, is_training=False, epoch=epoch)
     finally:
         if trainer.ema is not None and original_params is not None:
             trainer.ema.restore(original_params)

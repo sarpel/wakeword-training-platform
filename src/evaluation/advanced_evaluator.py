@@ -17,11 +17,11 @@ class ThresholdAnalyzer:
     """
     Analyzes model performance across different detection thresholds.
     """
-    
+
     def __init__(self, logits: torch.Tensor, labels: torch.Tensor):
         """
         Initialize analyzer with model outputs and ground truth.
-        
+
         Args:
             logits: Model output logits (N, num_classes)
             labels: Ground truth labels (N,)
@@ -30,27 +30,27 @@ class ThresholdAnalyzer:
         self.labels = labels
         # Pre-calculate probabilities for class 1 (wakeword)
         self.probs = torch.softmax(logits, dim=1)[:, 1]
-        
+
     def compute_at_threshold(self, threshold: float) -> Dict[str, float]:
         """
         Compute basic metrics for a single threshold.
-        
+
         Args:
             threshold: Decision threshold (0.0 to 1.0)
-            
+
         Returns:
             Dictionary with precision, recall, tp, fp, tn, fn
         """
         preds = (self.probs >= threshold).long()
-        
+
         tp = torch.sum((preds == 1) & (self.labels == 1)).item()
         fp = torch.sum((preds == 1) & (self.labels == 0)).item()
         tn = torch.sum((preds == 0) & (self.labels == 0)).item()
         fn = torch.sum((preds == 0) & (self.labels == 1)).item()
-        
+
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        
+
         return {
             "threshold": threshold,
             "precision": precision,
@@ -58,16 +58,16 @@ class ThresholdAnalyzer:
             "tp": tp,
             "fp": fp,
             "tn": tn,
-            "fn": fn
+            "fn": fn,
         }
-        
+
     def analyze_range(self, thresholds: np.ndarray) -> List[Dict[str, float]]:
         """
         Compute metrics for a range of thresholds.
-        
+
         Args:
             thresholds: Array of thresholds to evaluate
-            
+
         Returns:
             List of metric dictionaries
         """

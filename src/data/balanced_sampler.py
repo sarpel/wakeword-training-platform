@@ -177,14 +177,15 @@ class CalibrationSampler:
 
         # Randomly sample negatives (combine normal and hard negatives)
         all_neg = np.concatenate([self.idx_neg, self.idx_hard_neg])
-        sampled_neg = np.random.choice(all_neg, size=n_neg, replace=False) if n_neg > 0 and len(all_neg) > 0 else np.array([])
+        sampled_neg = (
+            np.random.choice(all_neg, size=n_neg, replace=False) if n_neg > 0 and len(all_neg) > 0 else np.array([])
+        )
 
         indices = np.concatenate([sampled_pos, sampled_neg]).astype(int)
         np.random.shuffle(indices)
 
         logger.info(
-            f"CalibrationSampler selected {len(indices)} samples: "
-            f"pos={len(sampled_pos)}, neg={len(sampled_neg)}"
+            f"CalibrationSampler selected {len(indices)} samples: " f"pos={len(sampled_pos)}, neg={len(sampled_neg)}"
         )
 
         return indices.tolist()

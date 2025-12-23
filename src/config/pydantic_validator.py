@@ -85,7 +85,7 @@ class ModelConfig(BaseModel):
     hidden_size: int = Field(128, ge=16)
     num_layers: int = Field(2, ge=1)
     bidirectional: bool = True
-    # TCN & CD-DNN fields are optional or handled via extra fields if passed, 
+    # TCN & CD-DNN fields are optional or handled via extra fields if passed,
     # but adding them explicitly is better if they are in the default config.
     tcn_num_channels: List[int] = [64, 128, 256]
     tcn_kernel_size: int = 3

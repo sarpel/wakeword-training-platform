@@ -47,9 +47,7 @@ class DatasetConfigValidator:
         num_samples = int(config.data.sample_rate * config.data.audio_duration)
         return extractor.get_output_shape(num_samples)
 
-    def validate_dataset_features(
-        self, config: WakewordConfig, npy_dir: Path
-    ) -> List[Dict[str, Any]]:
+    def validate_dataset_features(self, config: WakewordConfig, npy_dir: Path) -> List[Dict[str, Any]]:
         """
         Validate configuration against existing .npy features
 
@@ -69,28 +67,30 @@ class DatasetConfigValidator:
 
         # Scan for .npy files
         npy_files = list(npy_dir.rglob("*.npy"))
-        
+
         # To avoid performance issues with large datasets, we sample or check first few
         # But for this utility, checking a few from each category might be enough
         # For now, let's check all but limited to a reasonable number if needed
-        
-        for npy_file in npy_files[:100]: # Check first 100 files
+
+        for npy_file in npy_files[:100]:  # Check first 100 files
             try:
                 data = np.load(str(npy_file), mmap_mode="r")
                 actual_shape = data.shape
-                
+
                 # Handle 2D vs 3D (missing channel dim)
                 if len(actual_shape) == 2 and len(expected_shape) == 3:
                     if actual_shape == expected_shape[1:]:
-                        continue # Match
-                
+                        continue  # Match
+
                 if actual_shape != expected_shape:
-                    mismatches.append({
-                        "file": str(npy_file),
-                        "issue": "shape_mismatch",
-                        "actual_shape": actual_shape,
-                        "expected_shape": expected_shape
-                    })
+                    mismatches.append(
+                        {
+                            "file": str(npy_file),
+                            "issue": "shape_mismatch",
+                            "actual_shape": actual_shape,
+                            "expected_shape": expected_shape,
+                        }
+                    )
                     # If we found a mismatch, we can stop early if we just want to know IF there is one
                     # but let's return some details.
                     if len(mismatches) >= 5:

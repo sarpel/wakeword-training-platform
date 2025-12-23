@@ -169,7 +169,7 @@ def export_to_onnx(
             log += f"   File size: {results['tflite_size_mb']:.2f} MB\n"
             log += f"   Path: {results['tflite_path']}\n"
         elif export_tflite:
-            tflite_error = results.get('tflite_error', 'Unknown conversion error')
+            tflite_error = results.get("tflite_error", "Unknown conversion error")
             log += f"\n❌ TFLite export failed: {tflite_error}\n"
             log += f"   Hint: Ensure 'onnx2tf' is correctly installed and the model architecture is supported.\n"
 
@@ -251,9 +251,13 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         # Calculate input size for model
         input_samples = int(config.data.sample_rate * config.data.audio_duration)
         time_steps = input_samples // config.data.hop_length + 1
-        
-        feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
-        
+
+        feature_dim = (
+            config.data.n_mels
+            if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel"
+            else config.data.n_mfcc
+        )
+
         if config.model.architecture == "cd_dnn":
             input_size = feature_dim * time_steps
         else:
@@ -279,7 +283,7 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
             cddnn_context_frames=getattr(config.model, "cddnn_context_frames", 50),
             cddnn_dropout=getattr(config.model, "cddnn_dropout", config.model.dropout),
         )
-        
+
         # Load weights
         state_dict = checkpoint["model_state_dict"]
 
@@ -291,8 +295,10 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
 
         if unexpected_keys:
             # Check if these are quantization keys
-            quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
-            
+            quant_keys = [
+                k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k
+            ]
+
             if quant_keys:
                 logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
                 # Filter the state dict

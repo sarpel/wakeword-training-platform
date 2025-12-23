@@ -34,7 +34,7 @@ class MetricResults:
     total_samples: int
     positive_samples: int
     negative_samples: int
-    
+
     # Fields with defaults MUST come last
     pauc: float = 0.0  # Partial AUC
     latency_ms: float = 0.0  # Average latency per sample in ms
@@ -121,7 +121,11 @@ class MetricsCalculator:
             else:
                 # Single output but 2D (batch, 1)
                 # Apply sigmoid if not probabilities
-                probs = torch.sigmoid(predictions[:, 0]) if predictions.max() > 1.0 or predictions.min() < 0.0 else predictions[:, 0]
+                probs = (
+                    torch.sigmoid(predictions[:, 0])
+                    if predictions.max() > 1.0 or predictions.min() < 0.0
+                    else predictions[:, 0]
+                )
                 pred_classes = (probs >= threshold).long()
         else:
             # Single output 1D (batch,)
@@ -156,6 +160,7 @@ class MetricsCalculator:
 
         # Calculate pAUC
         from src.evaluation.metrics import calculate_pauc
+
         pauc = calculate_pauc(predictions, targets, fpr_max=0.1)
 
         return MetricResults(
@@ -172,7 +177,7 @@ class MetricsCalculator:
             total_samples=total,
             positive_samples=positive_samples,
             negative_samples=negative_samples,
-            pauc=pauc
+            pauc=pauc,
         )
 
     def confusion_matrix(self, predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 2) -> torch.Tensor:

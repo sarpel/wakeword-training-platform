@@ -361,7 +361,7 @@ class NpyExtractor:
             Dictionary with validation results
         """
         import shutil
-        
+
         results: Dict[str, Any] = {
             "total_files": len(npy_files),
             "valid_count": 0,
@@ -371,7 +371,7 @@ class NpyExtractor:
             "moved_count": 0,
             "mismatches": [],
         }
-        
+
         # Create invalid shapes directory if moving
         invalid_shapes_dir = Path("unused_datasets/invalid_shapes")
         if move_invalid:
@@ -418,8 +418,9 @@ class NpyExtractor:
                             if "data" in locals():
                                 del data
                             import gc
+
                             gc.collect()
-                            
+
                             # Determine category from path (positive/negative/hard_negative)
                             category = "unknown"
                             path_str = str(file_path).lower()
@@ -429,11 +430,11 @@ class NpyExtractor:
                                 category = "hard_negative"
                             elif "negative" in path_str:
                                 category = "negative"
-                            
+
                             # Create category subfolder
                             dest_dir = invalid_shapes_dir / category
                             dest_dir.mkdir(parents=True, exist_ok=True)
-                            
+
                             # Move file
                             dest_path = dest_dir / file_path.name
                             # Handle duplicate names
@@ -444,13 +445,13 @@ class NpyExtractor:
                                 while dest_path.exists():
                                     dest_path = dest_dir / f"{stem}_{counter}{suffix}"
                                     counter += 1
-                            
+
                             shutil.move(str(file_path), str(dest_path))
                             results["moved_count"] += 1
                             logger.info(f"Moved invalid shape file: {file_path.name} -> {dest_path}")
                         except Exception as e:
                             logger.error(f"Failed to move {file_path}: {e}")
-                    
+
                     # Legacy delete option (deprecated, use move_invalid instead)
                     elif delete_invalid:
                         try:

@@ -68,7 +68,7 @@ class TrainingConfig:
 
     # Metrics
     metric_window_size: int = 100
-    
+
     # Hard Negative Mining
     include_mined_negatives: bool = True
 
@@ -226,21 +226,21 @@ class DistillationConfig:
 
     enabled: bool = False
     teacher_model_path: str = ""
-    
+
     # Memory optimization options
     teacher_on_cpu: bool = False
     teacher_mixed_precision: bool = True
     log_memory_usage: bool = False
-    
+
     # Distillation parameters
-    teacher_architecture: str = "dual" # wav2vec2, conformer, dual (recommended)
+    teacher_architecture: str = "dual"  # wav2vec2, conformer, dual (recommended)
     secondary_teacher_architecture: str = "conformer"
     secondary_teacher_model_path: str = ""
-    
+
     temperature: float = 2.0
-    temperature_scheduler: str = "fixed" # fixed, linear_decay, exponential_decay
+    temperature_scheduler: str = "fixed"  # fixed, linear_decay, exponential_decay
     alpha: float = 0.3  # Optimized: 0.3 is more balanced than 0.5
-    
+
     # Feature Alignment (Intermediate Matching)
     feature_alignment_enabled: bool = False
     feature_alignment_weight: float = 0.1

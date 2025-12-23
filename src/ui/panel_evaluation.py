@@ -47,7 +47,7 @@ class EvaluationState:
         self.evaluator: Optional[ModelEvaluator] = None
         self.mic_inference: Optional[Union[MicrophoneInference, SimulatedMicrophoneInference]] = None
         self.is_mic_recording = False
-        
+
         # Detect device
         validator = get_cuda_validator(allow_cpu=True)
         self.device = "cuda" if validator.validate()[0] and validator.cuda_available else "cpu"
@@ -123,7 +123,7 @@ def load_model(model_path: str) -> str:
         eval_state.model_info = info
         eval_state.evaluator = evaluator
         eval_state.waveform_sr = info["config"].data.sample_rate
-        
+
         # Format status message
         status = f"✅ Model Loaded Successfully\n"
         status += f"Architecture: {info['config'].model.architecture}\n"
@@ -152,6 +152,7 @@ def _ensure_waveform_fig() -> None:
         ax.set_ylim([-1.0, 1.0])
         eval_state.waveform_fig, eval_state.waveform_ax, eval_state.waveform_line = fig, ax, line
 
+
 def _update_waveform_plot(audio: np.ndarray) -> Any:
     _ensure_waveform_fig()
     max_len = int(eval_state.waveform_sr * eval_state.window_sec)
@@ -163,16 +164,20 @@ def _update_waveform_plot(audio: np.ndarray) -> Any:
         eval_state.waveform_line.set_ydata(y)
     return eval_state.waveform_fig
 
+
 def evaluate_uploaded_files(files: List, threshold: float) -> Tuple[pd.DataFrame, str]:
     if eval_state.evaluator is None:
         return None, "❌ Please load a model first"
     try:
         results = eval_state.evaluator.evaluate_files([Path(f.name) for f in files], threshold=threshold, batch_size=32)
         eval_state.file_results = results
-        data = [{"Filename": r.filename, "Prediction": r.prediction, "Confidence": f"{r.confidence:.2%}"} for r in results]
+        data = [
+            {"Filename": r.filename, "Prediction": r.prediction, "Confidence": f"{r.confidence:.2%}"} for r in results
+        ]
         return pd.DataFrame(data), f"✅ Evaluation Complete. {len(results)} files evaluated."
     except Exception as e:
         return None, str(e)
+
 
 def export_results_to_csv() -> str:
     if not eval_state.file_results:
@@ -185,6 +190,7 @@ def export_results_to_csv() -> str:
         return f"✅ Results exported to: {export_dir / filename}"
     except Exception as e:
         return str(e)
+
 
 def start_microphone() -> Tuple[str, float, Optional[Any], str]:
     if eval_state.evaluator is None:
@@ -205,6 +211,7 @@ def start_microphone() -> Tuple[str, float, Optional[Any], str]:
     except Exception as e:
         return str(e), 0.0, None, ""
 
+
 def stop_microphone() -> Tuple[str, float, Optional[Any], str]:
     if not eval_state.is_mic_recording:
         return "⚠️ Not recording", 0.0, None, ""
@@ -212,6 +219,7 @@ def stop_microphone() -> Tuple[str, float, Optional[Any], str]:
         eval_state.mic_inference.stop()
     eval_state.is_mic_recording = False
     return "🔴 Stopped", 0.0, None, "\n".join(eval_state.mic_history)
+
 
 def get_microphone_status() -> Tuple:
     if not eval_state.is_mic_recording or eval_state.mic_inference is None:
@@ -224,33 +232,40 @@ def get_microphone_status() -> Tuple:
         return status, round(conf * 100, 2), _update_waveform_plot(chunk), "\n".join(eval_state.mic_history[-50:])
     return "🟢 Listening...", 0.0, None, "\n".join(eval_state.mic_history)
 
+
 def run_threshold_analysis() -> Tuple[gr.Plot, pd.DataFrame]:
     if eval_state.threshold_analyzer is None:
         return None, None
     results = eval_state.threshold_analyzer.analyze_range(np.linspace(0, 1, 21))
     df = pd.DataFrame(results)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['threshold'], y=df['precision'], name='Precision', line=dict(color='cyan')))
-    fig.add_trace(go.Scatter(x=df['threshold'], y=df['recall'], name='Recall', line=dict(color='orange')))
+    fig.add_trace(go.Scatter(x=df["threshold"], y=df["precision"], name="Precision", line=dict(color="cyan")))
+    fig.add_trace(go.Scatter(x=df["threshold"], y=df["recall"], name="Recall", line=dict(color="orange")))
     fig.update_layout(title="PR vs Threshold", template="plotly_dark", height=400)
     return fig, df
+
 
 def run_benchmark_test(num_iterations: int = 10) -> Dict[str, Any]:
     if eval_state.model is None:
         return {"error": "No model loaded"}
     try:
-        stage = SentryInferenceStage(model=eval_state.model, name=eval_state.model_info["config"].model.architecture, device=eval_state.device)
+        stage = SentryInferenceStage(
+            model=eval_state.model, name=eval_state.model_info["config"].model.architecture, device=eval_state.device
+        )
         runner = BenchmarkRunner(stage)
-        audio = np.random.randn(int(eval_state.waveform_sr * eval_state.model_info["config"].data.audio_duration)).astype(np.float32)
+        audio = np.random.randn(
+            int(eval_state.waveform_sr * eval_state.model_info["config"].data.audio_duration)
+        ).astype(np.float32)
         metrics = runner.run_benchmark(audio, num_iterations=num_iterations)
         return {
-            "Model": metrics["name"], 
-            "Mean Latency": f"{metrics['mean_latency_ms']:.2f} ms", 
-            "RAM Usage": f"{metrics['process_memory_mb']:.2f} MB", 
-            "GPU Usage": f"{metrics.get('gpu_memory_allocated_mb', 0):.2f} MB"
+            "Model": metrics["name"],
+            "Mean Latency": f"{metrics['mean_latency_ms']:.2f} ms",
+            "RAM Usage": f"{metrics['process_memory_mb']:.2f} MB",
+            "GPU Usage": f"{metrics.get('gpu_memory_allocated_mb', 0):.2f} MB",
         }
     except Exception as e:
         return {"error": str(e)}
+
 
 def collect_false_positives() -> str:
     if not eval_state.test_results or eval_state.last_labels is None:
@@ -261,6 +276,7 @@ def collect_false_positives() -> str:
             eval_state.fp_collector.add_sample(r.raw_audio, {"filename": r.filename, "confidence": r.confidence})
     return generate_fp_gallery_html()
 
+
 def generate_fp_gallery_html() -> str:
     samples = eval_state.fp_collector.get_samples()
     if not samples:
@@ -269,29 +285,32 @@ def generate_fp_gallery_html() -> str:
     for s in samples:
         audio_url = f"file/{eval_state.fp_collector.output_dir}/{s['audio_path']}"
         html += f'<div style="background: #2d2d2d; padding: 10px;"><p>File: {s["metadata"]["filename"]}</p><audio src="{audio_url}" controls></audio></div>'
-    return html + '</div>'
+    return html + "</div>"
+
 
 def clear_false_positives() -> str:
     eval_state.fp_collector.clear()
     return "<p>Cleared.</p>"
 
+
 def mine_hard_negatives_handler() -> str:
     if not eval_state.test_results:
         return "❌ Run test set evaluation first."
-    
+
     count = eval_state.miner.mine_from_results(eval_state.test_results)
     return f"✅ Mined {count} new potential hard negatives. Check the 'Mining Queue' tab."
+
 
 def get_mining_gallery_html() -> str:
     pending = eval_state.miner.get_pending()
     if not pending:
         return "<p style='text-align: center; padding: 20px;'>Queue is empty. Use the 'Mine Hard Negatives' button in evaluation results.</p>"
-    
+
     html = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">'
     for item in pending:
         # We assume files are accessible via Gradio or absolute path (if local)
         # For simplicity, we just display the info and path for now
-        html += f'''
+        html += f"""
         <div style="background: #2d2d2d; border-radius: 8px; padding: 15px; border: 1px solid #444; display: flex; justify-content: space-between; align-items: center;">
             <div style="flex: 1;">
                 <p style="margin: 0; font-weight: bold;">{item["filename"]}</p>
@@ -303,11 +322,11 @@ def get_mining_gallery_html() -> str:
                 <button onclick="discardSample('{item["full_path"]}')" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">❌ Discard</button>
             </div>
         </div>
-        '''
-    html += '</div>'
-    
+        """
+    html += "</div>"
+
     # Add JS for buttons
-    html += '''
+    html += """
     <script>
     function confirmSample(path) {
         let pathEl = document.querySelector("#mining_verify_path input");
@@ -326,16 +345,19 @@ def get_mining_gallery_html() -> str:
         statusEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
     </script>
-    '''
+    """
     return html
+
 
 def verify_sample_handler(path: str, status: str) -> str:
     eval_state.miner.update_status(path, status)
     return get_mining_gallery_html()
 
+
 def inject_mined_samples_handler() -> str:
     count = eval_state.miner.inject_to_dataset()
     return f"✅ Injected {count} confirmed negatives into training data."
+
 
 def evaluate_test_set(
     data_root: str,
@@ -362,7 +384,7 @@ def evaluate_test_set(
     try:
         # Default to data/splits/test.json if not provided
         from src.config.paths import paths
-        
+
         if not test_split_path or test_split_path.strip() == "":
             test_split_path = str(paths.SPLITS / "test.json")
 
@@ -380,9 +402,9 @@ def evaluate_test_set(
 
         # Load test dataset
         # We rely on GpuAudioProcessor (initialized in ModelEvaluator) to handle CMVN via centralized paths
-        # So we don't need to pass cmvn_path here for GpuAudioProcessor, BUT WakewordDataset might need it 
+        # So we don't need to pass cmvn_path here for GpuAudioProcessor, BUT WakewordDataset might need it
         # if we weren't using return_raw_audio=True. Since we are, it's fine.
-        
+
         # However, to be safe and consistent with training, we pass it.
         cmvn_path = paths.CMVN_STATS
 
@@ -499,6 +521,7 @@ def evaluate_test_set(
         logger.exception(e)
         return {"status": error_msg}, None, None, {}
 
+
 def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
     """Create confusion matrix visualization"""
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -543,6 +566,7 @@ def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
 
     plt.tight_layout()
     return fig
+
 
 def create_roc_curve_plot(test_dataset: WakewordDataset) -> plt.Figure:
     """Create ROC curve visualization"""
@@ -608,6 +632,7 @@ def create_roc_curve_plot(test_dataset: WakewordDataset) -> plt.Figure:
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.text(0.5, 0.5, f"ROC curve generation failed:\n{str(e)}", ha="center", va="center", transform=ax.transAxes)
         return fig
+
 
 def create_evaluation_panel(state: gr.State) -> gr.Blocks:
     """
@@ -794,15 +819,15 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             with gr.TabItem("⛏️ Mining Queue"):
                 gr.Markdown("### Hard Negative Verification Queue")
                 gr.Markdown("Review mined false positives and confirm them for the next training run.")
-                
+
                 with gr.Row():
                     refresh_queue_btn = gr.Button("🔄 Refresh Queue")
                     inject_mined_btn = gr.Button("💉 Inject Confirmed to Dataset", variant="primary")
-                
+
                 injection_status = gr.Markdown("")
-                
+
                 mining_queue_html = gr.HTML(value=get_mining_gallery_html(), label="Verification Queue")
-                
+
                 # Hidden state for verifying samples via JS
                 verify_path = gr.Textbox(visible=False, elem_id="mining_verify_path")
                 verify_status = gr.Textbox(visible=False, elem_id="mining_verify_status")
@@ -908,11 +933,11 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
         mine_fp_btn.click(fn=mine_hard_negatives_handler, outputs=[mining_status])
         refresh_queue_btn.click(fn=get_mining_gallery_html, outputs=[mining_queue_html])
         inject_mined_btn.click(fn=inject_mined_samples_handler, outputs=[injection_status])
-        
+
         # JS bridge for verification
         def js_bridge_verify(path, status):
             return verify_sample_handler(path, status)
-            
+
         # We need a way to trigger verification from JS.
         # Gradio doesn't easily allow arbitrary JS -> Python calls without a hidden component.
         # I'll use a hidden button or similar if needed, but for now I'll just refresh.

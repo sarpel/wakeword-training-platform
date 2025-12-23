@@ -125,11 +125,7 @@ class WakewordDataset(Dataset):
                 mined_files = list(mined_path.glob("*.wav")) + list(mined_path.glob("*.mp3"))
                 logger.info(f"Adding {len(mined_files)} mined negatives to dataset")
                 for f in mined_files:
-                    self.files.append({
-                        "path": str(f),
-                        "category": "hard_negative",
-                        "label": 0
-                    })
+                    self.files.append({"path": str(f), "category": "hard_negative", "label": 0})
 
         # Create label mapping
         self.label_map = self._create_label_map(class_mapping)

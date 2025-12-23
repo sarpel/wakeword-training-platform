@@ -321,12 +321,12 @@ class Trainer:
                     f"  Val:   Loss={val_loss:.4f}, Acc={val_metrics.accuracy:.4f}, "
                     f"F1={val_metrics.f1_score:.4f}, pAUC={val_metrics.pauc:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}"
                 )
-                
+
                 # Standout F1 Score log
                 f1_formatted = f"{val_metrics.f1_score:.3f}".replace(".", ",")
-                logger.info("\n" + "-"*30)
+                logger.info("\n" + "-" * 30)
                 logger.info(f"⭐ F1 SCORE: {f1_formatted} ⭐")
-                logger.info("-"*30 + "\n")
+                logger.info("-" * 30 + "\n")
 
                 logger.info(f"  Learning Rate: {current_lr:.6f}")
                 if improved:
@@ -369,23 +369,19 @@ class Trainer:
         if getattr(self.config.qat, "enabled", False):
             try:
                 from src.training.qat_utils import compare_model_accuracy, convert_model_to_quantized
-                
+
                 logger.info("Generating Quantization Error Report...")
                 # We need a copy of the model to convert it to quantized without destroying the original
                 # However, for the report, we can just convert it since training is done.
-                fp32_model = self.model # This is actually the QAT model (with fake quants)
-                
+                fp32_model = self.model  # This is actually the QAT model (with fake quants)
+
                 # To get true INT8 performance, we convert
                 # Moving to CPU first is safer for quantization conversion in some PyTorch versions
                 self.model.to("cpu")
                 quantized_model = convert_model_to_quantized(self.model)
-                
+
                 qat_report = compare_model_accuracy(
-                    fp32_model, 
-                    quantized_model, 
-                    self.val_loader, 
-                    device="cpu",
-                    audio_processor=self.audio_processor
+                    fp32_model, quantized_model, self.val_loader, device="cpu", audio_processor=self.audio_processor
                 )
                 results["qat_report"] = qat_report
             except Exception as e:
@@ -402,24 +398,26 @@ class Trainer:
 
         if epoch == self.config.qat.start_epoch:
             logger.info(f"--- QAT Transition Triggered (Epoch {epoch}) ---")
-            
+
             # 1. Prepare model for QAT (inserts observers)
             from src.training.qat_utils import prepare_model_for_qat
+
             self.model.train()
             self.model = prepare_model_for_qat(self.model, self.config.qat)
             self.model.to(self.device)
-            
+
             # 2. Calibrate model to initialize observers with statistics
             from src.training.qat_utils import calibrate_model
+
             logger.info("Calibrating QAT observers...")
             calibrate_model(self.model, self.val_loader, device=self.device)
-            
+
             # 3. Re-initialize optimizer for the new model parameters (fake quants)
             # Use lower learning rate for QAT fine-tuning if desired
             self.optimizer, self.scheduler = create_optimizer_and_scheduler(
                 self.model, self.config, steps_per_epoch=len(self.train_loader)
             )
-            
+
             # 4. Disable mixed precision as it can interfere with QAT observers
             if self.use_mixed_precision:
                 logger.info("Disabling mixed precision for QAT fine-tuning")

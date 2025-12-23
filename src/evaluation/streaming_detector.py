@@ -27,39 +27,36 @@ logger = structlog.get_logger(__name__)
 class CascadeInferenceEngine(InferenceEngine):
     """
     Orchestration engine for distributed cascade inference.
-    
+
     Manages multiple inference stages (e.g., Sentry, Judge) and handles
     the logic for passing results between them.
     """
-    
+
     def __init__(self):
         self.stages: List[StageBase] = []
-        
+
     def add_stage(self, stage: StageBase):
         """Add an inference stage to the cascade"""
         self.stages.append(stage)
         logger.info(f"Added stage to cascade: {stage.name}")
-        
+
     def run(self, audio: np.ndarray) -> List[dict]:
         """
         Execute the cascade inference.
-        
-        Follows a sequential pipeline where each stage only runs if 
+
+        Follows a sequential pipeline where each stage only runs if
         the previous stage detected a potential wakeword.
         """
         results = []
         for stage in self.stages:
             stage_result = stage.predict(audio)
-            results.append({
-                "stage": stage.name,
-                "result": stage_result
-            })
-            
+            results.append({"stage": stage.name, "result": stage_result})
+
             # Cascade handoff: stop if not detected
             if not stage_result.get("detected", True):
                 logger.info(f"Cascade stopped at {stage.name} (no detection)")
                 break
-            
+
         return results
 
 

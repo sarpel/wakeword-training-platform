@@ -36,7 +36,7 @@ def prepare_model_for_qat(
 
     # 1. Set backend
     supported_engines = torch.backends.quantized.supported_engines
-    
+
     # Determine execution engine
     execution_engine = "none"
     if config.backend in supported_engines:
@@ -47,13 +47,13 @@ def prepare_model_for_qat(
         execution_engine = "x86"
     elif "onednn" in supported_engines:
         execution_engine = "onednn"
-    
+
     if execution_engine != config.backend:
         logger.warning(
             f"Requested QAT backend '{config.backend}' is not supported as an execution engine on this machine. "
             f"Using '{execution_engine}' engine for training, but model will be prepared for '{config.backend}'."
         )
-    
+
     if execution_engine != "none":
         torch.backends.quantized.engine = execution_engine
 
@@ -125,25 +125,25 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
     for name, module in model.named_children():
         if isinstance(module, FusedMovingAvgObsFakeQuantize):
             logger.info(f"Replacing fused fake quant: {name}")
-            
+
             # Select appropriate observer and kwargs
             # ONNX export often fails with per-channel activation quantization
             # We check if it's weight (ch_axis=0) or activation (ch_axis=-1 or similar)
             is_weight = hasattr(module, "ch_axis") and module.ch_axis == 0
-            
+
             if is_weight:
                 obs_cls = MovingAveragePerChannelMinMaxObserver
-                
+
                 # Safeguard: Per-channel observer only supports specific qschemes
                 valid_per_ch_schemes = [
-                    torch.per_channel_symmetric, 
-                    torch.per_channel_affine, 
-                    torch.per_channel_affine_float_qparams
+                    torch.per_channel_symmetric,
+                    torch.per_channel_affine,
+                    torch.per_channel_affine_float_qparams,
                 ]
                 qscheme = module.qscheme
                 if qscheme not in valid_per_ch_schemes:
                     qscheme = torch.per_channel_affine
-                
+
                 kwargs = {
                     "observer": obs_cls,
                     "quant_min": module.quant_min,
@@ -155,12 +155,12 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
             else:
                 # Use per-tensor for activations to avoid ONNX export issues
                 obs_cls = MovingAverageMinMaxObserver
-                
+
                 # Per-tensor symmetric or affine
                 qscheme = torch.per_tensor_affine
                 if module.qscheme == torch.per_tensor_symmetric:
                     qscheme = torch.per_tensor_symmetric
-                
+
                 kwargs = {
                     "observer": obs_cls,
                     "quant_min": module.quant_min,
@@ -168,14 +168,14 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
                     "dtype": module.dtype,
                     "qscheme": qscheme,
                 }
-            
+
             new_fq = FakeQuantize(**kwargs)
-            
+
             # Copy state (scale, zero_point)
             if is_weight:
                 scale = module.scale
                 zp = module.zero_point
-                
+
                 # Check if scale needs expansion (e.g. loaded from FP32 checkpoint)
                 # We need to find the channel count. We can peek at the parent or sibling
                 # but usually we can infer it from the module being replaced if it's a FQ.
@@ -183,8 +183,8 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
                 # We can use the fact that if it's a weight FQ, it was replaced in a Conv/Linear.
                 # Since we are recursive, we might not have the parent easily.
                 # BUT, we can check the size of the weight in the model if we had it.
-                
-                # Dynamic repair: If scale is size 1 but we are per-channel, 
+
+                # Dynamic repair: If scale is size 1 but we are per-channel,
                 # we might need to expand it. We'll try to find a sibling "weight"
                 # if this is being called on a module that HAS a weight.
                 if scale.numel() == 1 and hasattr(model, "weight"):
@@ -202,19 +202,19 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
                 if scale.numel() > 1:
                     scale = scale[0:1]
                 new_fq.register_buffer("scale", scale)
-                
+
                 zp = module.zero_point
                 if zp.numel() > 1:
                     zp = zp[0:1]
                 new_fq.register_buffer("zero_point", zp)
-            
+
             # Disable observer and enable fake_quant
             new_fq.observer_enabled[0] = 0
             new_fq.fake_quant_enabled[0] = 1
-            
+
             # Replace in parent
             setattr(model, name, new_fq)
-        
+
         else:
             # Recursive call
             cleanup_qat_for_export(module)
@@ -234,29 +234,29 @@ def calibrate_model(model: nn.Module, data_loader_or_list: Any, device: str = "c
     logger.info("Starting model calibration...")
     model.eval()
     model.to(device)
-    
+
     with torch.no_grad():
         for i, batch in enumerate(data_loader_or_list):
             if isinstance(batch, (list, tuple)):
                 inputs = batch[0]
             else:
                 inputs = batch
-            
+
             inputs = inputs.to(device)
             model(inputs)
-            
-            if i >= 100: # Limit calibration samples
+
+            if i >= 100:  # Limit calibration samples
                 break
-                
+
     logger.info("Calibration complete.")
 
 
 def compare_model_accuracy(
-    fp32_model: nn.Module, 
-    quant_model: nn.Module, 
-    val_loader_or_list: Any, 
+    fp32_model: nn.Module,
+    quant_model: nn.Module,
+    val_loader_or_list: Any,
     device: str = "cpu",
-    audio_processor: Optional[nn.Module] = None
+    audio_processor: Optional[nn.Module] = None,
 ) -> Dict[str, float]:
     """
     Compare accuracy of FP32 vs Quantized model.
@@ -271,10 +271,11 @@ def compare_model_accuracy(
     Returns:
         Dictionary with accuracy results and drop
     """
+
     def evaluate(model, data):
         # Move to CPU for quantized models if requested
         model.eval()
-        
+
         # Set quantized engine for CPU evaluation
         if device == "cpu":
             model.to("cpu")
@@ -299,18 +300,18 @@ def compare_model_accuracy(
                     continue
 
                 inputs, targets = inputs.to(device), targets.to(device)
-                
+
                 # Apply audio processor if provided
                 if audio_processor is not None:
                     # Ensure processor is on the same device as inputs
                     audio_processor.to(device)
                     audio_processor.eval()
                     inputs = audio_processor(inputs)
-                
+
                 # Ensure inputs are contiguous for quantized ops
                 if device == "cpu":
                     inputs = inputs.contiguous()
-                    
+
                 outputs = model(inputs)
                 preds = torch.argmax(outputs, dim=1)
                 correct += (preds == targets).sum().item()
@@ -320,43 +321,19 @@ def compare_model_accuracy(
     logger.info("Evaluating FP32 model...")
     # Keep FP32 on its original device for speed if it's CUDA
     fp32_acc = evaluate(fp32_model, val_loader_or_list)
-    
+
     logger.info("Evaluating Quantized model...")
     quant_acc = evaluate(quant_model, val_loader_or_list)
 
-
-    
-
-
     drop = fp32_acc - quant_acc
 
-
-    
-
-
     results = {
-
-
         "fp32_acc": fp32_acc,
-
-
         "quant_acc": quant_acc,
-
-
         "drop": drop,
-
-
-        "relative_drop": drop / fp32_acc if fp32_acc > 0 else 0.0
-
-
+        "relative_drop": drop / fp32_acc if fp32_acc > 0 else 0.0,
     }
-
-
-    
-
 
     logger.info(f"Accuracy comparison: FP32={fp32_acc:.4f}, Quant={quant_acc:.4f}, Drop={drop:.4f}")
 
-
     return results
-

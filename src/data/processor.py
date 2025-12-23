@@ -22,7 +22,7 @@ class AudioProcessor(nn.Module):
     """
     GPU-accelerated Audio Processor.
     Handles feature extraction (Mel/MFCC) and CMVN on GPU.
-    
+
     Note: Audio augmentation is handled separately in the Trainer class
     to avoid double augmentation and allow proper epoch-based scheduling.
     """
@@ -52,7 +52,7 @@ class AudioProcessor(nn.Module):
         if cmvn_path:
             try:
                 temp_cmvn = CMVN(stats_path=cmvn_path)
-                
+
                 # Verify dimensions match config
                 expected_dim = config.data.n_mfcc if config.data.feature_type == "mfcc" else config.data.n_mels
                 if temp_cmvn.mean.shape[0] != expected_dim:

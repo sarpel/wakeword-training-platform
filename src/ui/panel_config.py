@@ -301,7 +301,9 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     with gr.Row():
                         # Distillation
                         distillation_enabled = gr.Checkbox(label="Enable Distillation", value=False)
-                        teacher_arch = gr.Dropdown(choices=["wav2vec2", "conformer", "dual"], value="wav2vec2", label="Teacher Arch")
+                        teacher_arch = gr.Dropdown(
+                            choices=["wav2vec2", "conformer", "dual"], value="wav2vec2", label="Teacher Arch"
+                        )
                         dist_temp = gr.Slider(minimum=1.0, maximum=10.0, value=2.0, step=0.5, label="Distillation Temp")
                         dist_alpha = gr.Slider(
                             minimum=0.0, maximum=1.0, value=0.5, step=0.1, label="Distillation Alpha"
@@ -328,7 +330,9 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
 
         with gr.Group(visible=False) as mismatch_warning_box:
             gr.Markdown("### ⚠️ Dataset Feature Mismatch Detected")
-            mismatch_details_msg = gr.Markdown("The active configuration does not match the features extracted in the dataset. This will cause errors during training.")
+            mismatch_details_msg = gr.Markdown(
+                "The active configuration does not match the features extracted in the dataset. This will cause errors during training."
+            )
             with gr.Row():
                 reextract_btn = gr.Button("⚡ Go to Dataset Panel to Re-extract", variant="primary")
                 revert_btn = gr.Button("🔄 Revert to Defaults", variant="secondary")
@@ -682,18 +686,19 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 # Check for mismatch
                 is_mismatch, details = check_mismatch(config)
 
-                return tuple(params + [
-                    status, 
-                    gr.update(visible=False),
-                    gr.update(visible=is_mismatch),
-                    details if is_mismatch else ""
-                ])
+                return tuple(
+                    params
+                    + [status, gr.update(visible=False), gr.update(visible=is_mismatch), details if is_mismatch else ""]
+                )
 
             except Exception as e:
                 error_msg = f"Error loading preset: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""])
+                return tuple(
+                    [None] * len(all_inputs)
+                    + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""]
+                )
 
         def update_config_handler(*params: Any) -> str:
             """Update current configuration from UI"""
@@ -785,18 +790,19 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 # Check for mismatch
                 is_mismatch, details = check_mismatch(config)
 
-                return tuple(params + [
-                    status, 
-                    gr.update(visible=False),
-                    gr.update(visible=is_mismatch),
-                    details if is_mismatch else ""
-                ])
+                return tuple(
+                    params
+                    + [status, gr.update(visible=False), gr.update(visible=is_mismatch), details if is_mismatch else ""]
+                )
 
             except Exception as e:
                 error_msg = f"Error loading configuration: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""])
+                return tuple(
+                    [None] * len(all_inputs)
+                    + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""]
+                )
 
         def reset_config_handler() -> Tuple:
             """Reset to default configuration"""
@@ -823,18 +829,19 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 # Check for mismatch
                 is_mismatch, details = check_mismatch(config)
 
-                return tuple(params + [
-                    status, 
-                    gr.update(visible=False),
-                    gr.update(visible=is_mismatch),
-                    details if is_mismatch else ""
-                ])
+                return tuple(
+                    params
+                    + [status, gr.update(visible=False), gr.update(visible=is_mismatch), details if is_mismatch else ""]
+                )
 
             except Exception as e:
                 error_msg = f"Error resetting configuration: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""])
+                return tuple(
+                    [None] * len(all_inputs)
+                    + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""]
+                )
 
         def validate_config_handler(*params: Any) -> Tuple[str, str]:
             """Validate current configuration"""
