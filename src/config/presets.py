@@ -184,17 +184,19 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
     MCU Production configuration (No-PSRAM)
 
     Optimized for:
-    - Ultra-low memory devices (ESP32 without PSRAM)
-    - TinyConv [64, 64, 64, 64] (Industry standard DS-CNN style)
-    - <100KB Peak RAM
+    - ESP32-S3 (Atom Echo) without PSRAM
+    - TinyConv [64, 128, 128, 128] (Optimized for S3 Memory)
+    - 64 Mel bands for higher resolution
+    - Knowledge Distillation enabled by default
+    - <250KB Peak RAM
     """
     return WakewordConfig(
         config_name="mcu_tiny_production",
-        description="Production: MCU (No-PSRAM) - TinyConv",
+        description="Production: ESP32-S3 (Atom Echo) - TinyConv High-Quality",
         data=DataConfig(
             sample_rate=16000,
             audio_duration=1.0,
-            n_mels=40,
+            n_mels=64,             # ⬆️ Increased resolution (40 -> 64)
             hop_length=160,
         ),
         training=TrainingConfig(
@@ -202,44 +204,53 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             epochs=200,
             learning_rate=0.0005,
             early_stopping_patience=25,
+            use_ema=True,          # ⬆️ Enabled EMA for better stability
         ),
         model=ModelConfig(
             architecture="tiny_conv",
             num_classes=2,
-            dropout=0.15,
-            tcn_num_channels=[64, 64, 64, 64],
+            dropout=0.2,           # ⬆️ Slightly increased dropout for larger model
+            tcn_num_channels=[64, 128, 128, 128], # ⬆️ Increased capacity
         ),
         augmentation=AugmentationConfig(
             background_noise_prob=0.8,
-            rir_prob=0.5,
+            rir_prob=0.6,          # ⬆️ Increased RIR for better robustness
             time_shift_prob=0.7,
+            noise_snr_min=3,       # ⬆️ Tougher noise cases
+            noise_snr_max=15,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=5e-5,
-            mixed_precision=False,
+            weight_decay=0.01,     # ⬆️ Standard weight decay
+            mixed_precision=True,
         ),
         loss=LossConfig(
-            loss_function="cross_entropy",
-            label_smoothing=0.02,         # ⬇️ Much less smoothing
+            loss_function="focal_loss", # ⬆️ Switch to focal loss for better hard-negative handling
+            label_smoothing=0.05,
             class_weights="balanced",
             hard_negative_weight=5.0,
         ),
         qat=QATConfig(
             enabled=True,
             backend="qnnpack",
-            start_epoch=10,
+            start_epoch=15,
+        ),
+        distillation=DistillationConfig(
+            enabled=True,          # ⬆️ Enabled Knowledge Distillation
+            teacher_architecture="wav2vec2",
+            temperature=2.0,
+            alpha=0.5,
         ),
         cmvn=CMVNConfig(enabled=True),
         streaming=StreamingConfig(
-            hysteresis_high=0.8,
-            hysteresis_low=0.4,
+            hysteresis_high=0.85,
+            hysteresis_low=0.35,
             buffer_length_ms=1000,
             smoothing_window=3,
         ),
         size_targets=SizeTargetConfig(
-            max_flash_kb=100,
-            max_ram_kb=80,
+            max_flash_kb=256,      # ⬆️ Updated for ESP32-S3
+            max_ram_kb=192,        # ⬆️ Updated for ESP32-S3 internal RAM limits
         ),
         calibration=CalibrationConfig(num_samples=300, positive_ratio=0.3),
     )
