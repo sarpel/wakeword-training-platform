@@ -46,7 +46,11 @@ class InferenceEngine:
                 raise FileNotFoundError(f"Model not found at {model_path}")
 
         logger.info(f"Loading checkpoint from {model_path}")
-        checkpoint = torch.load(model_path, map_location=self.device)
+        try:
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
+        except TypeError:
+            # Fallback for older torch versions if necessary
+            checkpoint = torch.load(model_path, map_location=self.device)
         
         # Reconstruct Config
         config_data = checkpoint.get("config")
@@ -63,6 +67,8 @@ class InferenceEngine:
         
         if config.model.architecture == "cd_dnn":
             input_size = feature_dim * time_steps
+        elif config.model.architecture == "wav2vec2":
+            input_size = None # Handled by Wav2VecWakeword internally
         else:
             input_size = feature_dim
 

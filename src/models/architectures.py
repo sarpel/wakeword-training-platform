@@ -1080,10 +1080,17 @@ def create_model(architecture: str, num_classes: int = 2, pretrained: bool = Fal
             **kwargs
         )
 
+    elif architecture == "wav2vec2":
+        from src.models.huggingface import Wav2VecWakeword
+        return Wav2VecWakeword(
+            num_classes=num_classes,
+            **kwargs
+        )
+
     else:
         raise ValueError(
             f"Unknown architecture: {architecture}. "
-            f"Supported: resnet18, mobilenetv3, lstm, gru, tcn, tiny_conv, cd_dnn"
+            f"Supported: resnet18, mobilenetv3, lstm, gru, tcn, tiny_conv, cd_dnn, conformer, wav2vec2"
         )
 
 
