@@ -480,6 +480,34 @@ def export_model_to_onnx(
     results["duration"] = duration
     results["input_shape"] = sample_input_shape
 
+    # Check size targets
+    if hasattr(config, "size_targets"):
+        targets = config.size_targets
+        results["size_warning"] = False
+
+        # Check ONNX size
+        onnx_size_kb = results.get("file_size_mb", 0) * 1024
+        if targets.max_flash_kb > 0 and onnx_size_kb > targets.max_flash_kb:
+            logger.warning(
+                "ONNX model size target exceeded",
+                actual_kb=f"{onnx_size_kb:.1f}",
+                target_kb=targets.max_flash_kb,
+                severity="warning"
+            )
+            results["size_warning"] = True
+
+        # Check TFLite size if exported
+        if results.get("tflite_success"):
+            tflite_size_kb = results.get("tflite_size_mb", 0) * 1024
+            if targets.max_flash_kb > 0 and tflite_size_kb > targets.max_flash_kb:
+                logger.warning(
+                    "TFLite model size target exceeded",
+                    actual_kb=f"{tflite_size_kb:.1f}",
+                    target_kb=targets.max_flash_kb,
+                    severity="warning"
+                )
+                results["size_warning"] = True
+
     return results
 
 

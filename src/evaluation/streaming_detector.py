@@ -19,6 +19,8 @@ import torch  # For PyTorch model inference
 
 from src.evaluation.types import InferenceEngine, StageBase
 
+from src.config.defaults import StreamingConfig
+
 # Initialize logger for this module
 logger = structlog.get_logger(__name__)
 
@@ -81,6 +83,7 @@ class StreamingDetector:
         lockout_ms: int = 1500,
         vote_window: int = 5,
         vote_threshold: int = 3,
+        config: Optional[StreamingConfig] = None,
     ):
         """
         Initialize streaming detector
@@ -92,22 +95,33 @@ class StreamingDetector:
             lockout_ms: Lockout period in milliseconds after detection
             vote_window: Window size for voting (number of recent scores)
             vote_threshold: Number of votes needed for detection
+            config: Optional StreamingConfig object to override parameters
         """
-        self.threshold_on = threshold_on
-        self.threshold_off = threshold_off if threshold_off is not None else max(threshold_on - hysteresis, 0)
-        self.lockout_ms = lockout_ms
-        self.vote_window = vote_window
-        self.vote_threshold = vote_threshold
+        if config:
+            self.threshold_on = threshold_on  # threshold_on is usually separate from streaming config
+            self.threshold_off = config.hysteresis_low
+            self.lockout_ms = config.cooldown_ms
+            self.vote_window = config.smoothing_window
+            self.vote_threshold = max(1, config.smoothing_window // 2 + 1)
+            # Override threshold_on if it's explicitly high in config or passed
+            if hasattr(config, "hysteresis_high"):
+                self.threshold_on = config.hysteresis_high
+        else:
+            self.threshold_on = threshold_on
+            self.threshold_off = threshold_off if threshold_off is not None else max(threshold_on - hysteresis, 0)
+            self.lockout_ms = lockout_ms
+            self.vote_window = vote_window
+            self.vote_threshold = vote_threshold
 
         # State
-        self.score_buffer: Deque[float] = deque(maxlen=vote_window)
+        self.score_buffer: Deque[float] = deque(maxlen=self.vote_window)
         self.locked_until_ms = 0
         self.is_active = False
 
         logger.info(
             f"StreamingDetector initialized: "
-            f"threshold_on={threshold_on:.3f}, threshold_off={self.threshold_off:.3f}, "
-            f"lockout={lockout_ms}ms, vote={vote_threshold}/{vote_window}"
+            f"threshold_on={self.threshold_on:.3f}, threshold_off={self.threshold_off:.3f}, "
+            f"lockout={self.lockout_ms}ms, vote={self.vote_threshold}/{self.vote_window}"
         )
 
     def step(self, score: float, timestamp_ms: int) -> bool:
