@@ -4,11 +4,12 @@ Utilities for collecting and managing analysis data (e.g. False Positives).
 
 import json
 import uuid
-import structlog
+from pathlib import Path
+from typing import Any, Dict, List
+
 import numpy as np
 import soundfile as sf
-from pathlib import Path
-from typing import Dict, Any, List
+import structlog
 
 logger = structlog.get_logger(__name__)
 

@@ -2,13 +2,15 @@
 Modular Inference Stages for Distributed Cascade Architecture.
 """
 
+from typing import Any, Dict, Optional
+
 import numpy as np
 import torch
 import torch.nn as nn
-from typing import Optional, Dict, Any
 
-from src.evaluation.types import StageBase
 from src.data.feature_extraction import FeatureExtractor
+from src.evaluation.types import StageBase
+
 
 class SentryInferenceStage(StageBase):
     """

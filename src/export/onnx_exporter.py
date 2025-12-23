@@ -345,7 +345,7 @@ def export_model_to_onnx(
 
     # Create model
     from src.models.architectures import create_model
-    from src.training.qat_utils import prepare_model_for_qat, cleanup_qat_for_export
+    from src.training.qat_utils import cleanup_qat_for_export, prepare_model_for_qat
 
     # Calculate input size for model
     input_samples = int(config.data.sample_rate * config.data.audio_duration)

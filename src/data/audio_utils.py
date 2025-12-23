@@ -3,12 +3,12 @@ Audio Utilities for Wakeword Training Platform
 File validation, loading, and basic processing
 """
 
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import librosa
 import numpy as np
-import shutil
 import soundfile as sf
 import structlog
 

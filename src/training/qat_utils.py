@@ -4,7 +4,7 @@ Handles model preparation and configuration for QAT.
 """
 
 import logging
-from typing import Optional, Any, Dict
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -110,25 +110,16 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
 
     # Try to import the Fused class to check against
     try:
-        from torch.ao.quantization.fake_quantize import (
-            FakeQuantize,
-            FusedMovingAvgObsFakeQuantize,
-        )
+        from torch.ao.quantization.fake_quantize import FakeQuantize, FusedMovingAvgObsFakeQuantize
     except ImportError:
         try:
             # Fallback for older PyTorch
-            from torch.quantization.fake_quantize import (
-                FakeQuantize,
-                FusedMovingAvgObsFakeQuantize,
-            )
+            from torch.quantization.fake_quantize import FakeQuantize, FusedMovingAvgObsFakeQuantize
         except ImportError:
             logger.warning("Could not import FusedMovingAvgObsFakeQuantize. Skipping cleanup.")
             return model
 
-    from torch.ao.quantization.observer import (
-        MovingAverageMinMaxObserver,
-        MovingAveragePerChannelMinMaxObserver,
-    )
+    from torch.ao.quantization.observer import MovingAverageMinMaxObserver, MovingAveragePerChannelMinMaxObserver
 
     # Iterate and replace
     for name, module in model.named_children():

@@ -11,8 +11,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.models.huggingface import Wav2VecWakeword
 from src.models.architectures import create_model
+from src.models.huggingface import Wav2VecWakeword
 from src.training.trainer import Trainer
 
 logger = logging.getLogger(__name__)

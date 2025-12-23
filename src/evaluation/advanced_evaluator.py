@@ -4,9 +4,9 @@ if TYPE_CHECKING:
     from src.evaluation.evaluator import ModelEvaluator
     from torch.utils.data import Dataset
 
+import numpy as np
 import structlog
 import torch
-import numpy as np
 
 from src.training.advanced_metrics import calculate_comprehensive_metrics
 

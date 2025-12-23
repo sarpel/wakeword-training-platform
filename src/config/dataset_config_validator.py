@@ -10,7 +10,6 @@ import numpy as np
 import structlog
 
 from src.config.defaults import WakewordConfig
-
 from src.data.feature_extraction import FeatureExtractor
 
 logger = structlog.get_logger(__name__)

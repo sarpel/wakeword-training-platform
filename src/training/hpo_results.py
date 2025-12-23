@@ -1,6 +1,7 @@
 
-from typing import Dict, Any, Union, List
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Union
+
 
 @dataclass
 class HPOResult:

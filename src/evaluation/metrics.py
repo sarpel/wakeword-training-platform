@@ -2,9 +2,10 @@
 Evaluation Metrics for Wakeword Detection
 """
 
+from typing import Optional, Union
+
 import numpy as np
 import torch
-from typing import Union, Optional
 
 try:
     from sklearn.metrics import auc, roc_curve

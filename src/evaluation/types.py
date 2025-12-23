@@ -1,7 +1,9 @@
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import List, Optional
+
 import numpy as np
+
 
 class StageBase(ABC):
     """Base class for all inference stages (e.g., Sentry, Judge)"""

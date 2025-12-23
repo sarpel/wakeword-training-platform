@@ -2,13 +2,14 @@
 Hard Negative Mining for Wakeword Detection
 """
 
-import os
 import json
+import os
 import shutil
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-import structlog
+from typing import Any, Dict, List, Optional
+
 import numpy as np
+import structlog
 
 from src.evaluation.types import EvaluationResult
 

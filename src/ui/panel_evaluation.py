@@ -16,24 +16,24 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
 import plotly.graph_objects as go
+import torch
 
 matplotlib.use("Agg")
 import structlog
 
+from src.config.cuda_utils import get_cuda_validator
 from src.data.dataset import WakewordDataset
-from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
 from src.evaluation.advanced_evaluator import ThresholdAnalyzer
+from src.evaluation.benchmarking import BenchmarkRunner
 from src.evaluation.data_collector import FalsePositiveCollector
+from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
 from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
+from src.evaluation.mining import HardNegativeMiner
+from src.evaluation.stages import SentryInferenceStage
 from src.evaluation.types import EvaluationResult
 from src.exceptions import WakewordException
 from src.training.metrics import MetricResults
-from src.evaluation.benchmarking import BenchmarkRunner
-from src.evaluation.stages import SentryInferenceStage
-from src.config.cuda_utils import get_cuda_validator
-from src.evaluation.mining import HardNegativeMiner
 
 logger = structlog.get_logger(__name__)
 

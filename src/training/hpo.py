@@ -40,13 +40,13 @@ Usage:
     study = run_progressive_hpo(config, train_loader, val_loader)
 """
 
+import math
 import shutil
 import time
-import math
-import numpy as np
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+import numpy as np
 import optuna
 import structlog
 import torch
@@ -55,9 +55,9 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from src.config.defaults import WakewordConfig
 from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
+from src.training.hpo_results import HPOResult
 from src.training.metrics import MetricResults
 from src.training.trainer import Trainer
-from src.training.hpo_results import HPOResult
 
 logger = structlog.get_logger(__name__)
 

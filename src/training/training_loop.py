@@ -3,9 +3,10 @@ from typing import TYPE_CHECKING, Tuple
 if TYPE_CHECKING:
     from src.training.trainer import Trainer
 
+import time
+
 import structlog
 import torch
-import time
 from tqdm import tqdm
 
 from src.training.metrics import MetricResults

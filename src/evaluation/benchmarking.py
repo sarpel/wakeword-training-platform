@@ -2,13 +2,14 @@
 Performance benchmarking for inference stages.
 """
 
-import time
-import numpy as np
-import torch
-import psutil
 import os
-from typing import Dict, Any, List
+import time
+from typing import Any, Dict, List
+
+import numpy as np
+import psutil
 import structlog
+import torch
 
 from src.evaluation.types import StageBase
 

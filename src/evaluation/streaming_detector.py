@@ -17,9 +17,8 @@ import numpy as np  # For numerical operations on audio arrays
 import structlog  # For structured logging
 import torch  # For PyTorch model inference
 
-from src.evaluation.types import InferenceEngine, StageBase
-
 from src.config.defaults import StreamingConfig
+from src.evaluation.types import InferenceEngine, StageBase
 
 # Initialize logger for this module
 logger = structlog.get_logger(__name__)
