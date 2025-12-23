@@ -222,7 +222,9 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
     return model
 
 
-def calibrate_model(model: nn.Module, data_loader_or_list: Any, device: str = "cpu") -> None:
+def calibrate_model(
+    model: nn.Module, data_loader_or_list: Any, device: str = "cpu", audio_processor: Optional[nn.Module] = None
+) -> None:
     """
     Run calibration samples through the model to initialize quantization observers.
 
@@ -230,10 +232,15 @@ def calibrate_model(model: nn.Module, data_loader_or_list: Any, device: str = "c
         model: The prepared QAT model
         data_loader_or_list: DataLoader or list of tensors for calibration
         device: Device to run calibration on
+        audio_processor: Optional GPU audio processor for feature extraction
     """
     logger.info("Starting model calibration...")
     model.eval()
     model.to(device)
+
+    if audio_processor is not None:
+        audio_processor.to(device)
+        audio_processor.eval()
 
     with torch.no_grad():
         for i, batch in enumerate(data_loader_or_list):
@@ -243,6 +250,11 @@ def calibrate_model(model: nn.Module, data_loader_or_list: Any, device: str = "c
                 inputs = batch
 
             inputs = inputs.to(device)
+
+            # Apply audio processor if provided AND input is raw audio (ndim <= 3)
+            if audio_processor is not None and inputs.ndim <= 3:
+                inputs = audio_processor(inputs)
+
             model(inputs)
 
             if i >= 100:  # Limit calibration samples
@@ -301,8 +313,8 @@ def compare_model_accuracy(
 
                 inputs, targets = inputs.to(device), targets.to(device)
 
-                # Apply audio processor if provided
-                if audio_processor is not None:
+                # Apply audio processor if provided AND input is raw audio (ndim <= 3)
+                if audio_processor is not None and inputs.ndim <= 3:
                     # Ensure processor is on the same device as inputs
                     audio_processor.to(device)
                     audio_processor.eval()

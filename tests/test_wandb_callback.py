@@ -6,18 +6,27 @@ import os
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Mock wandb before importing WandbCallback to avoid ImportError if wandb is not installed
-mock_wandb = MagicMock()
-sys.modules['wandb'] = mock_wandb
-
 from src.training.wandb_callback import WandbCallback
 from src.training.metrics import MetricResults
 
 class TestWandbCallback(unittest.TestCase):
     def setUp(self):
-        # Reset the mock before each test
-        mock_wandb.reset_mock()
-        mock_wandb.run = None
+        # Create mocks for wandb and weave
+        self.mock_wandb = MagicMock()
+        self.mock_weave = MagicMock()
+        
+        # Patch them in the module where they are used
+        self.wandb_patcher = patch('src.training.wandb_callback.wandb', self.mock_wandb)
+        self.weave_patcher = patch('src.training.wandb_callback.weave', self.mock_weave)
+        
+        self.wandb_patcher.start()
+        self.weave_patcher.start()
+        
+        self.mock_wandb.run = None
+
+    def tearDown(self):
+        self.wandb_patcher.stop()
+        self.weave_patcher.stop()
 
     def test_init_uses_recommended_parameters(self):
         """Test that wandb.init is called with recommended parameters."""
@@ -27,8 +36,8 @@ class TestWandbCallback(unittest.TestCase):
         # Initialize the callback
         callback = WandbCallback(project_name, config)
         
-        # Verify wandb.init was called with reinit="finish_previous" instead of reinit=True
-        mock_wandb.init.assert_called_once_with(
+        # Verify wandb.init was called with reinit="finish_previous"
+        self.mock_wandb.init.assert_called_once_with(
             project=project_name,
             config=config,
             reinit="finish_previous"
@@ -36,14 +45,23 @@ class TestWandbCallback(unittest.TestCase):
 
     def test_init_finishes_existing_run(self):
         """Test that an existing run is finished before starting a new one."""
-        mock_wandb.run = MagicMock()
+        self.mock_wandb.run = MagicMock()
         project_name = "test_project"
         config = {}
         
         WandbCallback(project_name, config)
         
         # Verify wandb.finish() was called
-        mock_wandb.finish.assert_called()
+        self.mock_wandb.finish.assert_called()
+
+    def test_init_initializes_weave(self):
+        """Test that weave.init is called."""
+        project_name = "test_project"
+        config = {}
+        
+        WandbCallback(project_name, config)
+        
+        self.mock_weave.init.assert_called_once_with(project_name)
 
     def test_on_epoch_end_logs_metrics(self):
         """Test that metrics are logged correctly at the end of an epoch."""
@@ -64,14 +82,17 @@ class TestWandbCallback(unittest.TestCase):
             false_negatives=20,
             total_samples=195,
             positive_samples=100,
-            negative_samples=95
+            negative_samples=95,
+            pauc=0.75,
+            eer=0.1,
+            fah=0.5
         )
         
         callback.on_epoch_end(epoch=0, train_loss=0.5, val_loss=0.4, val_metrics=mock_metrics)
         
         # Verify wandb.log was called with expected dictionary
-        mock_wandb.log.assert_called()
-        args, kwargs = mock_wandb.log.call_args
+        self.mock_wandb.log.assert_called()
+        args, kwargs = self.mock_wandb.log.call_args
         log_dict = args[0]
         
         self.assertEqual(log_dict["epoch"], 1)
@@ -79,6 +100,8 @@ class TestWandbCallback(unittest.TestCase):
         self.assertEqual(log_dict["val_loss"], 0.4)
         self.assertEqual(log_dict["val_accuracy"], 0.9)
         self.assertEqual(log_dict["val_f1"], 0.82)
+        self.assertEqual(log_dict["val_eer"], 0.1)
+        self.assertEqual(log_dict["val_fah"], 0.5)
 
     def test_on_batch_end_logs_metrics(self):
         """Test that metrics are logged correctly at the end of a batch."""
@@ -89,7 +112,7 @@ class TestWandbCallback(unittest.TestCase):
         callback.on_batch_end(batch_idx=0, loss=0.5, acc=0.8, step=10)
         
         # Verify wandb.log was called with expected dictionary and step
-        mock_wandb.log.assert_called_with({"batch_loss": 0.5, "batch_acc": 0.8}, step=10)
+        self.mock_wandb.log.assert_called_with({"batch_loss": 0.5, "batch_acc": 0.8}, step=10)
 
     def test_on_batch_end_without_step(self):
         """Test that metrics are logged correctly at the end of a batch without step."""
@@ -100,7 +123,7 @@ class TestWandbCallback(unittest.TestCase):
         callback.on_batch_end(batch_idx=0, loss=0.5, acc=0.8)
         
         # Verify wandb.log was called with expected dictionary
-        mock_wandb.log.assert_called_with({"batch_loss": 0.5, "batch_acc": 0.8})
+        self.mock_wandb.log.assert_called_with({"batch_loss": 0.5, "batch_acc": 0.8})
 
     def test_on_train_end_finishes_run(self):
         """Test that wandb.finish is called when training ends."""
@@ -111,7 +134,7 @@ class TestWandbCallback(unittest.TestCase):
         callback.on_train_end()
         
         # Verify wandb.finish was called
-        mock_wandb.finish.assert_called()
+        self.mock_wandb.finish.assert_called()
 
 if __name__ == '__main__':
     unittest.main()

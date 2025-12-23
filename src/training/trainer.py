@@ -409,7 +409,7 @@ class Trainer:
             from src.training.qat_utils import calibrate_model
 
             logger.info("Calibrating QAT observers...")
-            calibrate_model(self.model, self.val_loader, device=self.device)
+            calibrate_model(self.model, self.val_loader, device=self.device, audio_processor=self.audio_processor)
 
             # 3. Re-initialize optimizer for the new model parameters (fake quants)
             # Use lower learning rate for QAT fine-tuning if desired

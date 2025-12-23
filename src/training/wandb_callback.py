@@ -3,6 +3,11 @@ try:
 except ImportError:
     wandb = None  # type: ignore
 
+try:
+    import weave
+except ImportError:
+    weave = None  # type: ignore
+
 from typing import Any, Dict, Optional
 
 from src.training.metrics import MetricResults
@@ -25,6 +30,13 @@ class WandbCallback:
         if wandb.run is not None:
             wandb.finish()
 
+        # Initialize Weave before wandb.init for full tracing
+        if weave is not None:
+            try:
+                weave.init(project_name)
+            except Exception:
+                pass
+
         wandb.init(project=project_name, config=config, reinit="finish_previous")
 
     def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
@@ -38,6 +50,8 @@ class WandbCallback:
                 "val_f1": val_metrics.f1_score,
                 "val_fpr": val_metrics.fpr,
                 "val_fnr": val_metrics.fnr,
+                "val_eer": val_metrics.eer,
+                "val_fah": val_metrics.fah,
                 "val_precision": val_metrics.precision,
                 "val_recall": val_metrics.recall,
             }

@@ -28,23 +28,20 @@ class DistillationTrainer(Trainer):
 
         self.distillation_enabled = self.config.distillation.enabled
         if self.distillation_enabled:
-            logger.info("Distillation Mode: ACTIVE")
-            logger.info(
-                f"  Primary Teacher: {self.config.distillation.teacher_architecture if self.config.distillation.teacher_architecture != 'dual' else 'wav2vec2'}"
-            )
-            if self.config.distillation.teacher_architecture == "dual":
-                logger.info(f"  Secondary Teacher: {self.config.distillation.secondary_teacher_architecture}")
-            logger.info(
-                f"  Temperature: {self.config.distillation.temperature} ({self.config.distillation.temperature_scheduler})"
-            )
-            logger.info(f"  Distillation Weight (Alpha): {self.config.distillation.alpha}")
+            arch = self.config.distillation.teacher_architecture
+            if arch == "dual":
+                arch = f"wav2vec2 + {self.config.distillation.secondary_teacher_architecture}"
+            
+            logger.info(f"Distillation ACTIVE (Teacher: {arch}, Alpha: {self.config.distillation.alpha}, T: {self.config.distillation.temperature})")
+            
+            logger.debug(f"  Temperature Scheduler: {self.config.distillation.temperature_scheduler}")
             if self.config.distillation.feature_alignment_enabled:
-                logger.info(
+                logger.debug(
                     f"  Feature Alignment: ENABLED (Weight: {self.config.distillation.feature_alignment_weight})"
                 )
             self._init_teacher()
         else:
-            logger.info("Distillation Mode: INACTIVE (Standard Training)")
+            logger.info("Distillation INACTIVE (Standard Training)")
             self.teacher = None
 
     def _load_teacher_checkpoint(self, checkpoint_path: str) -> dict:
@@ -121,7 +118,7 @@ class DistillationTrainer(Trainer):
         self.teachers = nn.ModuleList()
         self.teacher_devices = []
 
-        logger.info(f"Loading teacher architecture: {dist_config.teacher_architecture}")
+        logger.debug(f"Loading teacher architecture: {dist_config.teacher_architecture}")
 
         def load_one_teacher(arch, path):
             if arch == "wav2vec2":
@@ -133,13 +130,13 @@ class DistillationTrainer(Trainer):
                 t = create_model(arch, num_classes=self.config.model.num_classes)
 
             if path:
-                logger.info(f"Loading teacher weights for {arch} from: {path}")
+                logger.debug(f"Loading teacher weights for {arch} from: {path}")
                 checkpoint = self._load_teacher_checkpoint(path)
                 if "model_state_dict" in checkpoint:
                     t.load_state_dict(checkpoint["model_state_dict"])
                 else:
                     t.load_state_dict(checkpoint)
-                logger.info(f"Successfully loaded {arch} weights")
+                logger.debug(f"Successfully loaded {arch} weights")
 
             t.eval()
             for param in t.parameters():
@@ -154,15 +151,15 @@ class DistillationTrainer(Trainer):
                 if self.device == "cuda" or (isinstance(self.device, str) and "cuda" in self.device):
                     t.to(memory_format=torch.channels_last)
                 dev = torch.device(self.device) if isinstance(self.device, str) else self.device
-                logger.info(f"Teacher {arch} deployed on GPU ({dev})")
+                logger.debug(f"Teacher {arch} deployed on GPU ({dev})")
             else:
                 t.to("cpu")
                 dev = torch.device("cpu")
-                logger.info(f"Teacher {arch} deployed on CPU")
+                logger.debug(f"Teacher {arch} deployed on CPU")
 
             if dist_config.teacher_mixed_precision and dev.type == "cuda":
                 t.half()
-                logger.info(f"Teacher {arch} using FP16 (Mixed Precision)")
+                logger.debug(f"Teacher {arch} using FP16 (Mixed Precision)")
 
             return t, dev
 
@@ -187,7 +184,7 @@ class DistillationTrainer(Trainer):
         self.teacher = self.teachers[0]
         self.teacher_device = self.teacher_devices[0]
 
-        logger.info(f"Initialized {len(self.teachers)} teacher(s)")
+        logger.debug(f"Initialized {len(self.teachers)} teacher(s)")
 
     def compute_loss(
         self,

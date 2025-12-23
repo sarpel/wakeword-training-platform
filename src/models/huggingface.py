@@ -22,8 +22,9 @@ os.environ.setdefault("TRANSFORMERS_CACHE", str(TEACHER_CACHE_DIR))
 os.environ.setdefault("HF_HOME", str(TEACHER_CACHE_DIR))
 
 try:
-    from transformers import Wav2Vec2Config, Wav2Vec2Model
+    from transformers import Wav2Vec2Config, Wav2Vec2Model, utils
 
+    utils.logging.set_verbosity_error()  # Silence initialization warnings
     TRANSFORMERS_IMPORT_ERROR = None
 except ImportError as e:
     logging.getLogger(__name__).warning(f"Failed to import transformers: {e}")
@@ -55,12 +56,11 @@ def ensure_teacher_model_downloaded(model_id: str = "facebook/wav2vec2-base-960h
     cache_path = TEACHER_CACHE_DIR / model_id.replace("/", "--")
 
     if not cache_path.exists():
-        logger.info(f"Downloading teacher model {model_id} to {TEACHER_CACHE_DIR}...")
+        logger.info(f"Downloading teacher model {model_id}...")
         # This will download and cache the model
         _ = Wav2Vec2Model.from_pretrained(model_id, cache_dir=str(TEACHER_CACHE_DIR))
-        logger.info("Teacher model downloaded successfully")
     else:
-        logger.info(f"Teacher model already cached at {cache_path}")
+        logger.debug(f"Teacher model already cached at {cache_path}")
 
     return cache_path
 
@@ -88,9 +88,6 @@ class Wav2VecWakeword(nn.Module):
                 f"Original error: {TRANSFORMERS_IMPORT_ERROR}"
             )
 
-        logger.info(f"Initializing Wav2VecWakeword with {model_id}")
-        logger.info(f"Teacher models cached at: {TEACHER_CACHE_DIR}")
-
         if pretrained:
             # Model will be downloaded to TEACHER_CACHE_DIR on first use
             self.wav2vec2 = Wav2Vec2Model.from_pretrained(model_id, cache_dir=str(TEACHER_CACHE_DIR))
@@ -103,10 +100,8 @@ class Wav2VecWakeword(nn.Module):
                 self.wav2vec2.freeze_feature_encoder()
             elif hasattr(self.wav2vec2.feature_extractor, "_freeze_parameters"):
                 self.wav2vec2.feature_extractor._freeze_parameters()
-            else:
-                logger.warning("Could not freeze feature extractor: No known method found.")
 
-            logger.info("Wav2Vec2 feature extractor frozen")
+        logger.info(f"[✓] Teacher: Wav2Vec2 Loaded & Frozen ({model_id})")
 
         # Classification head
         # Wav2Vec2 base output dim is 768

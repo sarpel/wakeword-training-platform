@@ -245,9 +245,18 @@ def create_metrics_plot() -> plt.Figure:
             color="green",
         )
 
+        ax.plot(
+            epochs,
+            [f * 100 for f in training_state.history["val_eer"]],
+            label="EER",
+            marker="x",
+            linewidth=2,
+            color="purple",
+        )
+
         ax.set_xlabel("Epoch", fontsize=12)
         ax.set_ylabel("Rate (%)", fontsize=12)
-        ax.set_title("Validation Metrics (FPR, FNR, F1)", fontsize=14, fontweight="bold")
+        ax.set_title("Validation Metrics (FPR, FNR, F1, EER)", fontsize=14, fontweight="bold")
         ax.legend(fontsize=10)
         ax.grid(True, alpha=0.3)
     else:
@@ -360,6 +369,7 @@ def training_worker() -> None:
                     f"Loss: {train_loss:.4f}/{val_loss:.4f} - "
                     f"Acc: {training_state.current_train_acc:.2%}/{val_metrics.accuracy:.2%} - "
                     f"FPR: {val_metrics.fpr:.2%} - FNR: {val_metrics.fnr:.2%} - "
+                    f"EER: {training_state.current_eer:.2%} - FAH: {training_state.current_fah:.2f} - "
                     f"LR: {training_state.current_lr:.2e}"
                 )
 

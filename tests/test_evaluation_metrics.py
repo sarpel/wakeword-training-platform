@@ -1,7 +1,37 @@
 import numpy as np
 import pytest
 import torch
-from src.evaluation.metrics import calculate_pauc
+from src.evaluation.metrics import calculate_eer, calculate_pauc
+
+def test_calculate_eer_basic():
+    # Perfect predictions
+    labels = np.array([1, 1, 0, 0])
+    logits = np.array([
+        [-2.0, 2.0], # class 1
+        [-2.0, 2.0], # class 1
+        [2.0, -2.0], # class 0
+        [2.0, -2.0], # class 0
+    ])
+    eer = calculate_eer(logits, labels)
+    assert eer == 0.0
+
+def test_calculate_eer_worst():
+    # Worst predictions
+    labels = np.array([1, 1, 0, 0])
+    logits = np.array([
+        [2.0, -2.0], # predicted 0, true 1
+        [2.0, -2.0], # predicted 0, true 1
+        [-2.0, 2.0], # predicted 1, true 0
+        [-2.0, 2.0], # predicted 1, true 0
+    ])
+    eer = calculate_eer(logits, labels)
+    assert eer == 1.0
+
+def test_calculate_eer_random():
+    labels = np.array([1, 0] * 50)
+    logits = np.random.randn(100, 2)
+    eer = calculate_eer(logits, labels)
+    assert 0.0 <= eer <= 1.0
 
 def test_calculate_pauc_basic():
     # Simple case: perfect predictions
