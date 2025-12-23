@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 import structlog
 import torch
 import torch.nn as nn
+from torch.utils.data import Dataset
 
 logger = structlog.get_logger(__name__)
 
@@ -243,9 +244,6 @@ class CMVN(nn.Module):
         self._initialized = True
 
         logger.info(f"CMVN stats loaded from {load_path} (dim={self.mean.shape[0]})")
-
-
-from torch.utils.data import Dataset
 
 
 def compute_cmvn_from_dataset(dataset: Dataset, stats_path: Path, max_samples: Optional[int] = None) -> CMVN:

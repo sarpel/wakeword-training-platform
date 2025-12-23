@@ -271,8 +271,8 @@ def collect_false_positives() -> str:
     if not eval_state.test_results or eval_state.last_labels is None:
         return "Run evaluation first."
     eval_state.fp_collector.clear()
-    for r, l in zip(eval_state.test_results, eval_state.last_labels):
-        if r.prediction == "Positive" and l == 0:
+    for r, label in zip(eval_state.test_results, eval_state.last_labels):
+        if r.prediction == "Positive" and label == 0:
             eval_state.fp_collector.add_sample(r.raw_audio, {"filename": r.filename, "confidence": r.confidence})
     return generate_fp_gallery_html()
 

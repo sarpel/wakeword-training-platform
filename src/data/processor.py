@@ -10,12 +10,11 @@ from typing import Optional, cast
 import torch
 import torch.nn as nn
 
+from src.config.defaults import WakewordConfig
 from src.data.cmvn import CMVN
 from src.data.feature_extraction import FeatureExtractor
 
 logger = logging.getLogger(__name__)
-
-from src.config.defaults import WakewordConfig
 
 
 class AudioProcessor(nn.Module):

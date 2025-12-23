@@ -7,7 +7,7 @@ from typing import Iterator, List
 
 import numpy as np
 import structlog
-from torch.utils.data import Sampler
+from torch.utils.data import Dataset, Sampler
 
 logger = structlog.get_logger(__name__)
 
@@ -189,9 +189,6 @@ class CalibrationSampler:
         )
 
         return indices.tolist()
-
-
-from torch.utils.data import Dataset
 
 
 def create_balanced_sampler_from_dataset(

@@ -3,17 +3,16 @@ Main Gradio Application
 Wakeword Training Platform with 6 panels
 """
 
-import warnings
-
-# Suppress specific warnings
-warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
-
 import asyncio
 import sys
+import warnings
 from pathlib import Path
 from typing import Optional
 
 import gradio as gr
+
+# Suppress specific warnings
+warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -22,14 +21,14 @@ if sys.platform.startswith("win"):
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.cuda_utils import enforce_cuda
-from src.config.logger import get_data_logger, setup_logging
-from src.ui.panel_config import create_config_panel
-from src.ui.panel_dataset import create_dataset_panel
-from src.ui.panel_docs import create_docs_panel
-from src.ui.panel_evaluation import create_evaluation_panel
-from src.ui.panel_export import create_export_panel
-from src.ui.panel_training import create_training_panel
+from src.config.cuda_utils import enforce_cuda  # noqa: E402
+from src.config.logger import get_data_logger, setup_logging  # noqa: E402
+from src.ui.panel_config import create_config_panel  # noqa: E402
+from src.ui.panel_dataset import create_dataset_panel  # noqa: E402
+from src.ui.panel_docs import create_docs_panel  # noqa: E402
+from src.ui.panel_evaluation import create_evaluation_panel  # noqa: E402
+from src.ui.panel_export import create_export_panel  # noqa: E402
+from src.ui.panel_training import create_training_panel  # noqa: E402
 
 
 def suppress_windows_asyncio_errors() -> None:

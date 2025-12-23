@@ -18,11 +18,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-logger = structlog.get_logger(__name__)
-
-if torch.cuda.is_available():
-    torch.backends.cudnn.benchmark = True
-
 from src.config.cuda_utils import enforce_cuda
 from src.config.seed_utils import set_seed
 from src.data.augmentation import SpecAugment
@@ -33,6 +28,11 @@ from src.training.ema import EMA, EMAScheduler
 from src.training.metrics import MetricMonitor, MetricResults, MetricsTracker
 from src.training.optimizer_factory import create_grad_scaler, create_optimizer_and_scheduler, get_learning_rate
 from src.training.training_loop import train_epoch, validate_epoch
+
+logger = structlog.get_logger(__name__)
+
+if torch.cuda.is_available():
+    torch.backends.cudnn.benchmark = True
 
 
 @dataclass

@@ -5,12 +5,16 @@ Streaming audio capture and wakeword detection
 
 import queue
 import threading
+from pathlib import Path
 from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 import structlog
 import torch
 import torch.nn as nn
+
+from src.config.cuda_utils import enforce_cuda
+from src.data.processor import AudioProcessor as GpuAudioProcessor
 
 logger = structlog.get_logger(__name__)
 
@@ -19,11 +23,6 @@ try:
 except ImportError:
     sd = None
     logger.warning("sounddevice not installed. Microphone inference not available.")
-
-from pathlib import Path
-
-from src.config.cuda_utils import enforce_cuda
-from src.data.processor import AudioProcessor as GpuAudioProcessor
 
 
 class MicrophoneInference:

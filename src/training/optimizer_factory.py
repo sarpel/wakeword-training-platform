@@ -11,6 +11,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, StepLR
 
+from src.config.defaults import WakewordConfig
+
 logger = structlog.get_logger(__name__)
 
 
@@ -254,9 +256,6 @@ def create_scheduler(
         scheduler = base_scheduler
 
     return scheduler
-
-
-from src.config.defaults import WakewordConfig
 
 
 def create_optimizer_and_scheduler(

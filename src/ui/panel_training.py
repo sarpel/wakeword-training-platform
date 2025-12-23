@@ -25,24 +25,24 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-from src.config.cuda_utils import get_cuda_validator
-from src.config.defaults import WakewordConfig, load_latest_hpo_profile
-from src.config.paths import paths  # NEW: Centralized paths
-from src.data.balanced_sampler import create_balanced_sampler_from_dataset
-from src.data.cmvn import compute_cmvn_from_dataset
-from src.data.dataset import WakewordDataset, load_dataset_splits
-from src.data.processor import AudioProcessor
-from src.exceptions import WakewordException
-from src.models.architectures import create_model
-from src.training.checkpoint_manager import CheckpointManager
-from src.training.distillation_trainer import DistillationTrainer
-from src.training.hpo import run_hpo
-from src.training.hpo_results import HPOResult
-from src.training.lr_finder import LRFinder
-from src.training.metrics import MetricResults  # Imported MetricResults
-from src.training.qat_utils import prepare_model_for_qat
-from src.training.trainer import Trainer
-from src.training.wandb_callback import WandbCallback
+from src.config.cuda_utils import get_cuda_validator  # noqa: E402
+from src.config.defaults import WakewordConfig, load_latest_hpo_profile  # noqa: E402
+from src.config.paths import paths  # noqa: E402
+from src.data.balanced_sampler import create_balanced_sampler_from_dataset  # noqa: E402
+from src.data.cmvn import compute_cmvn_from_dataset  # noqa: E402
+from src.data.dataset import WakewordDataset, load_dataset_splits  # noqa: E402
+from src.data.processor import AudioProcessor  # noqa: E402
+from src.exceptions import WakewordException  # noqa: E402
+from src.models.architectures import create_model  # noqa: E402
+from src.training.checkpoint_manager import CheckpointManager  # noqa: E402
+from src.training.distillation_trainer import DistillationTrainer  # noqa: E402
+from src.training.hpo import run_hpo  # noqa: E402
+from src.training.hpo_results import HPOResult  # noqa: E402
+from src.training.lr_finder import LRFinder  # noqa: E402
+from src.training.metrics import MetricResults  # noqa: E402
+from src.training.qat_utils import prepare_model_for_qat  # noqa: E402
+from src.training.trainer import Trainer  # noqa: E402
+from src.training.wandb_callback import WandbCallback  # noqa: E402
 
 
 class TrainingState:
@@ -920,7 +920,7 @@ def get_training_status() -> Tuple:
         validator = get_cuda_validator()
         gpu_util = validator.get_memory_info()
         gpu_percent = gpu_util["allocated_gb"] / gpu_util["total_gb"] * 100
-    except:
+    except Exception:
         gpu_percent = 0.0
 
     return (
@@ -1194,7 +1194,7 @@ def apply_best_params(state: gr.State, edited_results: pd.DataFrame) -> str:
             if cast_type:
                 try:
                     val = cast_type(val)
-                except:
+                except Exception:
                     return 0
             setattr(config_obj, config_key, val)
             return 1
@@ -1222,7 +1222,7 @@ def apply_best_params(state: gr.State, edited_results: pd.DataFrame) -> str:
             config.augmentation.pitch_shift_min = -r
             config.augmentation.pitch_shift_max = r
             applied_count += 1
-        except:
+        except Exception:
             pass
 
     applied_count += set_if_exists(config.data, "n_mels", "n_mels", int)
