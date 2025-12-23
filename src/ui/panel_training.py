@@ -324,18 +324,23 @@ def training_worker() -> None:
                 except Exception:
                     pass
 
-                # Update history
-                training_state.history["epochs"].append(epoch + 1)
-                training_state.history["train_loss"].append(train_loss)
-                training_state.history["train_acc"].append(training_state.current_train_acc)
-                training_state.history["val_loss"].append(val_loss)
-                training_state.history["val_acc"].append(val_metrics.accuracy)
-                training_state.history["val_f1"].append(val_metrics.f1_score)
-                training_state.history["val_fpr"].append(val_metrics.fpr)
-                training_state.history["val_fnr"].append(val_metrics.fnr)
-                training_state.history["val_eer"].append(training_state.current_eer)
-                training_state.history["val_fah"].append(training_state.current_fah)
-                training_state.history["learning_rate"].append(training_state.current_lr)
+                # Update history with defensive initialization to prevent KeyError
+                def safe_append(key: str, value: float) -> None:
+                    if key not in training_state.history:
+                        training_state.history[key] = []
+                    training_state.history[key].append(value)
+
+                safe_append("epochs", epoch + 1)
+                safe_append("train_loss", train_loss)
+                safe_append("train_acc", training_state.current_train_acc)
+                safe_append("val_loss", val_loss)
+                safe_append("val_acc", val_metrics.accuracy)
+                safe_append("val_f1", val_metrics.f1_score)
+                safe_append("val_fpr", val_metrics.fpr)
+                safe_append("val_fnr", val_metrics.fnr)
+                safe_append("val_eer", training_state.current_eer)
+                safe_append("val_fah", training_state.current_fah)
+                safe_append("learning_rate", training_state.current_lr)
 
                 # Update best metrics
                 if val_loss < training_state.best_val_loss:
@@ -840,6 +845,9 @@ def start_training(
             "val_f1": [],
             "val_fpr": [],
             "val_fnr": [],
+            "val_eer": [],
+            "val_fah": [],
+            "learning_rate": [],
             "epochs": [],
         }
 

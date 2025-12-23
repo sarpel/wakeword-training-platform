@@ -112,3 +112,57 @@ def calculate_pauc(
 
         area = np.trapz(tpr_list, fpr_list)
         return float(area / fpr_max)
+
+
+def calculate_eer(
+    logits: Union[torch.Tensor, np.ndarray],
+    labels: Union[torch.Tensor, np.ndarray],
+    positive_index: int = 1,
+) -> float:
+    """
+    Calculate the Equal Error Rate (EER).
+
+    Args:
+        logits: Model outputs (N, 2) or probabilities (N,)
+        labels: Ground truth labels (N,)
+        positive_index: Index of the positive class.
+
+    Returns:
+        EER value (0.0 to 1.0)
+    """
+    y_true = labels
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+
+    probs = _probs_from_logits(logits, positive_index)
+
+    if _HAS_SK:
+        fpr, tpr, _ = roc_curve(y_true, probs, drop_intermediate=False)
+        fnr = 1 - tpr
+
+        # EER is where FPR == FNR
+        idx = np.nanargmin(np.absolute(fpr - fnr))
+        eer = (fpr[idx] + fnr[idx]) / 2
+        return float(eer)
+    else:
+        # Simple fallback: find closest point
+        thresholds = np.sort(np.unique(np.concatenate(([0.0, 1.0], probs))))[::-1]
+        min_diff = 1.0
+        eer = 0.5
+
+        for t in thresholds:
+            preds = (probs >= t).astype(int)
+            fp = np.sum((preds == 1) & (y_true == 0))
+            fn = np.sum((preds == 0) & (y_true == 1))
+            tn = np.sum((preds == 0) & (y_true == 0))
+            tp = np.sum((preds == 1) & (y_true == 1))
+
+            curr_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+            curr_fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
+
+            diff = abs(curr_fpr - curr_fnr)
+            if diff < min_diff:
+                min_diff = diff
+                eer = (curr_fpr + curr_fnr) / 2
+
+        return float(eer)

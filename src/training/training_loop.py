@@ -164,7 +164,14 @@ def _run_epoch(
             raise
 
     avg_loss = epoch_loss / max(1, num_batches)
-    metrics = metrics_tracker.compute()
+
+    # Calculate total duration in hours for FAH (only for validation)
+    total_duration_h = None
+    if not is_training and total_inference_samples > 0:
+        total_duration_s = total_inference_samples * trainer.config.data.audio_duration
+        total_duration_h = total_duration_s / 3600
+
+    metrics = metrics_tracker.compute(total_duration_h=total_duration_h)
 
     # Add latency info
     if not is_training and total_inference_samples > 0:

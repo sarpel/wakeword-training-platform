@@ -37,6 +37,8 @@ class MetricResults:
 
     # Fields with defaults MUST come last
     pauc: float = 0.0  # Partial AUC
+    eer: float = 0.0  # Equal Error Rate
+    fah: float = 0.0  # False Alarms per Hour
     latency_ms: float = 0.0  # Average latency per sample in ms
 
     def __str__(self) -> str:
@@ -48,7 +50,8 @@ class MetricResults:
             f"F1: {self.f1_score:.4f} | "
             f"FPR: {self.fpr:.4f} | "
             f"FNR: {self.fnr:.4f} | "
-            f"pAUC: {self.pauc:.4f}"
+            f"pAUC: {self.pauc:.4f} | "
+            f"EER: {self.eer:.4f}"
         )
 
     def to_dict(self) -> Dict[str, float]:
@@ -61,6 +64,8 @@ class MetricResults:
             "fpr": self.fpr,
             "fnr": self.fnr,
             "pauc": self.pauc,
+            "eer": self.eer,
+            "fah": self.fah,
             "latency_ms": self.latency_ms,
             "true_positives": float(self.true_positives),
             "true_negatives": float(self.true_negatives),
@@ -87,7 +92,13 @@ class MetricsCalculator:
         """
         self.device = device
 
-    def calculate(self, predictions: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5) -> MetricResults:
+    def calculate(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        threshold: float = 0.5,
+        total_duration_h: Optional[float] = None,
+    ) -> MetricResults:
         """
         Calculate all metrics from predictions and targets
 
@@ -95,6 +106,7 @@ class MetricsCalculator:
             predictions: Model predictions (logits or probabilities) (batch, num_classes)
             targets: Ground truth labels (batch,)
             threshold: Classification threshold for positive class
+            total_duration_h: Total duration of the audio in hours (for FAH)
 
         Returns:
             MetricResults containing all calculated metrics
@@ -159,9 +171,14 @@ class MetricsCalculator:
         fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
 
         # Calculate pAUC
-        from src.evaluation.metrics import calculate_pauc
+        from src.evaluation.metrics import calculate_eer, calculate_pauc
 
         pauc = calculate_pauc(predictions, targets, fpr_max=0.1)
+        eer = calculate_eer(predictions, targets)
+
+        # Calculate FAH (False Alarms per Hour)
+        # FAH = FP / Total Duration (hours)
+        fah = fp / total_duration_h if total_duration_h and total_duration_h > 0 else 0.0
 
         return MetricResults(
             accuracy=accuracy,
@@ -178,6 +195,8 @@ class MetricsCalculator:
             positive_samples=positive_samples,
             negative_samples=negative_samples,
             pauc=pauc,
+            eer=eer,
+            fah=fah,
         )
 
     def confusion_matrix(self, predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 2) -> torch.Tensor:
@@ -242,12 +261,13 @@ class MetricsTracker:
         self.all_predictions.append(predictions.detach().cpu())
         self.all_targets.append(targets.detach().cpu())
 
-    def compute(self, threshold: float = 0.5) -> MetricResults:
+    def compute(self, threshold: float = 0.5, total_duration_h: Optional[float] = None) -> MetricResults:
         """
         Compute metrics from all accumulated predictions
 
         Args:
             threshold: Classification threshold
+            total_duration_h: Total duration of the audio in hours (for FAH)
 
         Returns:
             MetricResults for all accumulated data
@@ -275,7 +295,9 @@ class MetricsTracker:
         all_targs = torch.cat(self.all_targets, dim=0)
 
         # Calculate metrics
-        metrics = self.calculator.calculate(all_preds, all_targs, threshold=threshold)
+        metrics = self.calculator.calculate(
+            all_preds, all_targs, threshold=threshold, total_duration_h=total_duration_h
+        )
 
         return metrics
 
