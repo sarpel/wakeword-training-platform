@@ -40,13 +40,14 @@ class HardNegativeMiner:
         with open(self.queue_path, "w", encoding="utf-8") as f:
             json.dump(self.queue, f, indent=2)
 
-    def mine_from_results(self, results: List[EvaluationResult], confidence_threshold: float = 0.7) -> int:
+    def mine_from_results(self, results: List[EvaluationResult], confidence_threshold: float = 0.0) -> int:
         """
         Identify False Positives (model says "wakeword" but label is "not wakeword") from results.
 
         Args:
             results: List of EvaluationResult objects.
-            confidence_threshold: Only find FP with confidence above this.
+            confidence_threshold: Only find FP with confidence above this. 
+                                  Default to 0.0 to catch everything via logic below.
 
         Returns:
             Number of new samples added to verification queue.
@@ -55,9 +56,13 @@ class HardNegativeMiner:
         existing_paths = {item["full_path"] for item in self.queue}
 
         for res in results:
-            # False Positive: model predicted "Positive" (wakeword) but actual label is Negative
-            if res.prediction == "Positive" and res.label == 0:
-                if res.confidence >= confidence_threshold:
+            # False Positive: actual label is Negative (0)
+            # We want to find "hard negatives" - negatives that the model thought MIGHT be positive.
+            # So instead of checking strict prediction="Positive", we check if confidence is suspiciously high (>40%)
+            if res.label == 0:
+                # Catch anything where model had > 40% confidence on a negative sample
+                # This catches "near misses" (e.g. 0.6 confidence) even if the detection threshold was 0.8
+                if res.confidence >= 0.4:
                     if res.full_path and res.full_path not in existing_paths:
                         self.queue.append(
                             {

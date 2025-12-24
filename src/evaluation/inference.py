@@ -12,7 +12,12 @@ import numpy as np
 import structlog
 import torch
 import torch.nn as nn
+import asyncio
+import sys
 
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
 from src.config.cuda_utils import enforce_cuda
 from src.data.processor import AudioProcessor as GpuAudioProcessor
 
@@ -43,6 +48,7 @@ class MicrophoneInference:
         n_mfcc: int = 40,
         n_fft: int = 1024,
         hop_length: int = 160,
+        config: Optional[Any] = None,  # Added config parameter
     ):
         """
         Initialize microphone inference
@@ -59,6 +65,7 @@ class MicrophoneInference:
             n_mfcc: Number of MFCC coefficients
             n_fft: FFT window size
             hop_length: Hop length for STFT
+            config: Optional WakewordConfig object to ensure exact feature match
         """
         if sd is None:
             raise ImportError("sounddevice not installed. " "Install with: pip install sounddevice")
@@ -81,9 +88,19 @@ class MicrophoneInference:
         # Audio processor (GPU with CMVN)
         cmvn_path = Path("data/cmvn_stats.json")
         from src.config.defaults import WakewordConfig
-
+        
+        # Use provided config or create one from arguments to ensure consistency
+        if config is None:
+            config = WakewordConfig()
+            config.data.sample_rate = sample_rate
+            config.data.feature_type = feature_type
+            config.data.n_mels = n_mels
+            config.data.n_mfcc = n_mfcc
+            config.data.n_fft = n_fft
+            config.data.hop_length = hop_length
+        
         self.audio_processor = GpuAudioProcessor(
-            config=WakewordConfig(), cmvn_path=cmvn_path if cmvn_path.exists() else None, device=device  # Use defaults
+            config=config, cmvn_path=cmvn_path if cmvn_path.exists() else None, device=device
         )
 
         # We don't need separate FeatureExtractor as GpuAudioProcessor handles it
@@ -175,9 +192,19 @@ class MicrophoneInference:
             Tuple of (confidence, is_positive)
         """
         try:
-            # Normalize
-            if np.max(np.abs(audio_chunk)) > 0:
-                audio_chunk = audio_chunk / np.max(np.abs(audio_chunk))
+            # Smart Normalization
+            # 1. Check for silence/noise floor
+            peak = np.max(np.abs(audio_chunk))
+            # Debug noise floor - PRINT TO CONSOLE TO VERIFY CODE IS RUNNING
+            # print(f"DEBUG: Audio Peak: {peak:.6f} | Code Version: PEAK_NORM_V3")
+            
+            if peak < 0.02:  # Silence threshold
+                return 0.0, False
+
+            # 2. Standard Peak Normalization (Restored)
+            # We normalize fully to 1.0 to ensure the model sees the correct feature distribution.
+            # The silence gate (above) prevents amplifying background noise.
+            audio_chunk = audio_chunk / peak
 
             # Convert to tensor
             audio_tensor = torch.from_numpy(audio_chunk).float()
@@ -249,7 +276,7 @@ class MicrophoneInference:
             samplerate=self.sample_rate,
             channels=1,
             callback=self._audio_callback,
-            blocksize=int(self.sample_rate * 0.1),  # 100ms blocks
+            blocksize=int(self.sample_rate * 0.5),  # 500ms blocks to reduce overflow risk
         )
         self.stream.start()
 

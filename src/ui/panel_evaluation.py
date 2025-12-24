@@ -127,6 +127,12 @@ def load_model(model_path: str) -> str:
         # Format status message
         status = "✅ Model Loaded Successfully\n"
         status += f"Architecture: {info['config'].model.architecture}\n"
+        
+        # Add Audio Feature Details
+        feat_type = info['config'].data.feature_type
+        feat_dim = info['config'].data.n_mels if feat_type == "mel" else info['config'].data.n_mfcc
+        status += f"Features: {feat_type.upper()} ({feat_dim} bins)\n"
+        
         status += f"Training Epoch: {info['epoch'] + 1}\n"
         status += f"Val Loss: {info['val_loss']:.4f}\n"
 
@@ -192,7 +198,7 @@ def export_results_to_csv() -> str:
         return str(e)
 
 
-def start_microphone() -> Tuple[str, float, Optional[Any], str]:
+def start_microphone(threshold: float) -> Tuple[str, float, Optional[Any], str]:
     if eval_state.evaluator is None:
         return "❌ Please load a model first", 0.0, None, ""
     try:
@@ -200,8 +206,9 @@ def start_microphone() -> Tuple[str, float, Optional[Any], str]:
             model=eval_state.model,
             sample_rate=eval_state.waveform_sr,
             audio_duration=eval_state.model_info["config"].data.audio_duration,
-            threshold=0.5,
+            threshold=threshold,
             device=eval_state.device,
+            config=eval_state.model_info["config"],  # Pass exact config used for training
         )
         mic_inf.start()
         eval_state.mic_inference = mic_inf
@@ -710,13 +717,14 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
                 with gr.Row():
                     with gr.Column():
-                        gr.Slider(
+                        mic_threshold_slider = gr.Slider(
                             minimum=0,
                             maximum=1,
                             value=0.5,
                             step=0.05,
                             label="Detection Sensitivity (Threshold)",
                             info="Lower value = more sensitive (detects easier but more false positives). Higher = stricter.",
+                            interactive=True,
                         )
 
                         with gr.Row():
@@ -884,6 +892,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
         start_mic_btn.click(
             fn=start_microphone,
+            inputs=[mic_threshold_slider],
             outputs=[
                 detection_indicator,
                 confidence_display,
