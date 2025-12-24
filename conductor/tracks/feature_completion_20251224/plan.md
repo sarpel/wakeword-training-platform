@@ -18,10 +18,8 @@ Focus on enabling high-performance features and robust training scheduling.
 ## Phase 2: Dual-Teacher & Distillation UI
 Refine the Knowledge Distillation setup for expert users.
 
-- [ ] Task: Extend Configuration Panel for Secondary Teacher
-    - Add `secondary_teacher_architecture` and `secondary_teacher_model_path` fields to `src/ui/panel_config.py`.
-    - Create `tests/test_dual_teacher_config.py` to ensure config values propagate to `DistillationTrainer`.
-- [ ] Task: Implement Teacher Compatibility Validation
+- [x] Task: Extend Configuration Panel for Secondary Teacher 078327f
+- [x] Task: Implement Teacher Compatibility Validation 078327f
     - Add validation logic to `ConfigValidator` to check if teacher checkpoints exist and match architectures.
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Dual-Teacher KD' (Protocol in workflow.md)
 
