@@ -26,12 +26,8 @@ Refine the Knowledge Distillation setup for expert users.
 ## Phase 3: Background Mining & Session Persistence
 Enable long-form audio analysis for hard negative discovery.
 
-- [ ] Task: Implement Background Miner Engine
-    - Create `src/evaluation/background_miner.py` with session persistence (JSON).
-    - Write tests in `tests/test_background_mining.py` for pause/resume logic.
-- [ ] Task: Integrate Background Miner into UI
-    - Add "Background Miner" sub-tab to the Mining Queue tab in `src/ui/panel_evaluation.py`.
-    - Implement file browser for selecting background recordings.
+- [x] Task: Implement Background Miner Engine 30328dd
+- [x] Task: Integrate Background Miner into UI 30328dd
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Background Mining' (Protocol in workflow.md)
 
 ## Phase 4: Distributed Cascade Integration
