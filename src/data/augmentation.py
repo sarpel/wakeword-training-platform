@@ -214,10 +214,11 @@ class AudioAugmentation(nn.Module):
         return torch.roll(waveform, shifts=shift_samples, dims=-1)
 
     def set_epoch(self, epoch: int, total_epochs: int) -> None:
-        """Update epoch for SNR scheduling (optional feature)."""
+        """Update epoch for SNR scheduling."""
         self.current_epoch = epoch
-        self.total_epochs = max(total_epochs, 1)  # Prevent division by zero
-        self.use_snr_scheduling = True  # Enable scheduling when explicitly called
+        self.total_epochs = max(total_epochs, 1)
+        self.use_snr_scheduling = True
+        logger.debug(f"Augmentation epoch updated: {epoch}/{total_epochs}")
 
     def add_background_noise(self, waveform: torch.Tensor) -> torch.Tensor:
         """

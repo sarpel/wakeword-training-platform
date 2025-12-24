@@ -160,6 +160,13 @@ class Trainer:
             reduction="none",  # Changed from default 'mean'
         ).to(device)
 
+        # Dynamic alpha for FNR optimization
+        self.use_dynamic_alpha = getattr(config.loss, "use_dynamic_alpha", False)
+        if self.use_dynamic_alpha:
+            self.base_alpha = getattr(config.loss, "focal_alpha", 0.75)
+            self.max_alpha = getattr(config.loss, "max_focal_alpha", 0.90)
+            logger.info(f"Dynamic alpha enabled: {self.base_alpha} → {self.max_alpha}")
+
         # Create optimizer and scheduler (self.model ile kur)
         self.optimizer, self.scheduler = create_optimizer_and_scheduler(
             self.model, config, steps_per_epoch=len(train_loader)
@@ -278,10 +285,17 @@ class Trainer:
         try:
             for epoch in range(start_epoch, self.config.training.epochs):
                 logger.info(f"Epoch {epoch+1}/{self.config.training.epochs} starting")
+                self._update_augmentation_epoch(epoch)
                 self._call_callbacks("on_epoch_start", epoch)
 
                 # Check for QAT transition
                 self._check_qat_transition(epoch)
+
+                # Apply dynamic alpha for FNR optimization
+                if self.use_dynamic_alpha and hasattr(self.criterion, "set_alpha"):
+                    current_alpha = self._compute_dynamic_alpha(epoch)
+                    self.criterion.set_alpha(current_alpha)
+                    logger.info(f"Epoch {epoch+1}: Dynamic focal alpha = {current_alpha:.4f}")
 
                 try:
                     train_loss, train_acc = train_epoch(self, epoch)
@@ -331,10 +345,22 @@ class Trainer:
 
                 logger.info(f"Epoch {epoch+1}/{self.config.training.epochs} Results:")
                 logger.info(f"  Train: Loss={train_loss:.4f}, Acc={train_acc:.4f}")
-                logger.info(
-                    f"  Val:   Loss={val_loss:.4f}, Acc={val_metrics.accuracy:.4f}, "
-                    f"F1={val_metrics.f1_score:.4f}, pAUC={val_metrics.pauc:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}"
-                )
+                logger.info(f"  Val:")
+                logger.info(f"    - Loss:      {val_loss:.4f}")
+                logger.info(f"    - Accuracy:  {val_metrics.accuracy:.4f}")
+                logger.info(f"    - F1 Score:  {val_metrics.f1_score:.4f}")
+                logger.info(f"    - pAUC:      {val_metrics.pauc:.4f}")
+                logger.info(f"    - FPR:       {val_metrics.fpr:.4f}")
+                logger.info(f"    - FNR:       {val_metrics.fnr:.4f}")
+
+                # Visual Confusion Matrix
+                logger.info(f"    Confusion Matrix:")
+                logger.info(f"      [ TN={val_metrics.true_negatives:<5} | FP={val_metrics.false_positives:<5} ] (Actual Neg)")
+                logger.info(f"      [ FN={val_metrics.false_negatives:<5} | TP={val_metrics.true_positives:<5} ] (Actual Pos)")
+                
+                # Confidence Histogram
+                if val_metrics.confidence_histogram:
+                    logger.info(val_metrics.confidence_histogram)
 
                 # Standout F1 Score log
                 f1_formatted = f"{val_metrics.f1_score:.3f}".replace(".", ",")
@@ -354,10 +380,10 @@ class Trainer:
 
         logger.info("=" * 80)
         logger.info("TRAINING SESSION COMPLETE")
-        logger.info(f"  Total time: {self.state.training_time / 3600:.2f} hours")
+        logger.info(f"  Total time:    {self.state.training_time / 3600:.2f} hours")
         logger.info(f"  Best val loss: {self.state.best_val_loss:.4f}")
-        logger.info(f"  Best val F1: {self.state.best_val_f1:.4f}")
-        logger.info(f"  Best val FPR: {self.state.best_val_fpr:.4f}")
+        logger.info(f"  Best val F1:   {self.state.best_val_f1:.4f}")
+        logger.info(f"  Best val FPR:  {self.state.best_val_fpr:.4f}")
         logger.info("=" * 80)
 
         best_f1_epoch, best_f1_metrics = self.val_metrics_tracker.get_best_epoch("f1_score")
@@ -405,6 +431,12 @@ class Trainer:
 
         return results
 
+    def _update_augmentation_epoch(self, epoch: int) -> None:
+        """Update epoch in augmentation module for SNR scheduling."""
+        if hasattr(self, "audio_processor") and self.audio_processor is not None:
+            if hasattr(self.audio_processor, "augmentation") and self.audio_processor.augmentation is not None:
+                self.audio_processor.augmentation.set_epoch(epoch, self.config.training.epochs)
+
     def _check_qat_transition(self, epoch: int) -> None:
         """Check and handle transition to QAT fine-tuning"""
         if not getattr(self.config.qat, "enabled", False):
@@ -438,6 +470,27 @@ class Trainer:
                 self.use_mixed_precision = False
                 self.scaler = create_grad_scaler(enabled=False)
 
+    def _compute_dynamic_alpha(self, epoch: int) -> float:
+        """Compute dynamic focal alpha based on training epoch
+
+        Args:
+            epoch: Current epoch number
+
+        Returns:
+            Current alpha value for focal loss
+        """
+        if not self.use_dynamic_alpha:
+            return getattr(self.config.loss, "focal_alpha", 0.25)
+
+        # Linear increase from base_alpha to max_alpha in first 50 epochs
+        if epoch < 50:
+            progress = epoch / 50
+            current_alpha = self.base_alpha + (self.max_alpha - self.base_alpha) * progress
+        else:
+            current_alpha = self.max_alpha
+
+        return current_alpha
+
     def _update_scheduler(self, val_loss: float) -> None:
         """Update learning rate scheduler"""
         if self.scheduler is not None:
@@ -448,12 +501,13 @@ class Trainer:
                     self.scheduler.step()
 
     def _check_improvement(self, val_loss: float, val_metrics: MetricResults) -> bool:
-        """Check if model improved based on primary metric (val_f1)
-        Simplified to use single primary metric for early stopping
+        """Check if model improved based on primary metric
+        Supports FNR-oriented training when fnr_target is set
         """
         improved = False
         val_f1 = val_metrics.f1_score
         val_fpr = val_metrics.fpr
+        val_fnr = val_metrics.fnr  # FNR critical metric
         val_pauc = val_metrics.pauc
 
         # Track all metrics for logging
@@ -466,13 +520,30 @@ class Trainer:
         if val_pauc > self.state.best_val_pauc:
             self.state.best_val_pauc = val_pauc
 
-        # Primary metric: val_f1 (for early stopping)
-        if val_f1 > self.state.best_val_f1:
-            self.state.best_val_f1 = val_f1
-            improved = True
-            self.state.epochs_without_improvement = 0
+        # FNR-oriented early stopping if target is set
+        fnr_target = getattr(self.config.training, "fnr_target", None)
+        if fnr_target is not None:
+            # FNR target mode - treat FNR as primary metric
+            if val_fnr <= fnr_target:
+                # FNR met, check F1 for best model
+                if val_f1 > self.state.best_val_f1:
+                    self.state.best_val_f1 = val_f1
+                    improved = True
+                    self.state.epochs_without_improvement = 0
+                else:
+                    self.state.epochs_without_improvement += 1
+            else:
+                # FNR still above target, keep training
+                self.state.epochs_without_improvement = 0
+                logger.debug(f"FNR={val_fnr:.4f} > target={fnr_target:.4f}, continuing training")
         else:
-            self.state.epochs_without_improvement += 1
+            # Standard F1-based early stopping
+            if val_f1 > self.state.best_val_f1:
+                self.state.best_val_f1 = val_f1
+                improved = True
+                self.state.epochs_without_improvement = 0
+            else:
+                self.state.epochs_without_improvement += 1
 
         return improved
 
