@@ -112,13 +112,20 @@ class Trainer:
 
         # Move model to GPU
         self.model = model.to(device)
+        
+        # Performance: Gradient Checkpointing
+        if getattr(config.training, "use_gradient_checkpointing", False):
+            if hasattr(self.model, "gradient_checkpointing_enable"):
+                self.model.gradient_checkpointing_enable()
+                logger.info("Gradient checkpointing enabled")
+
         # channels_last bellek düzeni (Ampere+ için throughput ↑) - Only on CUDA
         if device == "cuda":
             self.model = self.model.to(memory_format=torch.channels_last)  # type: ignore
             logger.info("Using channels_last memory format for model")
 
             # Torch.compile optimization for PyTorch 2.0+
-            if hasattr(torch, "compile"):
+            if getattr(config.training, "use_compile", True) and hasattr(torch, "compile"):
                 try:
                     self.model = torch.compile(self.model, mode="max-autotune")  # type: ignore[assignment]
                     logger.info("Torch.compile enabled with max-autotune mode")

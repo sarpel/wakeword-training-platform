@@ -554,6 +554,9 @@ def start_training(
     wandb_project: str,
     wandb_api_key: str = "",
     resume_checkpoint: Optional[str] = None,
+    use_compile: bool = True,
+    use_grad_ckpt: bool = False,
+    use_snr_scheduling: bool = True,
 ) -> Tuple:
     """Start training with current configuration and session settings"""
     if training_state.is_training:
@@ -569,6 +572,7 @@ def start_training(
         )
 
     try:
+        # ... (Resume logic same)
         # Handle Resume
         resume_path = None
         if resume_checkpoint and resume_checkpoint != "None":
@@ -615,6 +619,8 @@ def start_training(
         # Session Overrides (The session settings in Panel 3 take precedence for the duration of this run)
         config.training.use_ema = use_ema
         config.training.ema_decay = ema_decay
+        config.training.use_compile = use_compile
+        config.training.use_gradient_checkpointing = use_grad_ckpt
         # CMVN is handled by path presence and checkbox
 
         training_state.config = config
@@ -1668,10 +1674,10 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         )
                         sampler_ratio_hard = gr.Number(
                             label="Hard Negative",
-                            value=1,
+                            value=2,
                             precision=0,
                             minimum=0,
-                            info="Ratio of hard negatives",
+                            info="Ratio of hard negatives (FNR optimization)",
                         )
 
                     calc_ratios_btn = gr.Button("🧮 Auto-Calculate Ratios", size="sm")
@@ -1704,6 +1710,24 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                         info="Automatically discover optimal learning rate (-10-15% training time)",
                     )
                     gr.Markdown("*Note: LR Finder runs before training starts and may take a few minutes*")
+
+                with gr.Column():
+                    gr.Markdown("#### ⚡ Hardware Performance")
+                    use_compile = gr.Checkbox(
+                        label="Enable torch.compile",
+                        value=True,
+                        info="JIT compilation for up to 2x speedup (requires PyTorch 2.0+)",
+                    )
+                    use_grad_ckpt = gr.Checkbox(
+                        label="Gradient Checkpointing",
+                        value=False,
+                        info="Reduces VRAM usage by 30-50% (slower training)",
+                    )
+                    use_snr_scheduling = gr.Checkbox(
+                        label="Active SNR Scheduling",
+                        value=True,
+                        info="Background noise becomes harder over epochs (+2% robustness)",
+                    )
 
             with gr.Row():
                 with gr.Column():
@@ -1795,31 +1819,26 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 training_status = gr.Textbox(label="Status", value="Ready to train", lines=2, interactive=False)
 
                 gr.Markdown("### Current Progress")
-                current_epoch = gr.Textbox(label="Epoch", value="0/0", interactive=False)
-                current_batch = gr.Textbox(label="Batch", value="0/0", interactive=False)
+                with gr.Row():
+                    current_epoch = gr.Textbox(label="Epoch", value="0/0", interactive=False)
+                    current_batch = gr.Textbox(label="Batch", value="0/0", interactive=False)
 
                 gr.Markdown("### Current Metrics")
                 with gr.Row():
                     train_loss = gr.Number(label="Train Loss", value=0.0, interactive=False)
                     val_loss = gr.Number(label="Val Loss", value=0.0, interactive=False)
-
-                with gr.Row():
                     train_acc = gr.Number(label="Train Acc (%)", value=0.0, interactive=False)
                     val_acc = gr.Number(label="Val Acc (%)", value=0.0, interactive=False)
 
                 with gr.Row():
                     fpr = gr.Number(label="FPR (%)", value=0.0, interactive=False)
                     fnr = gr.Number(label="FNR (%)", value=0.0, interactive=False)
-
-                with gr.Row():
                     eer_display = gr.Number(label="EER (%)", value=0.0, interactive=False)
                     fah_display = gr.Number(label="FAH (per hour)", value=0.0, interactive=False)
 
                 with gr.Row():
                     speed = gr.Number(label="Speed (samples/sec)", value=0.0, interactive=False)
                     epoch_speed_display = gr.Number(label="Epoch Speed (epochs/min)", value=0.0, interactive=False)
-
-                with gr.Row():
                     gpu_util = gr.Number(label="GPU Util (%)", value=0.0, interactive=False)
                     gpu_mem_display = gr.Number(label="GPU Mem (GB)", value=0.0, interactive=False, precision=2)
 
@@ -1880,13 +1899,19 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         # Event handlers
         # Wrapper for start training to handle resume logic
         def start_training_wrapper(*args: Any) -> Any:
-            # Last 2 args are resume_training (bool) and checkpoint_dropdown (str)
-            resume_checked = args[-2]
-            ckpt_path = args[-1]
+            # Last 5 args are: 
+            # resume_training (bool), checkpoint_dropdown (str), 
+            # use_compile (bool), use_grad_ckpt (bool), use_snr_scheduling (bool)
+            resume_checked = args[-5]
+            ckpt_path = args[-4]
+            use_compile = args[-3]
+            use_grad_ckpt = args[-2]
+            use_snr_scheduling = args[-1]
 
-            # Pass everything else + formatted resume path
-            actual_args = list(args[:-2])
+            # Pass everything else + formatted resume path + new flags
+            actual_args = list(args[:-5])
             actual_args.append(ckpt_path if resume_checked else None)
+            actual_args.extend([use_compile, use_grad_ckpt, use_snr_scheduling])
 
             return start_training(*actual_args)
 
@@ -1907,6 +1932,9 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
                 wandb_api_key,
                 resume_training,
                 checkpoint_dropdown,
+                use_compile,
+                use_grad_ckpt,
+                use_snr_scheduling,
             ],
             outputs=[
                 training_status,

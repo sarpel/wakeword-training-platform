@@ -51,10 +51,15 @@ class TrainingConfig:
     learning_rate: float = 5e-4  # Optimized: 5e-4 for stable training
     early_stopping_patience: int = 15
 
+    # FNR target for early stopping (None = use F1-based stopping)
+    fnr_target: Optional[float] = None  # Target FNR (e.g., 0.02 for 2%)
+
     # Hardware
     num_workers: int = 16  # Updated default to 16 for 7950X
     pin_memory: bool = True
     persistent_workers: bool = True
+    use_compile: bool = True  # Enable torch.compile
+    use_gradient_checkpointing: bool = False  # VRAM optimization
 
     # Checkpointing
     checkpoint_frequency: str = "every_5_epochs"  # best_only, every_epoch, every_5_epochs, every_10_epochs
@@ -181,21 +186,25 @@ class OptimizerConfig:
 class LossConfig:
     """Loss function configuration"""
 
-    loss_function: str = "cross_entropy"  # cross_entropy, focal_loss, triplet_loss
-    label_smoothing: float = 0.05
+    loss_function: str = "focal_loss"  # Changed to focal_loss for FNR optimization
+    label_smoothing: float = 0.1  # Increased label smoothing
 
-    # Focal loss parameters
-    focal_alpha: float = 0.25
-    focal_gamma: float = 2.0
+    # Focal loss parameters - FNR focused!
+    focal_alpha: float = 0.85  # FNR oriented (0.85-0.90 range)
+    focal_gamma: float = 2.5  # Increased for hard example mining
 
     # Triplet loss parameters
     triplet_margin: float = 1.0
 
     # Class weighting
     class_weights: str = "balanced"  # balanced, none, custom
-    hard_negative_weight: float = 1.5
+    hard_negative_weight: float = 2.0  # Increased for FNR optimization
     class_weight_min: float = 0.1
     class_weight_max: float = 100.0
+
+    # Dynamic alpha (FNR-focused training)
+    use_dynamic_alpha: bool = True  # Enable dynamic alpha during training
+    max_focal_alpha: float = 0.90  # Maximum alpha value for dynamic scaling
 
     # Sampling strategy
     sampler_strategy: str = "weighted"  # weighted, balanced, none
