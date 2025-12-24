@@ -9,7 +9,7 @@ Focus on enabling high-performance features and robust training scheduling.
     - Create `tests/test_snr_scheduling.py` to verify SNR decreases over epochs.
     - Update `AudioAugmentation.set_epoch` to adjust `noise_snr_range` dynamically.
     - Connect `Trainer` epoch loop to `audio_processor.augmentation`.
-- [ ] Task: Add Performance Toggles to UI and Backend
+- [x] Task: Add Performance Toggles to UI and Backend f6171eb
     - Update `WakewordConfig` to include `use_compile` and `use_gradient_checkpointing`.
     - Update `Trainer.__init__` to apply `torch.compile` and `model.gradient_checkpointing_enable()` based on config.
     - Add checkboxes to `src/ui/panel_training.py`.
