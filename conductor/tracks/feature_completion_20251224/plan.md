@@ -33,10 +33,6 @@ Enable long-form audio analysis for hard negative discovery.
 ## Phase 4: Distributed Cascade Integration
 Connect the Sentry (Edge) to the Judge (Server) for final verification.
 
-- [ ] Task: Implement Judge Client Logic
-    - Create `src/evaluation/judge_client.py` to handle HTTP POST requests to the Judge server.
-    - Write tests with a mocked Judge server to verify response handling.
-- [ ] Task: Add Cascade Testing UI
-    - Add "Cascade Testing" sub-tab to Panel 4.
-    - Add fields for Judge URL and a "Verify with Judge" action for microphone/file results.
+- [x] Task: Implement Judge Client Logic fd3af7b
+- [x] Task: Add Cascade Testing UI fd3af7b
 - [ ] Task: Conductor - User Manual Verification 'Phase 4: Distributed Cascade' (Protocol in workflow.md)
