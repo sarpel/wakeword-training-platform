@@ -25,6 +25,7 @@ import structlog
 from src.config.cuda_utils import get_cuda_validator
 from src.data.dataset import WakewordDataset
 from src.evaluation.advanced_evaluator import ThresholdAnalyzer
+from src.evaluation.background_miner import BackgroundMiner
 from src.evaluation.benchmarking import BenchmarkRunner
 from src.evaluation.data_collector import FalsePositiveCollector
 from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
@@ -75,10 +76,43 @@ class EvaluationState:
         self.threshold_analyzer: Optional[ThresholdAnalyzer] = None
         self.fp_collector = FalsePositiveCollector()
         self.miner = HardNegativeMiner()
+        self.bg_miner: Optional[BackgroundMiner] = None
 
 
 # Global state
 eval_state = EvaluationState()
+
+
+def run_background_mining(file_path: str, threshold: float, resume: bool, progress=gr.Progress()) -> str:
+    """Run long-form background mining."""
+    if eval_state.evaluator is None:
+        return "❌ Please load a model first"
+    
+    if not file_path or not Path(file_path).exists():
+        return "❌ Please provide a valid audio file path"
+
+    try:
+        if eval_state.bg_miner is None:
+            eval_state.bg_miner = BackgroundMiner(eval_state.evaluator, eval_state.miner)
+        
+        def update_progress(p, msg):
+            progress(p, desc=msg)
+            
+        result = eval_state.bg_miner.process_file(
+            Path(file_path), 
+            threshold=threshold, 
+            resume=resume, 
+            progress_callback=update_progress
+        )
+        
+        return (
+            f"✅ Mining Complete for {result['file']}\n"
+            f"Found {result['found']} potential false positives.\n"
+            f"Processed {result['processed_sec']:.1f}s of {result['total_sec']:.1f}s."
+        )
+    except Exception as e:
+        logger.error(f"Background mining failed: {e}")
+        return f"❌ Error: {str(e)}"
 
 
 def get_available_models() -> List[str]:
@@ -821,32 +855,56 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
             # Mining Queue Tab
             with gr.TabItem("⛏️ Mining Queue"):
-                gr.Markdown("### Hard Negative Verification Queue")
-                gr.Markdown("**Review false positives (model detected as wakeword but they are NOT).**")
-                gr.Markdown("Confirm samples that are NOT wakewords (hard negatives) to add them to your training data and improve accuracy.")
+                with gr.Tabs():
+                    with gr.TabItem("📋 Verification Queue"):
+                        gr.Markdown("### Hard Negative Verification Queue")
+                        gr.Markdown("**Review false positives (model detected as wakeword but they are NOT).**")
+                        gr.Markdown("Confirm samples that are NOT wakewords (hard negatives) to add them to your training data and improve accuracy.")
 
-                with gr.Row():
-                    refresh_queue_btn = gr.Button("🔄 Refresh Queue")
-                    inject_mined_btn = gr.Button("💉 Add Verified Samples to Dataset", variant="primary")
+                        with gr.Row():
+                            refresh_queue_btn = gr.Button("🔄 Refresh Queue")
+                            inject_mined_btn = gr.Button("💉 Add Verified Samples to Dataset", variant="primary")
 
-                injection_status = gr.Markdown("")
+                        injection_status = gr.Markdown("")
 
-                # Dataframe for displaying queue
-                mining_queue_df = gr.Dataframe(
-                    headers=["Filename", "Confidence", "Full Path"],
-                    datatype=["str", "str", "str"],
-                    value=get_mining_queue_data(),
-                    interactive=False,
-                    label="Verification Queue (Select a row to verify)",
-                    wrap=True
-                )
+                        # Dataframe for displaying queue
+                        mining_queue_df = gr.Dataframe(
+                            headers=["Filename", "Confidence", "Full Path"],
+                            datatype=["str", "str", "str"],
+                            value=get_mining_queue_data(),
+                            interactive=False,
+                            label="Verification Queue (Select a row to verify)",
+                            wrap=True
+                        )
 
-                gr.Markdown("### Verification Actions")
-                selected_sample_box = gr.Textbox(label="Selected Sample Path", interactive=False, placeholder="Select a row from the table above...")
-                
-                with gr.Row():
-                    confirm_btn = gr.Button("✅ Confirm (Not Wakeword)", variant="primary")
-                    discard_btn = gr.Button("❌ Reject Sample", variant="stop")
+                        gr.Markdown("### Verification Actions")
+                        selected_sample_box = gr.Textbox(label="Selected Sample Path", interactive=False, placeholder="Select a row from the table above...")
+                        
+                        with gr.Row():
+                            confirm_btn = gr.Button("✅ Confirm (Not Wakeword)", variant="primary")
+                            discard_btn = gr.Button("❌ Reject Sample", variant="stop")
+
+                    with gr.TabItem("🚜 Background Miner"):
+                        gr.Markdown("### Long-form Background Noise Mining")
+                        gr.Markdown("Analyze long audio recordings (e.g. 24h room noise) to find false positives automatically.")
+                        
+                        with gr.Row():
+                            bg_file_path = gr.Textbox(
+                                label="Background Audio File Path",
+                                placeholder="C:/data/noise/room_24h.wav",
+                                info="Path to a long audio file to mine for false positives."
+                            )
+                            bg_threshold = gr.Slider(
+                                minimum=0.1, maximum=0.9, value=0.4, step=0.05,
+                                label="Mining Threshold",
+                                info="Lower = catch more potential negatives, Higher = stricter."
+                            )
+                        
+                        with gr.Row():
+                            bg_resume = gr.Checkbox(label="Resume from Last Session", value=True)
+                            start_bg_mining_btn = gr.Button("🚀 Start Mining", variant="primary")
+                        
+                        bg_mining_status = gr.Textbox(label="Mining Status", lines=5, interactive=False)
 
             # Analysis Dashboard
             with gr.TabItem("🔍 Analysis Dashboard"):
@@ -950,6 +1008,12 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
         mine_fp_btn.click(fn=mine_hard_negatives_handler, outputs=[mining_status])
         refresh_queue_btn.click(fn=get_mining_queue_data, outputs=[mining_queue_df])
         inject_mined_btn.click(fn=inject_mined_samples_handler, outputs=[injection_status])
+
+        start_bg_mining_btn.click(
+            fn=run_background_mining,
+            inputs=[bg_file_path, bg_threshold, bg_resume],
+            outputs=[bg_mining_status]
+        )
 
         # Selection handler
         def on_queue_select(df, evt: gr.EventData):
