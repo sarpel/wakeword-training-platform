@@ -40,18 +40,19 @@ class MetricResults:
     eer: float = 0.0  # Equal Error Rate
     fah: float = 0.0  # False Alarms per Hour
     latency_ms: float = 0.0  # Average latency per sample in ms
+    confidence_histogram: str = ""  # ASCII Histogram visualization
 
     def __str__(self) -> str:
         """String representation"""
         return (
-            f"Accuracy: {self.accuracy:.4f} | "
-            f"Precision: {self.precision:.4f} | "
-            f"Recall: {self.recall:.4f} | "
-            f"F1: {self.f1_score:.4f} | "
-            f"FPR: {self.fpr:.4f} | "
-            f"FNR: {self.fnr:.4f} | "
-            f"pAUC: {self.pauc:.4f} | "
-            f"EER: {self.eer:.4f}"
+            f"\n    Accuracy:  {self.accuracy:.4f}\n"
+            f"    Precision: {self.precision:.4f}\n"
+            f"    Recall:    {self.recall:.4f}\n"
+            f"    F1:        {self.f1_score:.4f}\n"
+            f"    FPR:       {self.fpr:.4f}\n"
+            f"    FNR:       {self.fnr:.4f}\n"
+            f"    pAUC:      {self.pauc:.4f}\n"
+            f"    EER:       {self.eer:.4f}"
         )
 
     def to_dict(self) -> Dict[str, float]:
@@ -180,6 +181,9 @@ class MetricsCalculator:
         # FAH = FP / Total Duration (hours)
         fah = fp / total_duration_h if total_duration_h and total_duration_h > 0 else 0.0
 
+        # Generate ASCII Histogram
+        histogram = self._generate_ascii_histogram(probs, targets)
+
         return MetricResults(
             accuracy=accuracy,
             precision=precision,
@@ -197,7 +201,61 @@ class MetricsCalculator:
             pauc=pauc,
             eer=eer,
             fah=fah,
+            confidence_histogram=histogram,
         )
+
+    def _generate_ascii_histogram(self, probs: torch.Tensor, targets: torch.Tensor, bins: int = 10) -> str:
+        """
+        Generate a text-based histogram of confidence scores.
+        Visually separates Negatives (L) vs Positives (R).
+        """
+        try:
+            # Move to CPU for processing
+            probs_np = probs.detach().cpu().numpy()
+            targets_np = targets.detach().cpu().numpy()
+
+            pos_scores = probs_np[targets_np == 1]
+            neg_scores = probs_np[targets_np == 0]
+
+            hist_lines = ["\n    Confidence Distribution (Neg [-] vs Pos [+]):"]
+            
+            # Create bins
+            bin_edges = np.linspace(0, 1, bins + 1)
+            
+            # Calculate counts
+            pos_hist, _ = np.histogram(pos_scores, bins=bin_edges)
+            neg_hist, _ = np.histogram(neg_scores, bins=bin_edges)
+            
+            # Normalize for visualization (max width 40 chars)
+            max_count = max(pos_hist.max(), neg_hist.max()) if (len(pos_hist) > 0 and len(neg_hist) > 0) else 1
+            max_width = 40
+            
+            for i in range(bins):
+                low, high = bin_edges[i], bin_edges[i+1]
+                
+                # Normalize lengths
+                neg_len = int((neg_hist[i] / max_count) * max_width) if max_count > 0 else 0
+                pos_len = int((pos_hist[i] / max_count) * max_width) if max_count > 0 else 0
+                
+                neg_bar = "-" * neg_len
+                pos_bar = "+" * pos_len
+                
+                # Format: [0.0-0.1] --- (120) | + (5)
+                # Using specific markers for clarity
+                if neg_len > 0 and pos_len > 0:
+                    bar = f"\033[94m{neg_bar}\033[0m|\033[92m{pos_bar}\033[0m" # Blue | Green
+                elif neg_len > 0:
+                    bar = f"\033[94m{neg_bar}\033[0m"
+                elif pos_len > 0:
+                    bar = f"|\033[92m{pos_bar}\033[0m"
+                else:
+                    bar = ""
+                    
+                hist_lines.append(f"    [{low:.1f}-{high:.1f}] {bar}")
+                
+            return "\n".join(hist_lines)
+        except Exception as e:
+            return f"Histogram error: {e}"
 
     def confusion_matrix(self, predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 2) -> torch.Tensor:
         """

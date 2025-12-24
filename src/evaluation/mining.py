@@ -102,6 +102,19 @@ class HardNegativeMiner:
                 break
         self._save_queue()
 
+    def confirm_all_pending(self) -> int:
+        """
+        Confirm all samples in the queue that are currently 'pending'.
+        """
+        count = 0
+        for item in self.queue:
+            if item["status"] == "pending":
+                item["status"] = "confirmed"
+                count += 1
+        if count > 0:
+            self._save_queue()
+        return count
+
     def inject_to_dataset(self, target_dir: str = "data/mined_negatives") -> int:
         """
         Copy verified hard negatives (confirmed "not wakeword" samples) to target directory for retraining.

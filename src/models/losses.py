@@ -117,6 +117,18 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.reduction = reduction
 
+    def set_alpha(self, alpha: float) -> None:
+        """
+        Update alpha parameter dynamically during training
+        Used for FNR-oriented training with increasing alpha
+
+        Args:
+            alpha: New alpha value (0.0-1.0)
+        """
+        if self.alpha is not None:
+            self.alpha = float(alpha)
+            logger.debug(f"Focal alpha updated to {alpha:.3f}")
+
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         Forward pass

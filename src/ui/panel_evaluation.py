@@ -320,16 +320,27 @@ def get_microphone_status() -> Tuple:
     return "🟢 Listening...", 0.0, None, "\n".join(eval_state.mic_history)
 
 
-def run_threshold_analysis() -> Tuple[gr.Plot, pd.DataFrame]:
+def run_threshold_analysis() -> Tuple[Optional[go.Figure], str]:
     if eval_state.threshold_analyzer is None:
-        return None, None
-    results = eval_state.threshold_analyzer.analyze_range(np.linspace(0, 1, 21))
-    df = pd.DataFrame(results)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df["threshold"], y=df["precision"], name="Precision", line=dict(color="cyan")))
-    fig.add_trace(go.Scatter(x=df["threshold"], y=df["recall"], name="Recall", line=dict(color="orange")))
-    fig.update_layout(title="PR vs Threshold", template="plotly_dark", height=400)
-    return fig, df
+        return None, "❌ No analysis data available. Please run 'Test Set Evaluation' first to collect logits."
+    
+    try:
+        results = eval_state.threshold_analyzer.analyze_range(np.linspace(0, 1, 21))
+        df = pd.DataFrame(results)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df["threshold"], y=df["precision"], name="Precision", line=dict(color="cyan")))
+        fig.add_trace(go.Scatter(x=df["threshold"], y=df["recall"], name="Recall", line=dict(color="orange")))
+        fig.update_layout(
+            title="Precision/Recall vs Threshold",
+            template="plotly_dark",
+            height=400,
+            xaxis_title="Threshold",
+            yaxis_title="Score"
+        )
+        return fig, "✅ Analysis complete."
+    except Exception as e:
+        logger.error(f"Threshold analysis failed: {e}")
+        return None, f"❌ Analysis failed: {str(e)}"
 
 
 def run_benchmark_test(num_iterations: int = 10) -> Dict[str, Any]:
@@ -440,6 +451,13 @@ def verify_sample_action(path: str, status: str):
 def inject_mined_samples_handler() -> str:
     count = eval_state.miner.inject_to_dataset()
     return f"✅ Successfully added {count} verified hard negative samples to training data."
+
+
+def confirm_all_and_inject_handler() -> str:
+    """Confirm all pending samples and inject them into the dataset."""
+    confirm_count = eval_state.miner.confirm_all_pending()
+    inject_count = eval_state.miner.inject_to_dataset()
+    return f"✅ Bulk Action Complete: Confirmed {confirm_count} and added {inject_count} samples to dataset."
 
 
 def evaluate_test_set(
@@ -926,7 +944,8 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
                         with gr.Row():
                             refresh_queue_btn = gr.Button("🔄 Refresh Queue")
-                            inject_mined_btn = gr.Button("💉 Add Verified Samples to Dataset", variant="primary")
+                            confirm_all_btn = gr.Button("🚀 Confirm & Add All", variant="primary")
+                            inject_mined_btn = gr.Button("💉 Add Verified Samples to Dataset")
 
                         injection_status = gr.Markdown("")
 
@@ -977,6 +996,8 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                 with gr.Row():
                     run_analysis_btn = gr.Button("📊 Run Threshold Analysis", variant="primary")
                     run_bench_btn = gr.Button("⚡ Run Performance Benchmark", variant="secondary")
+
+                analysis_info = gr.Textbox(label="Status", interactive=False)
 
                 with gr.Row():
                     with gr.Column():
@@ -1062,7 +1083,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             outputs=[test_metrics, confusion_matrix, roc_curve, advanced_metrics],
         )
 
-        run_analysis_btn.click(fn=run_threshold_analysis, outputs=[threshold_plot, gr.State()])
+        run_analysis_btn.click(fn=run_threshold_analysis, outputs=[threshold_plot, analysis_info])
         run_bench_btn.click(fn=run_benchmark_test, outputs=[bench_metrics])
         collect_fp_btn.click(fn=collect_false_positives, outputs=[fp_gallery])
         clear_fp_btn.click(fn=clear_false_positives, outputs=[fp_gallery])
@@ -1070,6 +1091,13 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
         # Mining handlers
         mine_fp_btn.click(fn=mine_hard_negatives_handler, outputs=[mining_status])
         refresh_queue_btn.click(fn=get_mining_queue_data, outputs=[mining_queue_df])
+        confirm_all_btn.click(
+            fn=confirm_all_and_inject_handler, 
+            outputs=[injection_status]
+        ).then(
+            fn=get_mining_queue_data, 
+            outputs=[mining_queue_df]
+        )
         inject_mined_btn.click(fn=inject_mined_samples_handler, outputs=[injection_status])
 
         start_bg_mining_btn.click(

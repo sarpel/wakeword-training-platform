@@ -522,10 +522,25 @@ def get_hard_negative_refinement_preset() -> WakewordConfig:
     """
     Strategy A: Hard Negative Refinement
     Optimized for re-training after mining false positives.
+    Adapted for: ESP32-S3 TinyConv (Match MCU Production)
     """
     return WakewordConfig(
         config_name="hard_negative_refinement",
         description="Strategy A: Refine model using mined hard negatives (High Loss Weight)",
+        # ⬇️ MATCHING MCU PRODUCTION DATA CONFIG
+        data=DataConfig(
+            sample_rate=16000,
+            audio_duration=1.5,
+            n_mels=64,
+            hop_length=160,
+        ),
+        # ⬇️ MATCHING MCU PRODUCTION MODEL ARCHITECTURE
+        model=ModelConfig(
+            architecture="tiny_conv",
+            num_classes=2,
+            dropout=0.2,
+            tcn_num_channels=[64, 64, 64, 64],
+        ),
         training=TrainingConfig(
             epochs=50,
             learning_rate=0.0001,  # Lower LR for refinement
@@ -546,6 +561,12 @@ def get_hard_negative_refinement_preset() -> WakewordConfig:
             background_noise_prob=0.8,  # More noise to challenge the model
             time_shift_prob=0.5,
         ),
+        qat=QATConfig(
+            enabled=True,
+            backend="qnnpack",
+            start_epoch=0,
+        ),
+        # Distillation disabled intentionally to focus on Hard Negatives
     )
 
 

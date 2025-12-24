@@ -20,14 +20,14 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
+training-153epoch-f1-0.83.txt
 # Virtual Environments
 venv/
 env/
 ENV/
 .env
 .venv/
-
+training-2.txt
 # Testing & Coverage
 .tox/
 .nox/
@@ -42,7 +42,7 @@ coverage.xml
 .pytest_cache/
 .mypy_cache/
 codeql-results.sarif
-
+conductor/
 # Jupyter Notebooks
 .ipynb_checkpoints
 */.ipynb_checkpoints/*

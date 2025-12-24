@@ -20,9 +20,3 @@ This file tracks all major tracks for the project. Each track has its own detail
 ---
 
 
-
-## [x] Track: Startup and HPO Fixes
-
-*Link: [./conductor/tracks/startup_hpo_fixes_20251223/](./conductor/tracks/startup_hpo_fixes_20251223/)*
-
-
