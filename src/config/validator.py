@@ -197,10 +197,37 @@ class ConfigValidator:
         self._add_custom_warnings(config)
         self._validate_gpu_compatibility(config)
         self._validate_model_size(config)
+        self._validate_distillation(config)
 
         all_issues = self.errors + self.warnings
         is_valid = len(self.errors) == 0
         return is_valid, all_issues
+
+    def _validate_distillation(self, config: WakewordConfig) -> None:
+        """Validate Knowledge Distillation settings"""
+        if not getattr(config.distillation, "enabled", False):
+            return
+
+        from pathlib import Path
+
+        # Primary Teacher
+        t1_path = getattr(config.distillation, "teacher_model_path", "")
+        if not t1_path:
+            self.errors.append(ValidationError("distillation.teacher_model_path", "Teacher model path is required when distillation is enabled"))
+        elif not Path(t1_path).exists():
+            self.errors.append(ValidationError("distillation.teacher_model_path", f"Teacher checkpoint not found: {t1_path}"))
+
+        # Secondary Teacher (if architecture is 'dual')
+        if getattr(config.distillation, "teacher_architecture", "") == "dual":
+            t2_path = getattr(config.distillation, "secondary_teacher_model_path", "")
+            if not t2_path:
+                self.errors.append(ValidationError("distillation.secondary_teacher_model_path", "Secondary teacher model path is required for dual distillation"))
+            elif not Path(t2_path).exists():
+                self.errors.append(ValidationError("distillation.secondary_teacher_model_path", f"Secondary teacher checkpoint not found: {t2_path}"))
+            
+            t2_arch = getattr(config.distillation, "secondary_teacher_architecture", "")
+            if not t2_arch:
+                self.errors.append(ValidationError("distillation.secondary_teacher_architecture", "Secondary teacher architecture must be specified for dual distillation"))
 
     def _validate_model_size(self, config: WakewordConfig) -> None:
         """Validate model size against platform targets"""

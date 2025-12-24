@@ -46,6 +46,240 @@ def check_mismatch(config: WakewordConfig) -> Tuple[bool, str]:
     return False, ""
 
 
+def _params_to_config(params: List[Any]) -> WakewordConfig:
+    """Convert UI parameters to WakewordConfig"""
+    from src.config.defaults import (
+        AugmentationConfig,
+        CalibrationConfig,
+        CMVNConfig,
+        DataConfig,
+        DistillationConfig,
+        LossConfig,
+        ModelConfig,
+        OptimizerConfig,
+        QATConfig,
+        SizeTargetConfig,
+        StreamingConfig,
+        TrainingConfig,
+        WakewordConfig,
+    )
+
+    return WakewordConfig(
+        config_name="custom",
+        description="Custom configuration from UI",
+        data=DataConfig(
+            sample_rate=int(params[0]),
+            audio_duration=float(params[1]),
+            n_mfcc=int(params[2]),
+            n_fft=int(params[3]),
+            hop_length=int(params[4]),
+            n_mels=int(params[5]),
+            use_precomputed_features_for_training=bool(params[6]),
+            npy_cache_features=bool(params[7]),
+            fallback_to_audio=bool(params[8]),
+            npy_feature_dir=str(params[9]),
+            npy_feature_type=str(params[10]),
+        ),
+        training=TrainingConfig(
+            batch_size=int(params[11]),
+            epochs=int(params[12]),
+            learning_rate=float(params[13]),
+            early_stopping_patience=int(params[14]),
+            num_workers=int(params[49]),
+            checkpoint_frequency=params[57],
+            use_ema=bool(params[69]),
+            ema_decay=float(params[70]),
+            ema_final_decay=float(params[71]),
+            ema_final_epochs=int(params[72]),
+            metric_window_size=int(params[73]),
+        ),
+        model=ModelConfig(
+            architecture=params[15],
+            num_classes=int(params[16]),
+            dropout=float(params[17]),
+            hidden_size=int(params[18]),
+            num_layers=int(params[19]),
+            bidirectional=bool(params[20]),
+            tcn_num_channels=[int(x.strip()) for x in params[74].split(',') if x.strip()],
+            tcn_kernel_size=int(params[75]),
+            tcn_dropout=float(params[76]),
+            cddnn_hidden_layers=[int(x.strip()) for x in params[77].split(',') if x.strip()],
+            cddnn_context_frames=int(params[78]),
+            cddnn_dropout=float(params[79]),
+        ),
+        augmentation=AugmentationConfig(
+            time_stretch_min=float(params[21]),
+            time_stretch_max=float(params[22]),
+            pitch_shift_min=int(params[23]),
+            pitch_shift_max=int(params[24]),
+            background_noise_prob=float(params[25]),
+            rir_prob=float(params[26]),
+            noise_snr_min=float(params[27]),
+            noise_snr_max=float(params[28]),
+            rir_dry_wet_min=float(params[29]),
+            rir_dry_wet_max=float(params[30]),
+            rir_dry_wet_strategy=str(params[31]),
+            # SpecAugment
+            use_spec_augment=bool(params[32]),
+            freq_mask_param=int(params[33]),
+            time_mask_param=int(params[34]),
+            n_freq_masks=int(params[35]),
+            n_time_masks=int(params[36]),
+            # Time Shift
+            time_shift_prob=float(params[58]),
+            time_shift_min_ms=int(params[59]),
+            time_shift_max_ms=int(params[60]),
+        ),
+        optimizer=OptimizerConfig(
+            optimizer=params[37],
+            scheduler=params[38],
+            weight_decay=float(params[39]),
+            gradient_clip=float(params[40]),
+            mixed_precision=bool(params[41]),
+            momentum=float(params[42]),
+            warmup_epochs=int(params[43]),
+            min_lr=float(params[44]),
+            step_size=int(params[45]),
+            gamma=float(params[46]),
+            patience=int(params[47]),
+            factor=float(params[48]),
+        ),
+        loss=LossConfig(
+            loss_function=params[50],
+            label_smoothing=float(params[51]),
+            class_weights=params[52],
+            hard_negative_weight=float(params[53]),
+            focal_alpha=float(params[54]),
+            focal_gamma=float(params[55]),
+            sampler_strategy=params[56],
+            triplet_margin=float(params[61]),
+            class_weight_min=float(params[80]),
+            class_weight_max=float(params[81]),
+        ),
+        qat=QATConfig(
+            enabled=bool(params[62]),
+            backend=params[63],
+            start_epoch=int(params[64]),
+        ),
+        distillation=DistillationConfig(
+            enabled=bool(params[65]),
+            teacher_architecture=params[66],
+            temperature=float(params[67]),
+            alpha=float(params[68]),
+            secondary_teacher_architecture=params[83],
+            secondary_teacher_model_path=params[84],
+            teacher_model_path=params[85],
+        ),
+    )
+
+
+def _config_to_params(config: WakewordConfig) -> List[Any]:
+    """Convert WakewordConfig to UI parameters"""
+    return [
+        # Data (0-5)
+        config.data.sample_rate,
+        config.data.audio_duration,
+        config.data.n_mfcc,
+        config.data.n_fft,
+        config.data.hop_length,
+        config.data.n_mels,
+        # NPY (6-10)
+        config.data.use_precomputed_features_for_training,
+        config.data.npy_cache_features,
+        config.data.fallback_to_audio,
+        config.data.npy_feature_dir,
+        config.data.npy_feature_type,
+        # Training (11-14)
+        config.training.batch_size,
+        config.training.epochs,
+        config.training.learning_rate,
+        config.training.early_stopping_patience,
+        # Model (15-20)
+        config.model.architecture,
+        config.model.num_classes,
+        config.model.dropout,
+        config.model.hidden_size,
+        config.model.num_layers,
+        config.model.bidirectional,
+        # Augmentation (21-31)
+        config.augmentation.time_stretch_min,
+        config.augmentation.time_stretch_max,
+        config.augmentation.pitch_shift_min,
+        config.augmentation.pitch_shift_max,
+        config.augmentation.background_noise_prob,
+        config.augmentation.rir_prob,
+        config.augmentation.noise_snr_min,
+        config.augmentation.noise_snr_max,
+        config.augmentation.rir_dry_wet_min,
+        config.augmentation.rir_dry_wet_max,
+        config.augmentation.rir_dry_wet_strategy,
+        # SpecAugment (32-36)
+        config.augmentation.use_spec_augment,
+        config.augmentation.freq_mask_param,
+        config.augmentation.time_mask_param,
+        config.augmentation.n_freq_masks,
+        config.augmentation.n_time_masks,
+        # Optimizer (37-48)
+        config.optimizer.optimizer,
+        config.optimizer.scheduler,
+        config.optimizer.weight_decay,
+        config.optimizer.gradient_clip,
+        config.optimizer.mixed_precision,
+        config.optimizer.momentum,
+        config.optimizer.warmup_epochs,
+        config.optimizer.min_lr,
+        config.optimizer.step_size,
+        config.optimizer.gamma,
+        config.optimizer.patience,
+        config.optimizer.factor,
+        # Workers (49)
+        config.training.num_workers,
+        # Loss (50-56)
+        config.loss.loss_function,
+        config.loss.label_smoothing,
+        config.loss.class_weights,
+        config.loss.hard_negative_weight,
+        config.loss.focal_alpha,
+        config.loss.focal_gamma,
+        config.loss.sampler_strategy,
+        # Checkpoint (57)
+        config.training.checkpoint_frequency,
+        # Time Shift (58-60)
+        getattr(config.augmentation, "time_shift_prob", 0.0),
+        getattr(config.augmentation, "time_shift_min_ms", -100),
+        getattr(config.augmentation, "time_shift_max_ms", 100),
+        # Triplet (61)
+        getattr(config.loss, "triplet_margin", 1.0),
+        # QAT (62-64)
+        config.qat.enabled,
+        config.qat.backend,
+        config.qat.start_epoch,
+        # Distillation (65-68)
+        config.distillation.enabled,
+        config.distillation.teacher_architecture,
+        config.distillation.temperature,
+        config.distillation.alpha,
+        # New Params (69-82)
+        getattr(config.training, "use_ema", True),
+        getattr(config.training, "ema_decay", 0.999),
+        getattr(config.training, "ema_final_decay", 0.9995),
+        getattr(config.training, "ema_final_epochs", 10),
+        getattr(config.training, "metric_window_size", 100),
+        ", ".join(map(str, getattr(config.model, "tcn_num_channels", [64, 128, 256]))),
+        getattr(config.model, "tcn_kernel_size", 3),
+        getattr(config.model, "tcn_dropout", 0.3),
+        ", ".join(map(str, getattr(config.model, "cddnn_hidden_layers", [512, 256, 128]))),
+        getattr(config.model, "cddnn_context_frames", 50),
+        getattr(config.model, "cddnn_dropout", 0.3),
+        getattr(config.loss, "class_weight_min", 0.1),
+        getattr(config.loss, "class_weight_max", 100.0),
+        # Phase 2 Dual Teacher (83-85)
+        config.distillation.secondary_teacher_architecture,
+        config.distillation.secondary_teacher_model_path,
+        config.distillation.teacher_model_path,
+    ]
+
+
 def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
     """
     Create Panel 2: Configuration Management
@@ -309,6 +543,13 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                             minimum=0.0, maximum=1.0, value=0.5, step=0.1, label="Distillation Alpha"
                         )
 
+                    with gr.Row():
+                        teacher_model_path = gr.Textbox(label="Teacher Checkpoint", placeholder="models/teachers/wav2vec2.pt")
+                        secondary_teacher_arch = gr.Dropdown(
+                            choices=["wav2vec2", "conformer"], value="conformer", label="Sec. Teacher Arch"
+                        )
+                        secondary_teacher_model_path = gr.Textbox(label="Sec. Teacher Checkpoint", placeholder="models/teachers/conformer.pt")
+
         gr.Markdown("---")
 
         with gr.Row():
@@ -436,228 +677,11 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
             cddnn_dropout,
             class_weight_min,
             class_weight_max,
+            # Phase 2 Dual Teacher (83-85)
+            secondary_teacher_arch,
+            secondary_teacher_model_path,
+            teacher_model_path,
         ]
-
-        # Event handlers with full implementation
-        def _params_to_config(params: List[Any]) -> WakewordConfig:
-            """Convert UI parameters to WakewordConfig"""
-            from src.config.defaults import (
-                AugmentationConfig,
-                DataConfig,
-                DistillationConfig,
-                LossConfig,
-                ModelConfig,
-                OptimizerConfig,
-                QATConfig,
-                TrainingConfig,
-            )
-
-            return WakewordConfig(
-                config_name="custom",
-                description="Custom configuration from UI",
-                data=DataConfig(
-                    sample_rate=int(params[0]),
-                    audio_duration=float(params[1]),
-                    n_mfcc=int(params[2]),
-                    n_fft=int(params[3]),
-                    hop_length=int(params[4]),
-                    n_mels=int(params[5]),
-                    use_precomputed_features_for_training=bool(params[6]),
-                    npy_cache_features=bool(params[7]),
-                    fallback_to_audio=bool(params[8]),
-                    npy_feature_dir=str(params[9]),
-                    npy_feature_type=str(params[10]),
-                ),
-                training=TrainingConfig(
-                    batch_size=int(params[11]),
-                    epochs=int(params[12]),
-                    learning_rate=float(params[13]),
-                    early_stopping_patience=int(params[14]),
-                    num_workers=int(params[49]),
-                    checkpoint_frequency=params[57],
-                    use_ema=bool(params[69]),
-                    ema_decay=float(params[70]),
-                    ema_final_decay=float(params[71]),
-                    ema_final_epochs=int(params[72]),
-                    metric_window_size=int(params[73]),
-                ),
-                model=ModelConfig(
-                    architecture=params[15],
-                    num_classes=int(params[16]),
-                    dropout=float(params[17]),
-                    hidden_size=int(params[18]),
-                    num_layers=int(params[19]),
-                    bidirectional=bool(params[20]),
-                    tcn_num_channels=[int(x.strip()) for x in params[74].split(",") if x.strip()],
-                    tcn_kernel_size=int(params[75]),
-                    tcn_dropout=float(params[76]),
-                    cddnn_hidden_layers=[int(x.strip()) for x in params[77].split(",") if x.strip()],
-                    cddnn_context_frames=int(params[78]),
-                    cddnn_dropout=float(params[79]),
-                ),
-                augmentation=AugmentationConfig(
-                    time_stretch_min=float(params[21]),
-                    time_stretch_max=float(params[22]),
-                    pitch_shift_min=int(params[23]),
-                    pitch_shift_max=int(params[24]),
-                    background_noise_prob=float(params[25]),
-                    rir_prob=float(params[26]),
-                    noise_snr_min=float(params[27]),
-                    noise_snr_max=float(params[28]),
-                    rir_dry_wet_min=float(params[29]),
-                    rir_dry_wet_max=float(params[30]),
-                    rir_dry_wet_strategy=str(params[31]),
-                    # SpecAugment
-                    use_spec_augment=bool(params[32]),
-                    freq_mask_param=int(params[33]),
-                    time_mask_param=int(params[34]),
-                    n_freq_masks=int(params[35]),
-                    n_time_masks=int(params[36]),
-                    # Time Shift
-                    time_shift_prob=float(params[58]),
-                    time_shift_min_ms=int(params[59]),
-                    time_shift_max_ms=int(params[60]),
-                ),
-                optimizer=OptimizerConfig(
-                    optimizer=params[37],
-                    scheduler=params[38],
-                    weight_decay=float(params[39]),
-                    gradient_clip=float(params[40]),
-                    mixed_precision=bool(params[41]),
-                    momentum=float(params[42]),
-                    warmup_epochs=int(params[43]),
-                    min_lr=float(params[44]),
-                    step_size=int(params[45]),
-                    gamma=float(params[46]),
-                    patience=int(params[47]),
-                    factor=float(params[48]),
-                ),
-                loss=LossConfig(
-                    loss_function=params[50],
-                    label_smoothing=float(params[51]),
-                    class_weights=params[52],
-                    hard_negative_weight=float(params[53]),
-                    focal_alpha=float(params[54]),
-                    focal_gamma=float(params[55]),
-                    sampler_strategy=params[56],
-                    triplet_margin=float(params[61]),
-                    class_weight_min=float(params[80]),
-                    class_weight_max=float(params[81]),
-                ),
-                qat=QATConfig(
-                    enabled=bool(params[62]),
-                    backend=params[63],
-                    start_epoch=int(params[64]),
-                ),
-                distillation=DistillationConfig(
-                    enabled=bool(params[65]),
-                    teacher_architecture=params[66],
-                    temperature=float(params[67]),
-                    alpha=float(params[68]),
-                ),
-            )
-
-        def _config_to_params(config: WakewordConfig) -> List[Any]:
-            """Convert WakewordConfig to UI parameters"""
-            return [
-                # Data (0-5)
-                config.data.sample_rate,
-                config.data.audio_duration,
-                config.data.n_mfcc,
-                config.data.n_fft,
-                config.data.hop_length,
-                config.data.n_mels,
-                # NPY (6-10)
-                config.data.use_precomputed_features_for_training,
-                config.data.npy_cache_features,
-                config.data.fallback_to_audio,
-                config.data.npy_feature_dir,
-                config.data.npy_feature_type,
-                # Training (11-14)
-                config.training.batch_size,
-                config.training.epochs,
-                config.training.learning_rate,
-                config.training.early_stopping_patience,
-                # Model (15-20)
-                config.model.architecture,
-                config.model.num_classes,
-                config.model.dropout,
-                config.model.hidden_size,
-                config.model.num_layers,
-                config.model.bidirectional,
-                # Augmentation (21-31)
-                config.augmentation.time_stretch_min,
-                config.augmentation.time_stretch_max,
-                config.augmentation.pitch_shift_min,
-                config.augmentation.pitch_shift_max,
-                config.augmentation.background_noise_prob,
-                config.augmentation.rir_prob,
-                config.augmentation.noise_snr_min,
-                config.augmentation.noise_snr_max,
-                config.augmentation.rir_dry_wet_min,
-                config.augmentation.rir_dry_wet_max,
-                config.augmentation.rir_dry_wet_strategy,
-                # SpecAugment (32-36)
-                config.augmentation.use_spec_augment,
-                config.augmentation.freq_mask_param,
-                config.augmentation.time_mask_param,
-                config.augmentation.n_freq_masks,
-                config.augmentation.n_time_masks,
-                # Optimizer (37-48)
-                config.optimizer.optimizer,
-                config.optimizer.scheduler,
-                config.optimizer.weight_decay,
-                config.optimizer.gradient_clip,
-                config.optimizer.mixed_precision,
-                config.optimizer.momentum,
-                config.optimizer.warmup_epochs,
-                config.optimizer.min_lr,
-                config.optimizer.step_size,
-                config.optimizer.gamma,
-                config.optimizer.patience,
-                config.optimizer.factor,
-                # Workers (49)
-                config.training.num_workers,
-                # Loss (50-56)
-                config.loss.loss_function,
-                config.loss.label_smoothing,
-                config.loss.class_weights,
-                config.loss.hard_negative_weight,
-                config.loss.focal_alpha,
-                config.loss.focal_gamma,
-                config.loss.sampler_strategy,
-                # Checkpoint (57)
-                config.training.checkpoint_frequency,
-                # Time Shift (58-60)
-                getattr(config.augmentation, "time_shift_prob", 0.0),
-                getattr(config.augmentation, "time_shift_min_ms", -100),
-                getattr(config.augmentation, "time_shift_max_ms", 100),
-                # Triplet (61)
-                getattr(config.loss, "triplet_margin", 1.0),
-                # QAT (62-64)
-                config.qat.enabled,
-                config.qat.backend,
-                config.qat.start_epoch,
-                # Distillation (65-68)
-                config.distillation.enabled,
-                config.distillation.teacher_architecture,
-                config.distillation.temperature,
-                config.distillation.alpha,
-                # New Params (69-82)
-                getattr(config.training, "use_ema", True),
-                getattr(config.training, "ema_decay", 0.999),
-                getattr(config.training, "ema_final_decay", 0.9995),
-                getattr(config.training, "ema_final_epochs", 10),
-                getattr(config.training, "metric_window_size", 100),
-                ", ".join(map(str, getattr(config.model, "tcn_num_channels", [64, 128, 256]))),
-                getattr(config.model, "tcn_kernel_size", 3),
-                getattr(config.model, "tcn_dropout", 0.3),
-                ", ".join(map(str, getattr(config.model, "cddnn_hidden_layers", [512, 256, 128]))),
-                getattr(config.model, "cddnn_context_frames", 50),
-                getattr(config.model, "cddnn_dropout", 0.3),
-                getattr(config.loss, "class_weight_min", 0.1),
-                getattr(config.loss, "class_weight_max", 100.0),
-            ]
 
         def load_preset_handler(preset_name: str) -> Tuple:
             """Load configuration preset"""
