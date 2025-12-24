@@ -27,6 +27,7 @@ from src.data.dataset import WakewordDataset
 from src.evaluation.advanced_evaluator import ThresholdAnalyzer
 from src.evaluation.background_miner import BackgroundMiner
 from src.evaluation.benchmarking import BenchmarkRunner
+from src.evaluation.judge_client import JudgeClient
 from src.evaluation.data_collector import FalsePositiveCollector
 from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
 from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
@@ -77,10 +78,54 @@ class EvaluationState:
         self.fp_collector = FalsePositiveCollector()
         self.miner = HardNegativeMiner()
         self.bg_miner: Optional[BackgroundMiner] = None
+        self.judge_client: Optional[JudgeClient] = None
+        self.last_audio_chunk: Optional[np.ndarray] = None
 
 
 # Global state
 eval_state = EvaluationState()
+
+
+def verify_with_judge(url: str, api_key: str) -> str:
+    """Verify the last audio chunk with the remote Judge server."""
+    if eval_state.last_audio_chunk is None:
+        return "❌ No audio chunk available. Try speaking into the microphone or evaluating a file first."
+    
+    if not url:
+        return "❌ Please provide a Judge Server URL."
+
+    try:
+        if eval_state.judge_client is None or eval_state.judge_client.base_url != url:
+            eval_state.judge_client = JudgeClient(url, api_key=api_key if api_key else None)
+        
+        result = eval_state.judge_client.verify_audio(eval_state.last_audio_chunk, sample_rate=eval_state.waveform_sr)
+        
+        if "error" in result:
+            return f"❌ Judge Error: {result['error']}\nDetail: {result.get('detail', '')}"
+        
+        status = "✅ VERIFIED" if result.get("verified") else "❌ REJECTED"
+        return (
+            f"Judge Result: {status}\n"
+            f"Confidence: {result.get('confidence', 0.0):.2%}\n"
+            f"Network Latency: {result.get('network_latency_ms', 0.0):.1f}ms\n"
+            f"Judge Inference: {result.get('inference_latency_ms', 0.0):.1f}ms"
+        )
+    except Exception as e:
+        logger.error(f"Judge verification failed: {e}")
+        return f"❌ Error: {str(e)}"
+
+
+def check_judge_health(url: str) -> str:
+    """Check if the remote Judge server is reachable."""
+    if not url:
+        return "❌ Provide URL"
+    try:
+        client = JudgeClient(url)
+        if client.check_health():
+            return "✅ Online"
+        return "❌ Offline"
+    except Exception:
+        return "❌ Error"
 
 
 def run_background_mining(file_path: str, threshold: float, resume: bool, progress=gr.Progress()) -> str:
@@ -268,6 +313,7 @@ def get_microphone_status() -> Tuple:
     result = eval_state.mic_inference.get_latest_result()
     if result:
         conf, pos, chunk = result
+        eval_state.last_audio_chunk = chunk # Capture for Cascade Judge
         status = "✅ DETECTED!" if pos else "🟢 Listening..."
         eval_state.mic_history.append(f"[{time.strftime('%H:%M:%S')}] {status} ({conf:.2%})")
         return status, round(conf * 100, 2), _update_waveform_plot(chunk), "\n".join(eval_state.mic_history[-50:])
@@ -788,6 +834,23 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         autoscroll=True,
                     )
 
+                gr.Markdown("---")
+                with gr.Group():
+                    gr.Markdown("### 🌐 Distributed Cascade (Judge Verification)")
+                    gr.Markdown("Send the last microphone chunk to a remote server for high-accuracy secondary verification.")
+                    with gr.Row():
+                        judge_url = gr.Textbox(
+                            label="Judge Server URL", 
+                            placeholder="http://localhost:8000",
+                            value="http://localhost:8000"
+                        )
+                        judge_api_key = gr.Textbox(label="API Key (Optional)", type="password")
+                        check_health_btn = gr.Button("🔍 Check Health", scale=0)
+                        health_status = gr.Textbox(label="Server Status", placeholder="Click Check Health", interactive=False, scale=0)
+                    
+                    verify_btn = gr.Button("⚖️ Verify Last Detection with Judge", variant="secondary")
+                    judge_output = gr.Textbox(label="Judge Response", lines=5, interactive=False)
+
             # Test set evaluation
             with gr.TabItem("📊 Test Set Evaluation"):
                 gr.Markdown("### Evaluate on Test Dataset with Comprehensive Metrics")
@@ -1051,5 +1114,10 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             inputs=[selected_sample_box],
             outputs=[mining_queue_df, selected_sample_box]
         )
+
+        # Cascade events
+        check_health_btn.click(fn=check_judge_health, inputs=[judge_url], outputs=[health_status])
+        verify_btn.click(fn=verify_with_judge, inputs=[judge_url, judge_api_key], outputs=[judge_output])
+
 
     return panel
