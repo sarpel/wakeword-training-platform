@@ -9,6 +9,36 @@ import warnings
 import asyncio
 import sys
 
+# Initialize environment-aware configuration as early as possible
+# This loads .env and provides smart defaults
+try:
+    project_root = Path(__file__).parent
+    sys.path.insert(0, str(project_root))
+    from src.config.env_config import env_config
+    
+    # Set multiprocessing start method if requested (critical for Windows vs Linux)
+    try:
+        import torch.multiprocessing as mp
+        start_method = env_config.mp_start_method
+        if start_method:
+            current_method = mp.get_start_method(allow_none=True)
+            if current_method != start_method:
+                mp.set_start_method(start_method, force=True)
+                # We don't use logger yet because it might not be initialized
+                print(f"  [*] Multiprocessing start method set to: {start_method}")
+        
+        # Set quantization engine
+        import torch
+        q_engine = env_config.quantization_backend
+        if q_engine in torch.backends.quantized.supported_engines:
+            torch.backends.quantized.engine = q_engine
+            print(f"  [*] Quantization engine set to: {q_engine}")
+    except (ImportError, RuntimeError) as e:
+        print(f"  [!] Warning setting MP/Quantization defaults: {e}")
+
+except ImportError:
+    print("  [!] Warning: Could not initialize env_config")
+
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 # Suppress warnings for cleaner output

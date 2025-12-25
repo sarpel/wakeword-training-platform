@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from src.config.env_config import env_config
 
 
 @dataclass
@@ -55,10 +56,10 @@ class TrainingConfig:
     fnr_target: Optional[float] = None  # Target FNR (e.g., 0.02 for 2%)
 
     # Hardware
-    num_workers: int = 16  # Updated default to 16 for 7950X
+    num_workers: int = env_config.get_int("TRAINING_NUM_WORKERS", 8)  # Dynamic default
     pin_memory: bool = True
     persistent_workers: bool = True
-    use_compile: bool = True  # Enable torch.compile
+    use_compile: bool = env_config.use_triton  # Enable torch.compile if Triton supported
     use_gradient_checkpointing: bool = False  # VRAM optimization
 
     # Checkpointing
@@ -219,7 +220,7 @@ class QATConfig:
     """Quantization Aware Training configuration"""
 
     enabled: bool = False
-    backend: str = "fbgemm"  # fbgemm (x86), qnnpack (ARM)
+    backend: str = env_config.quantization_backend  # Dynamic default: fbgemm (x86), qnnpack (ARM)
 
     # When to start QAT (usually after some epochs of normal training)
     start_epoch: int = 5
