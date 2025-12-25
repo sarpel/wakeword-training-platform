@@ -31,7 +31,7 @@ This plan follows the Test-Driven Development (TDD) methodology and phase checkp
     - [ ] Modify `DistillationTrainer` to hook into specific internal layers of Wav2Vec2 and Conformer based on config.
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Advanced Dual-Teacher Distillation' (Protocol in workflow.md)
 
-## Phase 4: Documentation & Final QA
+## Phase 4: Documentation & Final QA [checkpoint: 7604871]
 - [x] Task: Expert Distillation Guide 1259d60
     - [ ] Create `docs/EXPERT_DISTILLATION_GUIDE.md` with detailed explanations of layer selection and trade-offs.
 - [x] Task: Final E2E Integration Benchmark f14da2a
