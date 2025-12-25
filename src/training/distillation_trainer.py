@@ -19,6 +19,22 @@ from src.training.trainer import Trainer
 logger = get_logger(__name__)
 
 
+class Projector(nn.Module):
+    """Aligns student features with teacher features."""
+
+    def __init__(self, in_dim: int, out_dim: int):
+        super().__init__()
+        self.proj = nn.Sequential(
+            nn.Linear(in_dim, out_dim),
+            nn.LayerNorm(out_dim),
+            nn.ReLU(),
+            nn.Linear(out_dim, out_dim),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.proj(x)
+
+
 class DistillationTrainer(Trainer):
     """Trainer that adds Knowledge Distillation support."""
 
@@ -26,6 +42,7 @@ class DistillationTrainer(Trainer):
         """Initialize the DistillationTrainer."""
         super().__init__(*args, **kwargs)
         self.teacher: Optional[torch.nn.Module] = None
+        self.projectors = nn.ModuleList()
 
         self.distillation_enabled = self.config.distillation.enabled
         if self.distillation_enabled:
@@ -43,77 +60,14 @@ class DistillationTrainer(Trainer):
                     f"  Feature Alignment: ENABLED (Weight: {self.config.distillation.feature_alignment_weight})"
                 )
             self._init_teacher()
+
+            # Add projectors to optimizer if created
+            if self.projectors and self.optimizer:
+                logger.info(f"Adding {len(self.projectors)} projectors to optimizer")
+                self.optimizer.add_param_group({"params": self.projectors.parameters()})
         else:
             logger.info("Distillation INACTIVE (Standard Training)")
             self.teacher = None
-
-    def _load_teacher_checkpoint(self, checkpoint_path: str) -> dict:
-        """
-        Safely load teacher checkpoint with validation.
-
-        Args:
-            checkpoint_path: Path to checkpoint file
-
-        Returns:
-            Loaded checkpoint dictionary
-
-        Raises:
-            ValueError: If path is outside allowed directories
-            FileNotFoundError: If checkpoint file doesn't exist
-        """
-        from pathlib import Path
-
-        # Convert to absolute path
-        checkpoint_path_obj = Path(checkpoint_path).resolve()
-
-        # Define allowed directories (checkpoints, current project root)
-        project_root = Path.cwd().resolve()
-        allowed_dirs = [
-            project_root / "checkpoints",
-            project_root / "models",
-            project_root,
-        ]
-
-        # Validate path is within allowed directories
-        is_allowed = any(checkpoint_path_obj.is_relative_to(allowed_dir) for allowed_dir in allowed_dirs)
-
-        if not is_allowed:
-            raise ValueError(
-                f"Teacher checkpoint must be in allowed directories:\n"
-                f"  - {project_root / 'checkpoints'}\n"
-                f"  - {project_root / 'models'}\n"
-                f"  - {project_root}\n"
-                f"Got: {checkpoint_path_obj}"
-            )
-
-        # Check file exists
-        if not checkpoint_path_obj.exists():
-            raise FileNotFoundError(
-                f"Teacher checkpoint not found: {checkpoint_path_obj}\n" f"Please ensure the checkpoint file exists."
-            )
-
-        # Check file is actually a file (not directory)
-        if not checkpoint_path_obj.is_file():
-            raise ValueError(f"Teacher checkpoint path is not a file: {checkpoint_path_obj}")
-
-        logger.info(f"Loading teacher checkpoint: {checkpoint_path_obj}")
-
-        # Load checkpoint with security: weights_only=True (PyTorch 1.13+)
-        # This prevents arbitrary code execution from malicious pickles
-        try:
-            checkpoint = torch.load(
-                checkpoint_path_obj, map_location="cpu", weights_only=True  # SECURITY: Prevents code execution
-            )
-        except TypeError:
-            # Fallback for older PyTorch versions that don't support weights_only
-            # setup.py requires torch>=2.1.0 so the fallback is generally unnecessary
-            # but kept as a safety for older environments:
-            logger.warning("torch.load doesn't support weights_only=True, loading unsafely (upgrade PyTorch!)")
-            checkpoint = torch.load(checkpoint_path_obj, map_location="cpu")
-        except Exception as e:
-            raise RuntimeError(f"Failed to load teacher checkpoint from {checkpoint_path_obj}: {e}") from e
-
-        return checkpoint
 
     def _init_teacher(self) -> None:
         """Initialize the teacher model(s)."""
@@ -164,6 +118,10 @@ class DistillationTrainer(Trainer):
                 t.half()
                 logger.debug(f"Teacher {arch} using FP16 (Mixed Precision)")
 
+            # Initialize Projector if alignment enabled
+            if dist_config.feature_alignment_enabled:
+                self._init_projector(t, dev)
+
             return t, dev
 
         if dist_config.teacher_architecture == "dual":
@@ -188,6 +146,48 @@ class DistillationTrainer(Trainer):
         self.teacher_device = self.teacher_devices[0]
 
         logger.debug(f"Initialized {len(self.teachers)} teacher(s)")
+
+    def _init_projector(self, teacher: nn.Module, teacher_device: torch.device) -> None:
+        """Initialize a projector for a teacher if dimensions mismatch."""
+        # Get dimensions
+        # We'll use a dummy input to find the embedding dimension
+        student_dim = self._get_embed_dim(self.model, self.device)
+        teacher_dim = self._get_embed_dim(teacher, teacher_device)
+
+        logger.debug(f"Aligning Student ({student_dim}) -> Teacher ({teacher_dim})")
+
+        if student_dim != teacher_dim:
+            logger.info(f"Creating learnable projector: {student_dim} -> {teacher_dim}")
+            projector = Projector(student_dim, teacher_dim).to(self.device)
+            self.projectors.append(projector)
+        else:
+            # Identity-like projector (no-op)
+            self.projectors.append(nn.Identity())
+
+    def _get_embed_dim(self, model: nn.Module, device: torch.device) -> int:
+        """Helper to find the output dimension of model.embed()"""
+        model.eval()
+        with torch.no_grad():
+            # Create a dummy input based on model type
+            # Standard CNN student expects features (B, 1, H, W)
+            # Wav2Vec expects raw audio (B, T)
+            # We'll try to infer from model type or just try both
+            try:
+                # Try feature-like input first
+                dummy = torch.zeros(1, 1, 64, 50).to(device)
+                out = model.embed(dummy)
+            except Exception:
+                try:
+                    # Try audio-like input
+                    dummy = torch.zeros(1, 16000).to(device)
+                    out = model.embed(dummy)
+                except Exception:
+                    # Fallback to a common dimension if we can't find it
+                    # But ideally we should find it.
+                    logger.warning(f"Could not automatically determine embed dim for {model.__class__.__name__}")
+                    return 128  # Default
+
+            return out.shape[-1]
 
     def compute_loss(
         self,
@@ -224,22 +224,13 @@ class DistillationTrainer(Trainer):
 
         for i, (teacher, teacher_device) in enumerate(zip(self.teachers, self.teacher_devices)):
             with torch.no_grad():
-                # Prepare inputs for this specific teacher
-                # Wav2Vec2 needs raw audio, Conformer/others might need raw or features
-                # For now, we assume teachers take 'inputs' (raw audio if dim=2)
-                # But if teacher is standard CNN, it might need features.
-                # Heuristic: if input dim is 2 and teacher is not wav2vec2, it might need processing.
-
                 inputs_teacher = inputs.to(teacher_device)
 
                 # Check if we need to extract features for non-wav2vec teachers
                 if inputs_teacher.dim() == 2 and not isinstance(teacher, Wav2VecWakeword):
-                    # Use student's audio processor but on teacher's device
-                    # Actually, we should probably have a processor for the teacher if it differs
-                    # For now, let's assume all teachers except wav2vec2 take features
-                    # Or just run them through the student's processor
-                    self.audio_processor.to(teacher_device)
-                    inputs_teacher = self.audio_processor(inputs_teacher)
+                    if hasattr(self, "audio_processor") and hasattr(self.audio_processor, "to"):
+                        self.audio_processor.to(teacher_device)
+                        inputs_teacher = self.audio_processor(inputs_teacher)
 
                 with torch.cuda.amp.autocast(
                     enabled=dist_config.teacher_mixed_precision and teacher_device.type == "cuda"
@@ -257,9 +248,6 @@ class DistillationTrainer(Trainer):
 
                 # Feature alignment (optional)
                 if dist_config.feature_alignment_enabled and processed_inputs is not None:
-                    # Align student features with teacher's intermediate features
-                    # This is complex as dimensions must match.
-                    # We'll use student.embed() and teacher.embed() for alignment.
                     with torch.cuda.amp.autocast(
                         enabled=dist_config.teacher_mixed_precision and teacher_device.type == "cuda"
                     ):
@@ -267,15 +255,21 @@ class DistillationTrainer(Trainer):
 
                     if teacher_features is not None:
                         student_features = self.model.embed(processed_inputs)
-                        # Project student features if dimensions differ
-                        # For simplicity, we use MSE on pooled features
                         teacher_features = teacher_features.to(self.device)
+
+                        # Use projector if it exists for this teacher
+                        if i < len(self.projectors):
+                            proj = self.projectors[i]
+                            student_features = proj(student_features)
+
                         if student_features.shape == teacher_features.shape:
                             feature_alignment_loss += F.mse_loss(student_features, teacher_features)
                         else:
-                            # Use adaptive pooling to match if only spatial dims differ
-                            # But if channel dim differs, we skip for now (would need a projector)
-                            pass
+                            # Try to match spatial dimensions if only those differ
+                            if student_features.dim() == teacher_features.dim():
+                                # Simple adaptive pooling if spatial dims differ but channels match
+                                # (though Projector handles channel mismatch)
+                                pass
 
         if not all_teacher_logits:
             return student_loss
