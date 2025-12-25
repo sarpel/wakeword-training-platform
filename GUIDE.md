@@ -163,4 +163,36 @@ If you want to move from a 90% accuracy prototype to a 99.9% production-ready sy
 4.  **The "Human" Metric**: Don't just watch the F1 score. Watch the **Latency**. A model that is 100% accurate but takes 2 seconds to respond feels "broken" to a user. Aim for **<200ms** total latency.
 
 ---
-**The Goal**: We are aiming for **"Transparent Technology."** The best wakeword system is one the user forgets is even there. Keep turning the knobs, watching the FAH, and listening to the feedback! 🚀🎧
+
+## 🛠️ 11. Environment-Aware Optimization & Docker
+
+The platform is designed to be "Environment Intelligent," optimizing itself based on whether you are on Native Windows, WSL2, or a Cloud environment.
+
+### ⚙️ Backend Selection (`.env`)
+You can control core optimizations via the `.env` file:
+*   **QUANTIZATION_BACKEND**:
+    *   `fbgemm`: Default for Windows/x86. High performance for desktop CPUs.
+    *   `qnnpack`: Default for Linux/ARM. Optimized for mobile and edge deployment. Use this in WSL2 or Docker.
+*   **MP_START_METHOD**:
+    *   `spawn`: Mandatory for Windows. Safe and isolated.
+    *   `fork`: Fast and efficient on Linux. Reduces overhead in data loading.
+*   **USE_TRITON**: Enable `torch.compile` on Linux for massive GPU speedups.
+
+### 🐳 Docker Orchestration
+Run the entire platform with one command. Docker ensures that all dependencies (FFmpeg, Libsndfile, CUDA) are perfectly matched.
+```bash
+docker-compose up -d
+```
+This launches a **Multi-Service Architecture**:
+1.  **Dashboard**: The primary UI for training.
+2.  **Inference (The Judge)**: The secondary validation server.
+3.  **Jupyter**: Interactive workspace for data science.
+4.  **TensorBoard**: Real-time graph visualization.
+
+### 📓 Interactive Notebooks
+For researchers and those who prefer a linear workflow:
+*   **Jupyter_Quickstart.ipynb**: Step-by-step data exploration and training on your local machine.
+*   **Colab_Training_Platform.ipynb**: One-click training on Google Colab GPUs with Drive persistence.
+
+---
+**The Goal**: We are aiming for

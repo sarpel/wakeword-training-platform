@@ -46,6 +46,27 @@ Production-ready platform for training custom wakeword detection models with **G
     ```
     The application will open at `http://localhost:7860`
 
+### 🚀 Quick Start (Docker - Recommended)
+
+For a consistent environment across Windows and Linux:
+
+1.  **Configure Environment**
+    ```bash
+    cp .env.example .env
+    # Edit .env to set your QUANTIZATION_BACKEND (fbgemm for Win, qnnpack for Linux)
+    ```
+
+2.  **Launch via Docker Compose**
+    ```bash
+    docker-compose up -d
+    ```
+
+3.  **Access Services**
+    - **Dashboard**: `http://localhost:7860`
+    - **Inference Server**: `http://localhost:8000`
+    - **Jupyter Lab**: `http://localhost:8888`
+    - **TensorBoard**: `http://localhost:6006`
+
 ---
 
 ## 📂 Data Preparation
