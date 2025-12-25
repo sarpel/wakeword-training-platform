@@ -1013,26 +1013,36 @@ class ConformerWakeword(nn.Module):
 
         return logits
 
-    def embed(self, x: torch.Tensor) -> torch.Tensor:
-        """Get embeddings"""
+    def embed(self, x: torch.Tensor, layer_index: Optional[int] = None) -> torch.Tensor:
+        """
+        Get embeddings for distillation.
+        
+        Args:
+            x: Input tensor
+            layer_index: Optional index of the transformer layer to extract from.
+        """
         if x.dim() == 4:
             if x.size(1) == 1:
                 x = x.squeeze(1)
             if x.size(1) == self.input_size:
                 x = x.transpose(1, 2)
 
-        x = self.input_proj(x)
-        x = self.transformer(x)
+        # Project to encoder dim
+        x = self.input_proj(x)  # (B, T, D)
 
-        residual = x
-        x = self.conv_norm(x)
-        x = x.transpose(1, 2)
-        x = self.conv_module(x)
-        x = x.transpose(1, 2) + residual
+        # Transformer blocks
+        if layer_index is not None:
+            # Manually iterate through layers up to layer_index
+            for i, layer in enumerate(self.transformer.layers):
+                x = layer(x)
+                if i == layer_index:
+                    break
+        else:
+            x = self.transformer(x)
 
-        x = x.transpose(1, 2)
         # Pool to get fixed size embedding
-        embedding = F.adaptive_avg_pool1d(x, 1).flatten(1)
+        # shape: (B, T, D) -> mean(T) -> (B, D)
+        embedding = torch.mean(x, dim=1)
         return embedding
 
 

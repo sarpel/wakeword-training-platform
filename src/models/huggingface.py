@@ -8,7 +8,7 @@ Default cache location: models/teachers/
 import logging
 import os
 from pathlib import Path
-from typing import cast
+from typing import Optional, cast
 
 import torch
 import torch.nn as nn
@@ -128,12 +128,14 @@ class Wav2VecWakeword(nn.Module):
 
         return cast(torch.Tensor, logits)
 
-    def embed(self, x: torch.Tensor) -> torch.Tensor:
+    def embed(self, x: torch.Tensor, layer_index: Optional[int] = None) -> torch.Tensor:
         """
         Extract embeddings (for distillation feature alignment).
 
         Args:
             x: Input audio tensor of shape (batch, samples) or (batch, 1, samples)
+            layer_index: Optional index of the transformer layer to extract from.
+                        If None, uses the last hidden state.
 
         Returns:
             Embeddings of shape (batch, hidden_size=768)
@@ -143,14 +145,20 @@ class Wav2VecWakeword(nn.Module):
             x = x.squeeze(1)
 
         # Wav2Vec2 expects normalized audio
-        outputs = self.wav2vec2(x)
+        outputs = self.wav2vec2(x, output_hidden_states=True if layer_index is not None else False)
 
-        # Get hidden state from the last layer
-        # shape: (batch, sequence_length, hidden_size)
-        last_hidden_state = outputs.last_hidden_state
-
-        # Pooling: Mean over time dimension
-        # shape: (batch, hidden_size)
-        pooled_output = torch.mean(last_hidden_state, dim=1)
+        if layer_index is not None and hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
+            # layer_index 0 is the initial CNN embedding, 1-12 are transformer layers
+            hidden_states = outputs.hidden_states
+            idx = max(0, min(layer_index, len(hidden_states) - 1))
+            selected_hidden_state = hidden_states[idx]
+            # Pooling: Mean over time dimension
+            pooled_output = torch.mean(selected_hidden_state, dim=1)
+        else:
+            # Get hidden state from the last layer
+            # shape: (batch, sequence_length, hidden_size)
+            last_hidden_state = outputs.last_hidden_state
+            # Pooling: Mean over time dimension
+            pooled_output = torch.mean(last_hidden_state, dim=1)
 
         return cast(torch.Tensor, pooled_output)
