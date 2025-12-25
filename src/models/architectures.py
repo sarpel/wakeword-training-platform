@@ -837,6 +837,24 @@ class TinyConvWakeword(nn.Module):
         x = self.dequant(x)
         return x
 
+    def embed(self, x: torch.Tensor, layer_index: Optional[int] = None) -> torch.Tensor:
+        """
+        Extract embeddings for distillation.
+        
+        Args:
+            x: Input tensor
+            layer_index: Ignored for now as TinyConv is very shallow,
+                        returns the pooled features.
+        """
+        if x.dim() == 2:
+            # Handle flattened input if necessary, but TinyConv expects 4D
+            pass
+            
+        x = self.quant(x)
+        x = self.features(x)
+        x = self.pool(x)
+        return x.flatten(1)
+
 
 class CDDNNWakeword(nn.Module):
     """
