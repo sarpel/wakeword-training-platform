@@ -26,7 +26,7 @@ This plan follows the Test-Driven Development (TDD) methodology and phase checkp
 - [x] Task: Implement Soft-Confidence (Dynamic) Weighting fb78b69
     - [ ] Create tests to verify that loss weights shift dynamically based on teacher entropy.
     - [ ] Update `compute_loss` in `DistillationTrainer` to calculate and apply dynamic teacher weights.
-- [ ] Task: Expert Layer Selection Logic
+- [x] Task: Expert Layer Selection Logic 91682aa
     - [ ] Update `DistillationConfig` to allow a list of `teacher_alignment_layers`.
     - [ ] Modify `DistillationTrainer` to hook into specific internal layers of Wav2Vec2 and Conformer based on config.
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Advanced Dual-Teacher Distillation' (Protocol in workflow.md)
