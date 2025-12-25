@@ -1,15 +1,16 @@
 # ==============================================================================
-# Wakeword Training Platform - Docker Compose
+# Wakeword Training Platform - Docker Compose (Multi-Service)
 # ==============================================================================
 
 services:
-  # Main Training Application
-  trainer:
+  # Main Training Dashboard (Gradio)
+  dashboard:
     build:
       context: .
       target: production
-    image: wakeword-trainer:latest
-    container_name: wakeword-trainer
+    image: wakeword-platform:latest
+    container_name: wakeword-dashboard
+    command: dashboard
     ports:
       - "7860:7860"
     volumes:
@@ -17,6 +18,8 @@ services:
       - ./models:/app/models
       - ./exports:/app/exports
       - ./configs:/app/configs
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     deploy:
@@ -27,26 +30,56 @@ services:
               count: 1
               capabilities: [gpu]
     restart: unless-stopped
+    env_file:
+      - .env
 
-  # The Judge Server (Stage 2 - False Positive Rejection)
-  judge:
+  # Inference Server (The Judge)
+  inference-server:
     build:
       context: .
-      dockerfile: server/Dockerfile
-    image: wakeword-judge:latest
-    container_name: wakeword-judge
+      target: production
+    image: wakeword-platform:latest
+    container_name: wakeword-inference
+    command: server
     ports:
       - "8000:8000"
     volumes:
-      - ./models/checkpoints:/app/checkpoints:ro
+      - ./models:/app/models:ro
+      - ./configs:/app/configs:ro
+      - ./.env:/app/.env:ro
     environment:
-      - MODEL_PATH=/app/checkpoints/best_model.pth
+      - MODEL_PATH=/app/models/checkpoints/best_model.pt
       - DEVICE=cpu
-      - API_KEY=${JUDGE_API_KEY:-}
-      - ALLOWED_ORIGINS=http://localhost,http://localhost:7860
     restart: unless-stopped
     depends_on:
-      - trainer
+      - dashboard
+    env_file:
+      - .env
+
+  # Interactive Development (Jupyter Lab)
+  jupyter-lab:
+    build:
+      context: .
+      target: development
+    image: wakeword-platform-dev:latest
+    container_name: wakeword-jupyter
+    command: jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    env_file:
+      - .env
 
   # TensorBoard for training visualization
   tensorboard:
@@ -62,8 +95,3 @@ services:
 networks:
   default:
     name: wakeword-network
-
-volumes:
-  data:
-  models:
-  exports:

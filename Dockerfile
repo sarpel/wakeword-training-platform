@@ -1,5 +1,5 @@
 # ==============================================================================
-# Wakeword Training Platform - Production Dockerfile
+# Wakeword Training Platform - Unified Dockerfile
 # Multi-stage build with CUDA support
 # ==============================================================================
 
@@ -18,13 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     ffmpeg \
     libgomp1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create symlinks
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip
 
-# ==============================================================================
+# ============================================================================== 
 # Stage 2: Dependencies
 FROM base AS dependencies
 
@@ -43,8 +44,8 @@ RUN pip install --no-cache-dir \
 # Install remaining requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ==============================================================================
-# Stage 3: Production
+# ============================================================================== 
+# Stage 3: Production (Dashboard)
 FROM dependencies AS production
 
 WORKDIR /app
@@ -57,36 +58,41 @@ RUN useradd -m -u 1000 wakeword && \
 # Copy application code
 COPY --chown=wakeword:wakeword src/ ./src/
 COPY --chown=wakeword:wakeword run.py .
+COPY --chown=wakeword:wakeword server/ ./server/
 COPY --chown=wakeword:wakeword configs/ ./configs/
+COPY --chown=wakeword:wakeword entrypoint.sh .
+RUN chmod +x entrypoint.sh
 
 # Switch to non-root user
 USER wakeword
 
-# Expose Gradio port
-EXPOSE 7860
+# Expose ports
+EXPOSE 7860 8000 8888
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:7860/ || exit 1
+ENTRYPOINT ["./entrypoint.sh"]
+CMD ["dashboard"]
 
-# Default command
-CMD ["python", "run.py"]
-
-# ==============================================================================
-# Stage 4: Development (optional)
+# ============================================================================== 
+# Stage 4: Development
 FROM production AS development
 
 USER root
 
-# Install dev tools
+# Install dev tools and Jupyter
 RUN pip install --no-cache-dir \
     pytest \
     pytest-cov \
     black \
     flake8 \
     isort \
-    mypy
+    mypy \
+    jupyterlab \
+    notebook
+
+# Ensure notebook directories exist
+RUN mkdir -p /home/wakeword/.jupyter && \
+    chown -R wakeword:wakeword /home/wakeword/.jupyter
 
 USER wakeword
 
-CMD ["bash"]
+CMD ["jupyter"]
