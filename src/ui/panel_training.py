@@ -874,6 +874,7 @@ def start_training(
             bidirectional=config.model.bidirectional,
             tcn_num_channels=getattr(config.model, "tcn_num_channels", None),
             tcn_kernel_size=getattr(config.model, "tcn_kernel_size", 3),
+            use_depthwise=getattr(config.model, "tiny_conv_use_depthwise", False),
         )
 
         training_state.add_log(f"Model created: {config.model.architecture} (Input Size: {input_size})")
