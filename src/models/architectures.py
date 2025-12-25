@@ -747,6 +747,7 @@ class TinyConvWakeword(nn.Module):
         channels = tcn_num_channels
         kernel_size = kwargs.get("kernel_size", 3)
         conv_dropout = kwargs.get("tcn_dropout", dropout)
+        use_depthwise = kwargs.get("use_depthwise", False)
 
         # Build dynamic feature extraction layers
         layers: List[nn.Module] = []
@@ -756,17 +757,47 @@ class TinyConvWakeword(nn.Module):
             # Determine stride (2 for first few layers to downsample, 1 for later layers)
             stride = 2 if i < min(3, len(channels) - 1) else 1
 
-            # Add convolutional block
-            layers.append(
-                nn.Conv2d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    padding=kernel_size // 2,  # Same padding
-                    bias=False,
+            if use_depthwise and in_channels > 1:
+                # Depthwise Separable Convolution
+                # 1. Depthwise
+                layers.append(
+                    nn.Conv2d(
+                        in_channels,
+                        in_channels,
+                        kernel_size=kernel_size,
+                        stride=stride,
+                        padding=kernel_size // 2,
+                        groups=in_channels,
+                        bias=False,
+                    )
                 )
-            )
+                layers.append(nn.BatchNorm2d(in_channels))
+                layers.append(nn.ReLU(inplace=True))
+
+                # 2. Pointwise
+                layers.append(
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=1,
+                        stride=1,
+                        padding=0,
+                        bias=False,
+                    )
+                )
+            else:
+                # Standard Convolution
+                layers.append(
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=kernel_size,
+                        stride=stride,
+                        padding=kernel_size // 2,  # Same padding
+                        bias=False,
+                    )
+                )
+
             layers.append(nn.BatchNorm2d(out_channels))
             layers.append(nn.ReLU(inplace=True))
 
