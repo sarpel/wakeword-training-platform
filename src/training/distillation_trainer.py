@@ -4,7 +4,7 @@ Distillation Trainer.
 Implements Knowledge Distillation from a Teacher (Wav2Vec2) to a Student (MobileNet/ResNet).
 """
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from src.config.logger import get_logger
 
@@ -189,6 +189,35 @@ class DistillationTrainer(Trainer):
 
             return out.shape[-1]
 
+    def _calculate_dynamic_weights(self, all_teacher_logits: List[torch.Tensor]) -> torch.Tensor:
+        """
+        Calculate dynamic weights for each teacher based on their confidence (inverse entropy).
+
+        Args:
+            all_teacher_logits: List of logits from each teacher
+
+        Returns:
+            Normalized weights for each teacher (num_teachers, batch_size)
+        """
+        if len(all_teacher_logits) < 2:
+            return torch.ones(len(all_teacher_logits), all_teacher_logits[0].size(0), device=self.device)
+
+        confidences = []
+        for logits in all_teacher_logits:
+            probs = F.softmax(logits, dim=1)
+            # Entropy = -sum(p * log(p))
+            entropy = -torch.sum(probs * torch.log(probs + 1e-10), dim=1)
+            # Confidence is inverse of entropy (stabilized)
+            confidence = 1.0 / (entropy + 1e-5)
+            confidences.append(confidence)
+
+        # Normalize weights across teachers using softmax to maintain diversity
+        # (Softmax ensures weights sum to 1 and preserves relative differences)
+        conf_stack = torch.stack(confidences, dim=0)  # (num_teachers, batch_size)
+        weights = F.softmax(conf_stack, dim=0)
+
+        return weights
+
     def compute_loss(
         self,
         outputs: torch.Tensor,
@@ -264,18 +293,19 @@ class DistillationTrainer(Trainer):
 
                         if student_features.shape == teacher_features.shape:
                             feature_alignment_loss += F.mse_loss(student_features, teacher_features)
-                        else:
-                            # Try to match spatial dimensions if only those differ
-                            if student_features.dim() == teacher_features.dim():
-                                # Simple adaptive pooling if spatial dims differ but channels match
-                                # (though Projector handles channel mismatch)
-                                pass
 
         if not all_teacher_logits:
             return student_loss
 
-        # Average logits from all teachers (Ensemble Distillation)
-        mean_teacher_logits = torch.stack(all_teacher_logits).mean(dim=0)
+        # Weighted Ensemble Distillation
+        if len(all_teacher_logits) > 1:
+            weights = self._calculate_dynamic_weights(all_teacher_logits)
+            mean_teacher_logits = torch.zeros_like(all_teacher_logits[0])
+            for i, logits in enumerate(all_teacher_logits):
+                w = weights[i].unsqueeze(1)  # (batch_size, 1)
+                mean_teacher_logits += w * logits
+        else:
+            mean_teacher_logits = all_teacher_logits[0]
 
         # Distillation Loss (KL)
         soft_targets = F.log_softmax(mean_teacher_logits / T, dim=1)
