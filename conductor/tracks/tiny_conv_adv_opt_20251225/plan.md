@@ -19,7 +19,7 @@ This plan follows the Test-Driven Development (TDD) methodology and phase checkp
     - [ ] Update `prepare_model_for_qat` to automatically invoke fusion for supported architectures.
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: QAT Stabilization' (Protocol in workflow.md)
 
-## Phase 3: Advanced Dual-Teacher Distillation Upgrades
+## Phase 3: Advanced Dual-Teacher Distillation Upgrades [checkpoint: 0c3dcec]
 - [x] Task: Implement Learnable Projectors d3a020b
     - [ ] Create `tests/test_distillation_projectors.py` to verify distillation between mismatched dimensions (e.g., 768 -> 64).
     - [ ] Implement `Projector` class and dynamic injection logic in `src/training/distillation_trainer.py`.
