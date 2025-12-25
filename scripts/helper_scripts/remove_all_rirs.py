@@ -40,7 +40,6 @@ def main():
     args = parse_args()
     logger = setup_logging()
     
-    silent_root = Path(args.silent_dir)
     report_path = Path(args.report)
     backup_dir = Path(args.backup_dir)
     

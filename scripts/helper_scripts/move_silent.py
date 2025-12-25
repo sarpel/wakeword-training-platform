@@ -5,6 +5,9 @@ import argparse
 import shutil
 from pathlib import Path
 
+from src.config.logger import setup_logger  # Kullanılmıyor ama ileride gerekebilir
+logger = setup_logger(__name__)  
+
 import numpy as np
 import soundfile as sf
 
@@ -31,11 +34,7 @@ def dbfs_from_peak(x: np.ndarray, eps: float = 1e-12) -> float:
 
 
 def safe_move(src: Path, dst: Path, keep_structure: bool, root: Path) -> Path:
-    if keep_structure:
-        rel = src.relative_to(root)
-        target = dst / rel
-    else:
-        target = dst / src.name
+    target = (dst / src.relative_to(root)) if keep_structure else (dst / src.name)
 
     target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -55,11 +54,7 @@ def safe_move(src: Path, dst: Path, keep_structure: bool, root: Path) -> Path:
 
 
 def safe_copy(src: Path, dst: Path, keep_structure: bool, root: Path) -> Path:
-    if keep_structure:
-        rel = src.relative_to(root)
-        target = dst / rel
-    else:
-        target = dst / src.name
+    target = (dst / src.relative_to(root)) if keep_structure else (dst / src.name)
 
     target.parent.mkdir(parents=True, exist_ok=True)
 

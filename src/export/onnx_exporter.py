@@ -352,6 +352,26 @@ def export_model_to_onnx(
     Returns:
         Dictionary with export results
     """
+    # SECURITY: Validate fixed_export_path early to prevent path traversal
+    # This must happen before any file operations to ensure security
+    if fixed_export_path is not None:
+        # Use expected_base exports directory as defined earlier
+        expected_base = Path("exports").resolve()
+        resolved_fixed_path = Path(fixed_export_path).resolve()
+        
+        # Check for empty or None paths
+        if not fixed_export_path or str(fixed_export_path).strip() == "":
+            raise ValueError("fixed_export_path cannot be empty")
+        
+        # Validate path doesn't escape exports directory
+        if not str(resolved_fixed_path).startswith(str(expected_base)):
+            raise ValueError(
+                f"fixed_export_path security violation: "{fixed_export_path}" resolves to "{resolved_fixed_path}" which is outside allowed exports directory "{expected_base}""
+            )
+        
+        # Additional check: ensure the path is absolute after resolution
+        logger.info(f"Security validated fixed_export_path: {fixed_export_path} -> {resolved_fixed_path}")
+    
     logger.info(f"Loading checkpoint: {checkpoint_path}")
 
     # Validate checkpoint path to prevent traversal attacks
@@ -521,19 +541,15 @@ def export_model_to_onnx(
         results["tflite_success"] = tflite_results.get("success")
         results["tflite_error"] = tflite_results.get("error")
 
-        # Copy to fixed path if requested
+        # Copy to fixed path if requested (validated earlier for security)
         if fixed_export_path and tflite_results.get("success"):
             try:
-                                # Validate the path is within expected export directory  
-                expected_base = Path("exports").resolve()  
-                resolved_path = fixed_export_path.resolve()  
-                if not str(resolved_path).startswith(str(expected_base)):  
-                    raise ValueError(f"Export path must be within {expected_base}")  
-                
-                fixed_export_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy(str(tflite_path), str(fixed_export_path))
-                logger.info(f"✅ Copied TFLite model to fixed path: {fixed_export_path}")
-                results["fixed_path"] = str(fixed_export_path)
+                # Path already validated at function entry for security
+                resolved_fixed_path = Path(fixed_export_path).resolve()
+                resolved_fixed_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(tflite_path), str(resolved_fixed_path))
+                logger.info(f"✅ Copied TFLite model to fixed path: {resolved_fixed_path}")
+                results["fixed_path"] = str(resolved_fixed_path)
             except Exception as e:
                 logger.exception(f"Failed to copy to fixed path: {e}")
                 results["fixed_path_error"] = str(e)

@@ -27,8 +27,12 @@
 *   **Gradio**: Framework for building the interactive web-based training dashboard.
 *   **Plotly / Matplotlib / Seaborn**: Interactive and static data visualization for training metrics and audio features.
 *   **Weights & Biases (wandb) / Weave / Tensorboard**: Experiment tracking, real-time visualization, and advanced call tracing with Weave.
+*   **Jupyter Lab / Google Colab**: Interactive notebook environments for data exploration and remote training.
 
-## Infrastructure & Logging
+## Infrastructure & Orchestration
+*   **Docker / Docker Compose**: Containerization for reproducible training and inference environments.
+*   **NVIDIA Container Toolkit**: GPU passthrough support for Docker containers.
+*   **Dotenv**: Environment-aware configuration management for cross-platform stability.
 *   **Structlog**: Structured, machine-readable logging for better observability.
 *   **Memory Format Optimization**: `torch.channels_last` for enhanced Tensor Core utilization.
 *   **Stability Metrics**: Implementation of EER (Equal Error Rate) and FAH (False Alarms per Hour) as core production-readiness indicators.

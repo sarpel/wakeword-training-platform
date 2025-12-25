@@ -16,8 +16,3 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ## [x] Track: Dynamic CMVN Dimensions & Hardcoding Removal
 *Link: [./conductor/tracks/dynamic_cmvn_dims_20251223/](./conductor/tracks/dynamic_cmvn_dims_20251223/)*
-
----
-
-## [~] Track: Environment-Aware Orchestration & Notebooks
-*Link: [./conductor/tracks/multi_env_support_20251224/](./conductor/tracks/multi_env_support_20251224/)*

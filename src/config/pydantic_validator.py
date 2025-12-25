@@ -246,18 +246,18 @@ class WakewordPydanticConfig(BaseModel):
 
     config_name: str = "default"
     description: str = "Default wakeword training configuration"
-    data: DataConfig = Field(default_factory=lambda: DataConfig())  # type: ignore
-    training: TrainingConfig = Field(default_factory=lambda: TrainingConfig())  # type: ignore
-    model: ModelConfig = Field(default_factory=lambda: ModelConfig())  # type: ignore
-    augmentation: AugmentationConfig = Field(default_factory=lambda: AugmentationConfig())  # type: ignore
-    optimizer: OptimizerConfig = Field(default_factory=lambda: OptimizerConfig())  # type: ignore
-    loss: LossConfig = Field(default_factory=lambda: LossConfig())  # type: ignore
-    qat: QATConfig = Field(default_factory=lambda: QATConfig())  # type: ignore
-    distillation: DistillationConfig = Field(default_factory=lambda: DistillationConfig())  # type: ignore
-    cmvn: CMVNConfig = Field(default_factory=lambda: CMVNConfig())  # type: ignore
-    streaming: StreamingConfig = Field(default_factory=lambda: StreamingConfig())  # type: ignore
-    size_targets: SizeTargetConfig = Field(default_factory=lambda: SizeTargetConfig())  # type: ignore
-    calibration: CalibrationConfig = Field(default_factory=lambda: CalibrationConfig())  # type: ignore
+    data: DataConfig = Field(default_factory=DataConfig)  # type: ignore
+    training: TrainingConfig = Field(default_factory=TrainingConfig)  # type: ignore
+    model: ModelConfig = Field(default_factory=ModelConfig)  # type: ignore
+    augmentation: AugmentationConfig = Field(default_factory=AugmentationConfig)  # type: ignore
+    optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)  # type: ignore
+    loss: LossConfig = Field(default_factory=LossConfig)  # type: ignore
+    qat: QATConfig = Field(default_factory=QATConfig)  # type: ignore
+    distillation: DistillationConfig = Field(default_factory=DistillationConfig)  # type: ignore
+    cmvn: CMVNConfig = Field(default_factory=CMVNConfig)  # type: ignore
+    streaming: StreamingConfig = Field(default_factory=StreamingConfig)  # type: ignore
+    size_targets: SizeTargetConfig = Field(default_factory=SizeTargetConfig)  # type: ignore
+    calibration: CalibrationConfig = Field(default_factory=CalibrationConfig)  # type: ignore
 
     @root_validator(skip_on_failure=True)
     def cross_dependencies(cls, values: Dict[str, Any]) -> Dict[str, Any]:

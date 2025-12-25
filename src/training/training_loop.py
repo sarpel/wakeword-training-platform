@@ -69,7 +69,6 @@ def _run_epoch(
                 raw_inputs = inputs
 
                 # Timing for latency (only for validation)
-                batch_start_time = 0.0
                 if not is_training:
                     # Ensure all previous GPU tasks are complete
                     if trainer.device == "cuda":

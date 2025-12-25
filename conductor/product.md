@@ -24,6 +24,8 @@ The Wakeword Training Platform is designed to democratize high-quality, producti
 *   **Precision Training:** Dual-teacher knowledge distillation (Wav2Vec2 + Conformer), intermediate feature alignment, and multi-objective optimization (pAUC vs Latency).
 *   **Optimized Hyperparameter Tuning:** Multi-objective HPO using Optuna (NSGA-II) with exploit-and-explore mutation to discover ideal accuracy/speed trade-offs.
 *   **Stable Streaming:** Integrated temporal smoothing and hysteresis logic to eliminate flickering detections in real-time usage.
+*   **Environment-Aware Optimization:** Smart defaults and configuration toggles to ensure peak performance across Native Windows, WSL2, Docker, and Google Colab.
+*   **Interactive Development:** Built-in Jupyter and Colab notebooks for data scientists to experiment, visualize, and train models with a lower barrier to entry.
 
 ## User Experience Goals
 *   **Automated Simplicity:** Default presets that allow users to launch high-quality training pipelines with minimal manual configuration.
