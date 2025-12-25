@@ -19,4 +19,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-
+## [~] Track: Environment-Aware Orchestration & Notebooks
+*Link: [./conductor/tracks/multi_env_support_20251224/](./conductor/tracks/multi_env_support_20251224/)*
