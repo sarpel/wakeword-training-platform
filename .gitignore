@@ -46,19 +46,19 @@ conductor/
 # Jupyter Notebooks
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
-
+.claude-flow/
 # IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
-
+.claude/
 # Project Specific - Data
 data/
 !src/data/
 unused_datasets/
 unqualified_datasets/
-
+.hive-mind/
 # Project Specific - Models & Logs
 models/
 !src/models/
