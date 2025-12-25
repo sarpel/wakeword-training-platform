@@ -1,0 +1,61 @@
+{
+    "name": "Deep Codebase Audit & Memory Injection",
+    "description": "Scans the entire codebase, builds a persistent memory context, performs a multi-perspective review, and generates a final report.",
+    "version": "1.0.0",
+    "steps": [
+        {
+            "id": "step_1_ingestion",
+            "agent": "Architect",
+            "action": "analyze_structure",
+            "instructions": "Analyze the file tree structure of the project. Ignore `node_modules`, `.git`, and `venv` directories. Identify only source code files (e.g., .py, .js, .ts, .cpp, .h). Save this structure to memory as 'Project_Map'. Do not read the file contents yet, just map the structure.",
+            "tools": [
+                "filesystem_list_files"
+            ]
+        },
+        {
+            "id": "step_2_memory_creation",
+            "agent": "Librarian",
+            "action": "build_context",
+            "instructions": "Read the files identified in 'Project_Map'. For each file, summarize its purpose, logic, and dependencies/imports in a single sentence. Persistently write this summary to `.claude/memory/project_context.md`. This file will serve as the 'Long Term Memory' for all future sessions.",
+            "input_from": "step_1_ingestion",
+            "tools": [
+                "filesystem_read_file",
+                "filesystem_write_file"
+            ]
+        },
+        {
+            "id": "step_3_swarm_review",
+            "type": "parallel",
+            "description": "Simultaneous multi-perspective code review based on the generated context.",
+            "sub_tasks": [
+                {
+                    "agent": "ml-developer",
+                    "instructions": "Review the codebase for architectural integrity, algorithm efficiency (Big O Notation), and Python/C++ best practices. Check for modularity and identify any 'spaghetti code' or anti-patterns. Focus specifically on ML pipeline optimization if present.",
+                    "context_file": ".claude/memory/project_context.md"
+                },
+                {
+                    "agent": "security-auditor",
+                    "instructions": "Scan the code for security vulnerabilities such as hardcoded API keys, SQL Injection risks, insecure input handling, and potential memory leaks (especially in C++ components).",
+                    "context_file": ".claude/memory/project_context.md"
+                },
+                {
+                    "agent": "qa-engineer",
+                    "instructions": "Evaluate the code's testability. Identify missing unit tests, uncovered edge-cases, and provide recommendations for increasing code coverage.",
+                    "context_file": ".claude/memory/project_context.md"
+                }
+            ]
+        },
+        {
+            "id": "step_4_synthesis",
+            "agent": "Tech Lead",
+            "action": "generate_report",
+            "instructions": "Synthesize the findings from all agents in Step 3. Resolve any conflicting recommendations. Categorize the issues by priority (Critical, High, Medium, Low). Generate a comprehensive Markdown report named 'CODE_AUDIT_REPORT.md' and save it to the project root directory. The report must include an executive summary and actionable code snippets for fixes.",
+            "input_from": [
+                "step_3_swarm_review"
+            ],
+            "tools": [
+                "filesystem_write_file"
+            ]
+        }
+    ]
+}
