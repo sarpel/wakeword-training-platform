@@ -2,7 +2,7 @@
 
 This plan follows the Test-Driven Development (TDD) methodology and phase checkpointing protocol defined in `conductor/workflow.md`.
 
-## Phase 1: Architecture Upgrade (TinyConv V2)
+## Phase 1: Architecture Upgrade (TinyConv V2) [checkpoint: f053a1e]
 - [x] Task: Implement Depthwise Separable Convolution architecture c01c550
     - [ ] Create `tests/test_tiny_conv_v2.py` with failing tests for parameter count verification and forward pass.
     - [ ] Refactor `TinyConvWakeword` in `src/models/architectures.py` to support Depthwise Separable blocks via a `use_depthwise` flag.
