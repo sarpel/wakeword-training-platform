@@ -7,7 +7,7 @@ This plan follows the Test-Driven Development (TDD) methodology and phase checkp
     - [ ] Create `tests/test_tiny_conv_v2.py` with failing tests for parameter count verification and forward pass.
     - [ ] Refactor `TinyConvWakeword` in `src/models/architectures.py` to support Depthwise Separable blocks via a `use_depthwise` flag.
     - [ ] Verify parameter reduction targets (~70% reduction) using the test suite.
-- [ ] Task: Update UI and Configuration for TinyConv V2
+- [x] Task: Update UI and Configuration for TinyConv V2 73a09f7
     - [ ] Update `ModelConfig` in `src/config/defaults.py` to include `tiny_conv_use_depthwise`.
     - [ ] Add the toggle to the Gradio UI in `src/ui/panel_config.py`.
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Architecture Upgrade' (Protocol in workflow.md)
