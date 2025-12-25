@@ -23,7 +23,7 @@ This plan follows the Test-Driven Development (TDD) methodology and phase checkp
 - [x] Task: Implement Learnable Projectors d3a020b
     - [ ] Create `tests/test_distillation_projectors.py` to verify distillation between mismatched dimensions (e.g., 768 -> 64).
     - [ ] Implement `Projector` class and dynamic injection logic in `src/training/distillation_trainer.py`.
-- [ ] Task: Implement Soft-Confidence (Dynamic) Weighting
+- [x] Task: Implement Soft-Confidence (Dynamic) Weighting fb78b69
     - [ ] Create tests to verify that loss weights shift dynamically based on teacher entropy.
     - [ ] Update `compute_loss` in `DistillationTrainer` to calculate and apply dynamic teacher weights.
 - [ ] Task: Expert Layer Selection Logic
