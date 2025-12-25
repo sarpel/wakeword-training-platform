@@ -32,7 +32,7 @@ This plan follows the Test-Driven Development (TDD) methodology and phase checkp
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Advanced Dual-Teacher Distillation' (Protocol in workflow.md)
 
 ## Phase 4: Documentation & Final QA
-- [ ] Task: Expert Distillation Guide
+- [x] Task: Expert Distillation Guide 1259d60
     - [ ] Create `docs/EXPERT_DISTILLATION_GUIDE.md` with detailed explanations of layer selection and trade-offs.
 - [ ] Task: Final E2E Integration Benchmark
     - [ ] Run a full training run using TinyConvV2 + Dual Distillation + QAT Fusion and verify the INT8 accuracy drop.
