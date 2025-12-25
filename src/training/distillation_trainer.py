@@ -4,18 +4,19 @@ Distillation Trainer.
 Implements Knowledge Distillation from a Teacher (Wav2Vec2) to a Student (MobileNet/ResNet).
 """
 
-import logging
 from typing import Any, Optional
+
+from src.config.logger import get_logger
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.models.huggingface import Wav2VecWakeword
 from src.models.architectures import create_model
+from src.models.huggingface import Wav2VecWakeword
 from src.training.trainer import Trainer
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DistillationTrainer(Trainer):
@@ -28,9 +29,22 @@ class DistillationTrainer(Trainer):
 
         self.distillation_enabled = self.config.distillation.enabled
         if self.distillation_enabled:
-            logger.info("Initializing Distillation Trainer")
+            arch = self.config.distillation.teacher_architecture
+            if arch == "dual":
+                arch = f"wav2vec2 + {self.config.distillation.secondary_teacher_architecture}"
+
+            logger.info(
+                f"Distillation ACTIVE (Teacher: {arch}, Alpha: {self.config.distillation.alpha}, T: {self.config.distillation.temperature})"
+            )
+
+            logger.debug(f"  Temperature Scheduler: {self.config.distillation.temperature_scheduler}")
+            if self.config.distillation.feature_alignment_enabled:
+                logger.debug(
+                    f"  Feature Alignment: ENABLED (Weight: {self.config.distillation.feature_alignment_weight})"
+                )
             self._init_teacher()
         else:
+            logger.info("Distillation INACTIVE (Standard Training)")
             self.teacher = None
 
     def _load_teacher_checkpoint(self, checkpoint_path: str) -> dict:
@@ -61,10 +75,7 @@ class DistillationTrainer(Trainer):
         ]
 
         # Validate path is within allowed directories
-        is_allowed = any(
-            checkpoint_path_obj.is_relative_to(allowed_dir)
-            for allowed_dir in allowed_dirs
-        )
+        is_allowed = any(checkpoint_path_obj.is_relative_to(allowed_dir) for allowed_dir in allowed_dirs)
 
         if not is_allowed:
             raise ValueError(
@@ -78,8 +89,7 @@ class DistillationTrainer(Trainer):
         # Check file exists
         if not checkpoint_path_obj.exists():
             raise FileNotFoundError(
-                f"Teacher checkpoint not found: {checkpoint_path_obj}\n"
-                f"Please ensure the checkpoint file exists."
+                f"Teacher checkpoint not found: {checkpoint_path_obj}\n" f"Please ensure the checkpoint file exists."
             )
 
         # Check file is actually a file (not directory)
@@ -92,20 +102,16 @@ class DistillationTrainer(Trainer):
         # This prevents arbitrary code execution from malicious pickles
         try:
             checkpoint = torch.load(
-                checkpoint_path_obj,
-                map_location="cpu",
-                weights_only=True  # SECURITY: Prevents code execution
+                checkpoint_path_obj, map_location="cpu", weights_only=True  # SECURITY: Prevents code execution
             )
         except TypeError:
-             # Fallback for older PyTorch versions that don't support weights_only
-             # But we know requirements.txt says 2.1.2 so this should be fine.
-             # Just in case user has older env:
-             logger.warning("torch.load doesn't support weights_only=True, loading unsafely (upgrade PyTorch!)")
-             checkpoint = torch.load(checkpoint_path_obj, map_location="cpu")
+            # Fallback for older PyTorch versions that don't support weights_only
+            # setup.py requires torch>=2.1.0 so the fallback is generally unnecessary
+            # but kept as a safety for older environments:
+            logger.warning("torch.load doesn't support weights_only=True, loading unsafely (upgrade PyTorch!)")
+            checkpoint = torch.load(checkpoint_path_obj, map_location="cpu")
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to load teacher checkpoint from {checkpoint_path_obj}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to load teacher checkpoint from {checkpoint_path_obj}: {e}") from e
 
         return checkpoint
 
@@ -115,7 +121,7 @@ class DistillationTrainer(Trainer):
         self.teachers = nn.ModuleList()
         self.teacher_devices = []
 
-        logger.info(f"Loading teacher architecture: {dist_config.teacher_architecture}")
+        logger.debug(f"Loading teacher architecture: {dist_config.teacher_architecture}")
 
         def load_one_teacher(arch, path):
             if arch == "wav2vec2":
@@ -125,31 +131,39 @@ class DistillationTrainer(Trainer):
             else:
                 # Use standard factory for other architectures (e.g. conformer)
                 t = create_model(arch, num_classes=self.config.model.num_classes)
-            
+
             if path:
-                logger.info(f"Loading weights for {arch} from {path}")
+                logger.debug(f"Loading teacher weights for {arch} from: {path}")
                 checkpoint = self._load_teacher_checkpoint(path)
                 if "model_state_dict" in checkpoint:
                     t.load_state_dict(checkpoint["model_state_dict"])
                 else:
                     t.load_state_dict(checkpoint)
-            
+                logger.debug(f"Successfully loaded {arch} weights")
+
             t.eval()
             for param in t.parameters():
                 param.requires_grad = False
-            
-            # Device placement
-            if dist_config.teacher_on_cpu:
+
+            # Device placement: Default to GPU if available and not explicitly forced to CPU
+            # However, for this high-perf track, we prioritize GPU.
+            use_gpu = not dist_config.teacher_on_cpu and torch.cuda.is_available()
+
+            if use_gpu:
+                t.to(self.device)
+                if self.device == "cuda" or (isinstance(self.device, str) and "cuda" in self.device):
+                    t.to(memory_format=torch.channels_last)  # type: ignore[call-overload]
+                dev = torch.device(self.device) if isinstance(self.device, str) else self.device
+                logger.debug(f"Teacher {arch} deployed on GPU ({dev})")
+            else:
                 t.to("cpu")
                 dev = torch.device("cpu")
-            else:
-                t.to(self.device)
-                # self.device might be a string or torch.device
-                dev = torch.device(self.device) if isinstance(self.device, str) else self.device
-            
+                logger.debug(f"Teacher {arch} deployed on CPU")
+
             if dist_config.teacher_mixed_precision and dev.type == "cuda":
                 t.half()
-            
+                logger.debug(f"Teacher {arch} using FP16 (Mixed Precision)")
+
             return t, dev
 
         if dist_config.teacher_architecture == "dual":
@@ -157,9 +171,11 @@ class DistillationTrainer(Trainer):
             t1, d1 = load_one_teacher("wav2vec2", dist_config.teacher_model_path)
             self.teachers.append(t1)
             self.teacher_devices.append(d1)
-            
+
             # Secondary teacher
-            t2, d2 = load_one_teacher(dist_config.secondary_teacher_architecture, dist_config.secondary_teacher_model_path)
+            t2, d2 = load_one_teacher(
+                dist_config.secondary_teacher_architecture, dist_config.secondary_teacher_model_path
+            )
             self.teachers.append(t2)
             self.teacher_devices.append(d2)
         else:
@@ -171,7 +187,7 @@ class DistillationTrainer(Trainer):
         self.teacher = self.teachers[0]
         self.teacher_device = self.teacher_devices[0]
 
-        logger.info(f"Initialized {len(self.teachers)} teacher(s)")
+        logger.debug(f"Initialized {len(self.teachers)} teacher(s)")
 
     def compute_loss(
         self,
@@ -193,7 +209,7 @@ class DistillationTrainer(Trainer):
             return student_loss
 
         dist_config = self.config.distillation
-        
+
         # Temperature scheduling
         T = float(dist_config.temperature)
         if dist_config.temperature_scheduler == "linear_decay":
@@ -213,9 +229,9 @@ class DistillationTrainer(Trainer):
                 # For now, we assume teachers take 'inputs' (raw audio if dim=2)
                 # But if teacher is standard CNN, it might need features.
                 # Heuristic: if input dim is 2 and teacher is not wav2vec2, it might need processing.
-                
+
                 inputs_teacher = inputs.to(teacher_device)
-                
+
                 # Check if we need to extract features for non-wav2vec teachers
                 if inputs_teacher.dim() == 2 and not isinstance(teacher, Wav2VecWakeword):
                     # Use student's audio processor but on teacher's device
@@ -224,27 +240,31 @@ class DistillationTrainer(Trainer):
                     # Or just run them through the student's processor
                     self.audio_processor.to(teacher_device)
                     inputs_teacher = self.audio_processor(inputs_teacher)
-                
-                with torch.cuda.amp.autocast(enabled=dist_config.teacher_mixed_precision and teacher_device.type == 'cuda'):
+
+                with torch.cuda.amp.autocast(
+                    enabled=dist_config.teacher_mixed_precision and teacher_device.type == "cuda"
+                ):
                     teacher_out = teacher(inputs_teacher)
-                
+
                 if isinstance(teacher_out, dict):
                     logits = teacher_out.get("logits", teacher_out)
                 elif isinstance(teacher_out, tuple):
                     logits = teacher_out[0]
                 else:
                     logits = teacher_out
-                
+
                 all_teacher_logits.append(logits.to(self.device))
 
                 # Feature alignment (optional)
                 if dist_config.feature_alignment_enabled and processed_inputs is not None:
                     # Align student features with teacher's intermediate features
-                    # This is complex as dimensions must match. 
+                    # This is complex as dimensions must match.
                     # We'll use student.embed() and teacher.embed() for alignment.
-                    with torch.cuda.amp.autocast(enabled=dist_config.teacher_mixed_precision and teacher_device.type == 'cuda'):
+                    with torch.cuda.amp.autocast(
+                        enabled=dist_config.teacher_mixed_precision and teacher_device.type == "cuda"
+                    ):
                         teacher_features = teacher.embed(inputs_teacher) if hasattr(teacher, "embed") else None
-                    
+
                     if teacher_features is not None:
                         student_features = self.model.embed(processed_inputs)
                         # Project student features if dimensions differ
@@ -271,7 +291,7 @@ class DistillationTrainer(Trainer):
         # Final Combined Loss
         alpha = dist_config.alpha
         total_loss = (1 - alpha) * student_loss + alpha * dist_loss
-        
+
         if dist_config.feature_alignment_enabled:
             total_loss += dist_config.feature_alignment_weight * feature_alignment_loss
 

@@ -74,10 +74,13 @@ class ModelEvaluator:
         # Audio processor
         # Create CMVN path
         from src.config.paths import paths
+
         cmvn_path = paths.CMVN_STATS
 
         if not cmvn_path.exists():
-            logger.warning(f"CMVN stats not found at {cmvn_path}. Evaluation might be inaccurate if model was trained with CMVN.")
+            logger.warning(
+                f"CMVN stats not found at {cmvn_path}. Evaluation might be inaccurate if model was trained with CMVN."
+            )
 
         processor_config: Optional["WakewordConfig"] = None
         if config is not None:
@@ -94,9 +97,7 @@ class ModelEvaluator:
             processor_config = WakewordConfig()
 
         self.audio_processor = GpuAudioProcessor(
-            config=processor_config,
-            cmvn_path=cmvn_path if cmvn_path.exists() else None,
-            device=device
+            config=processor_config, cmvn_path=cmvn_path if cmvn_path.exists() else None, device=device
         )
 
         # CPU Audio Processor for file loading
@@ -121,7 +122,7 @@ class ModelEvaluator:
         self.metrics_calculator = MetricsCalculator(device=device)
 
         logger.info(f"ModelEvaluator initialized on {device}")
-        logger.info(f"Class Mapping: Positive=1, Negative=0")
+        logger.info("Class Mapping: Positive=1, Negative=0")
         if hasattr(model, "num_classes"):
             logger.info(f"Model Classes: {model.num_classes}")
 
@@ -164,8 +165,40 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     """
     logger.info(f"Loading model from: {checkpoint_path}")
 
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Security: Validate checkpoint path to prevent loading from untrusted locations
+    from src.config.paths import paths
+
+    # Resolve to absolute path for validation
+    checkpoint_path = checkpoint_path.resolve()
+
+    # Get allowed checkpoint directories
+    allowed_directories = [
+        paths.MODELS.resolve(),
+        paths.CHECKPOINTS.resolve(),
+    ]
+
+    # Restrict loading to trusted directories only
+    is_allowed = False
+    for allowed_dir in allowed_directories:
+        try:
+            checkpoint_path.relative_to(allowed_dir)
+            is_allowed = True
+            break
+        except ValueError:
+            continue
+
+    if not is_allowed:
+        raise ValueError(
+            f"Security: Loading from untrusted location not allowed. "
+            f"Checkpoint path '{checkpoint_path}' must be within one of the allowed directories: {allowed_directories}"
+        )
+
+    # Security: Verify file exists before loading
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+    # Load checkpoint with weights_only=True to prevent arbitrary code execution
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
     # Get config
     if "config" not in checkpoint:
@@ -190,9 +223,13 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     # Calculate input size for model
     input_samples = int(config.data.sample_rate * config.data.audio_duration)
     time_steps = input_samples // config.data.hop_length + 1
-    
-    feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
-    
+
+    feature_dim = (
+        config.data.n_mels
+        if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel"
+        else config.data.n_mfcc
+    )
+
     if config.model.architecture == "cd_dnn":
         input_size = feature_dim * time_steps
     else:
@@ -225,7 +262,7 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     # --- Robust Loading Logic ---
     model_state = model.state_dict()
     new_state_dict = {}
-    
+
     for k, v in state_dict.items():
         # Handle MobileNetV3 remapping
         # Old checkpoints might have 'mobilenet.features.X' but model expects 'features.X'
@@ -254,10 +291,10 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
     # Handle QAT checkpoints loaded into FP32 models
     # Filter out quantization keys that are not in the model
     # (Existing logic preserved/merged)
-    
+
     # Load with strict=False to allow missing unused keys (like mobilenet.classifier)
     missing, unexpected = model.load_state_dict(final_state_dict, strict=False)
-    
+
     if missing:
         logger.warning(f"Missing keys (some may be expected if architecture changed): {missing[:5]}...")
     if unexpected:
@@ -306,7 +343,7 @@ if __name__ == "__main__":
                 hop_length=info["config"].data.hop_length,
             )
 
-            print(f"✅ Evaluator created")
+            print("✅ Evaluator created")
             print("\nEvaluator module loaded successfully")
 
         except Exception as e:

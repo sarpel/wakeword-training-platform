@@ -4,7 +4,7 @@ Learns optimal temperature parameter to calibrate model confidence
 """
 
 import logging
-from typing import Any, cast
+from typing import cast
 
 import torch
 import torch.nn as nn
@@ -200,20 +200,20 @@ if __name__ == "__main__":
     logits = torch.randn(batch_size, num_classes) * 5  # Large scale = overconfident
     labels = torch.randint(0, num_classes, (batch_size,))
 
-    print(f"Test setup:")
+    print("Test setup:")
     print(f"  Batch size: {batch_size}")
     print(f"  Num classes: {num_classes}")
 
     # Check initial confidence
     probs = torch.softmax(logits, dim=1)
     max_probs = probs.max(dim=1)[0]
-    print(f"\nBefore calibration:")
+    print("\nBefore calibration:")
     print(f"  Mean confidence: {max_probs.mean():.4f}")
     print(f"  Median confidence: {max_probs.median():.4f}")
 
     # Fit temperature scaling
     temp_scaling = TemperatureScaling()
-    print(f"\nFitting temperature scaling...")
+    print("\nFitting temperature scaling...")
     final_loss = temp_scaling.fit(logits, labels, verbose=True)
 
     print(f"  Fitted temperature: {temp_scaling.get_temperature():.4f}")
@@ -224,7 +224,7 @@ if __name__ == "__main__":
     calibrated_probs = torch.softmax(scaled_logits, dim=1)
     calibrated_max_probs = calibrated_probs.max(dim=1)[0]
 
-    print(f"\nAfter calibration:")
+    print("\nAfter calibration:")
     print(f"  Mean confidence: {calibrated_max_probs.mean():.4f}")
     print(f"  Median confidence: {calibrated_max_probs.median():.4f}")
 
@@ -233,6 +233,6 @@ if __name__ == "__main__":
     scaled_preds = scaled_logits.argmax(dim=1)
 
     assert torch.equal(original_preds, scaled_preds), "Temperature scaling changed predictions!"
-    print(f"\n✅ Predictions preserved after calibration")
+    print("\n✅ Predictions preserved after calibration")
 
     print("\n✅ Temperature scaling test complete")

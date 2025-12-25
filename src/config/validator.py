@@ -20,7 +20,8 @@ except Exception:
     from typing import Protocol  # fallback tip
 
     class WakewordConfigProtocol(Protocol):
-        def to_dict(self) -> Dict[str, Any]: ...
+        def to_dict(self) -> Dict[str, Any]:
+            ...
 
     WakewordConfig = WakewordConfigProtocol
 
@@ -195,10 +196,75 @@ class ConfigValidator:
         # Extra kurallar
         self._add_custom_warnings(config)
         self._validate_gpu_compatibility(config)
+        self._validate_model_size(config)
+        self._validate_distillation(config)
 
         all_issues = self.errors + self.warnings
         is_valid = len(self.errors) == 0
         return is_valid, all_issues
+
+    def _validate_distillation(self, config: WakewordConfig) -> None:
+        """Validate Knowledge Distillation settings"""
+        if not getattr(config.distillation, "enabled", False):
+            return
+
+        from pathlib import Path
+
+        # Primary Teacher
+        t1_path = getattr(config.distillation, "teacher_model_path", "")
+        if not t1_path:
+            self.errors.append(ValidationError("distillation.teacher_model_path", "Teacher model path is required when distillation is enabled"))
+        elif not Path(t1_path).exists():
+            self.errors.append(ValidationError("distillation.teacher_model_path", f"Teacher checkpoint not found: {t1_path}"))
+
+        # Secondary Teacher (if architecture is 'dual')
+        if getattr(config.distillation, "teacher_architecture", "") == "dual":
+            t2_path = getattr(config.distillation, "secondary_teacher_model_path", "")
+            if not t2_path:
+                self.errors.append(ValidationError("distillation.secondary_teacher_model_path", "Secondary teacher model path is required for dual distillation"))
+            elif not Path(t2_path).exists():
+                self.errors.append(ValidationError("distillation.secondary_teacher_model_path", f"Secondary teacher checkpoint not found: {t2_path}"))
+            
+            t2_arch = getattr(config.distillation, "secondary_teacher_architecture", "")
+            if not t2_arch:
+                self.errors.append(ValidationError("distillation.secondary_teacher_architecture", "Secondary teacher architecture must be specified for dual distillation"))
+
+    def _validate_model_size(self, config: WakewordConfig) -> None:
+        """Validate model size against platform targets"""
+        try:
+            from src.config.size_calculator import SizeCalculator
+
+            calc = SizeCalculator(config)
+            res = calc.compare_with_platform()
+
+            # If targets are 0, they are not set, so we don't error
+            if res["max_flash_kb"] > 0 and not res["flash_ok"]:
+                self.errors.append(
+                    ValidationError(
+                        "model.size",
+                        f"Estimated Flash size ({res['estimated_flash_kb']} KB) exceeds target ({res['max_flash_kb']} KB). "
+                        f"Try reducing architecture complexity or enabling QAT.",
+                    )
+                )
+            elif res["estimated_flash_kb"] > 500 and not config.qat.enabled:
+                self.warnings.append(
+                    ValidationError(
+                        "model.size",
+                        f"Large model ({res['estimated_flash_kb']} KB) without QAT. "
+                        f"Deployment on microcontrollers might be difficult.",
+                        "warning",
+                    )
+                )
+
+            if res["max_ram_kb"] > 0 and not res["ram_ok"]:
+                self.errors.append(
+                    ValidationError(
+                        "model.size",
+                        f"Estimated RAM usage ({res['estimated_ram_kb']} KB) exceeds target ({res['max_ram_kb']} KB).",
+                    )
+                )
+        except Exception as e:
+            logger.warning("validator.size_check_failed", error=str(e))
 
     def _add_custom_warnings(self, config: WakewordConfig) -> None:
         """Add custom warnings not covered by Pydantic validators"""

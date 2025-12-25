@@ -34,21 +34,25 @@ class MetricResults:
     total_samples: int
     positive_samples: int
     negative_samples: int
-    
+
     # Fields with defaults MUST come last
     pauc: float = 0.0  # Partial AUC
+    eer: float = 0.0  # Equal Error Rate
+    fah: float = 0.0  # False Alarms per Hour
     latency_ms: float = 0.0  # Average latency per sample in ms
+    confidence_histogram: str = ""  # ASCII Histogram visualization
 
     def __str__(self) -> str:
         """String representation"""
         return (
-            f"Accuracy: {self.accuracy:.4f} | "
-            f"Precision: {self.precision:.4f} | "
-            f"Recall: {self.recall:.4f} | "
-            f"F1: {self.f1_score:.4f} | "
-            f"FPR: {self.fpr:.4f} | "
-            f"FNR: {self.fnr:.4f} | "
-            f"pAUC: {self.pauc:.4f}"
+            f"\n    Accuracy:  {self.accuracy:.4f}\n"
+            f"    Precision: {self.precision:.4f}\n"
+            f"    Recall:    {self.recall:.4f}\n"
+            f"    F1:        {self.f1_score:.4f}\n"
+            f"    FPR:       {self.fpr:.4f}\n"
+            f"    FNR:       {self.fnr:.4f}\n"
+            f"    pAUC:      {self.pauc:.4f}\n"
+            f"    EER:       {self.eer:.4f}"
         )
 
     def to_dict(self) -> Dict[str, float]:
@@ -61,6 +65,8 @@ class MetricResults:
             "fpr": self.fpr,
             "fnr": self.fnr,
             "pauc": self.pauc,
+            "eer": self.eer,
+            "fah": self.fah,
             "latency_ms": self.latency_ms,
             "true_positives": float(self.true_positives),
             "true_negatives": float(self.true_negatives),
@@ -87,7 +93,13 @@ class MetricsCalculator:
         """
         self.device = device
 
-    def calculate(self, predictions: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5) -> MetricResults:
+    def calculate(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        threshold: float = 0.5,
+        total_duration_h: Optional[float] = None,
+    ) -> MetricResults:
         """
         Calculate all metrics from predictions and targets
 
@@ -95,6 +107,7 @@ class MetricsCalculator:
             predictions: Model predictions (logits or probabilities) (batch, num_classes)
             targets: Ground truth labels (batch,)
             threshold: Classification threshold for positive class
+            total_duration_h: Total duration of the audio in hours (for FAH)
 
         Returns:
             MetricResults containing all calculated metrics
@@ -121,7 +134,11 @@ class MetricsCalculator:
             else:
                 # Single output but 2D (batch, 1)
                 # Apply sigmoid if not probabilities
-                probs = torch.sigmoid(predictions[:, 0]) if predictions.max() > 1.0 or predictions.min() < 0.0 else predictions[:, 0]
+                probs = (
+                    torch.sigmoid(predictions[:, 0])
+                    if predictions.max() > 1.0 or predictions.min() < 0.0
+                    else predictions[:, 0]
+                )
                 pred_classes = (probs >= threshold).long()
         else:
             # Single output 1D (batch,)
@@ -155,8 +172,17 @@ class MetricsCalculator:
         fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
 
         # Calculate pAUC
-        from src.evaluation.metrics import calculate_pauc
+        from src.evaluation.metrics import calculate_eer, calculate_pauc
+
         pauc = calculate_pauc(predictions, targets, fpr_max=0.1)
+        eer = calculate_eer(predictions, targets)
+
+        # Calculate FAH (False Alarms per Hour)
+        # FAH = FP / Total Duration (hours)
+        fah = fp / total_duration_h if total_duration_h and total_duration_h > 0 else 0.0
+
+        # Generate ASCII Histogram
+        histogram = self._generate_ascii_histogram(probs, targets)
 
         return MetricResults(
             accuracy=accuracy,
@@ -172,8 +198,64 @@ class MetricsCalculator:
             total_samples=total,
             positive_samples=positive_samples,
             negative_samples=negative_samples,
-            pauc=pauc
+            pauc=pauc,
+            eer=eer,
+            fah=fah,
+            confidence_histogram=histogram,
         )
+
+    def _generate_ascii_histogram(self, probs: torch.Tensor, targets: torch.Tensor, bins: int = 10) -> str:
+        """
+        Generate a text-based histogram of confidence scores.
+        Visually separates Negatives (L) vs Positives (R).
+        """
+        try:
+            # Move to CPU for processing
+            probs_np = probs.detach().cpu().numpy()
+            targets_np = targets.detach().cpu().numpy()
+
+            pos_scores = probs_np[targets_np == 1]
+            neg_scores = probs_np[targets_np == 0]
+
+            hist_lines = ["\n    Confidence Distribution (Neg [-] vs Pos [+]):"]
+            
+            # Create bins
+            bin_edges = np.linspace(0, 1, bins + 1)
+            
+            # Calculate counts
+            pos_hist, _ = np.histogram(pos_scores, bins=bin_edges)
+            neg_hist, _ = np.histogram(neg_scores, bins=bin_edges)
+            
+            # Normalize for visualization (max width 40 chars)
+            max_count = max(pos_hist.max(), neg_hist.max()) if (len(pos_hist) > 0 and len(neg_hist) > 0) else 1
+            max_width = 40
+            
+            for i in range(bins):
+                low, high = bin_edges[i], bin_edges[i+1]
+                
+                # Normalize lengths
+                neg_len = int((neg_hist[i] / max_count) * max_width) if max_count > 0 else 0
+                pos_len = int((pos_hist[i] / max_count) * max_width) if max_count > 0 else 0
+                
+                neg_bar = "-" * neg_len
+                pos_bar = "+" * pos_len
+                
+                # Format: [0.0-0.1] --- (120) | + (5)
+                # Using specific markers for clarity
+                if neg_len > 0 and pos_len > 0:
+                    bar = f"\033[94m{neg_bar}\033[0m|\033[92m{pos_bar}\033[0m" # Blue | Green
+                elif neg_len > 0:
+                    bar = f"\033[94m{neg_bar}\033[0m"
+                elif pos_len > 0:
+                    bar = f"|\033[92m{pos_bar}\033[0m"
+                else:
+                    bar = ""
+                    
+                hist_lines.append(f"    [{low:.1f}-{high:.1f}] {bar}")
+                
+            return "\n".join(hist_lines)
+        except Exception as e:
+            return f"Histogram error: {e}"
 
     def confusion_matrix(self, predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 2) -> torch.Tensor:
         """
@@ -237,12 +319,13 @@ class MetricsTracker:
         self.all_predictions.append(predictions.detach().cpu())
         self.all_targets.append(targets.detach().cpu())
 
-    def compute(self, threshold: float = 0.5) -> MetricResults:
+    def compute(self, threshold: float = 0.5, total_duration_h: Optional[float] = None) -> MetricResults:
         """
         Compute metrics from all accumulated predictions
 
         Args:
             threshold: Classification threshold
+            total_duration_h: Total duration of the audio in hours (for FAH)
 
         Returns:
             MetricResults for all accumulated data
@@ -270,7 +353,9 @@ class MetricsTracker:
         all_targs = torch.cat(self.all_targets, dim=0)
 
         # Calculate metrics
-        metrics = self.calculator.calculate(all_preds, all_targs, threshold=threshold)
+        metrics = self.calculator.calculate(
+            all_preds, all_targs, threshold=threshold, total_duration_h=total_duration_h
+        )
 
         return metrics
 
@@ -487,7 +572,7 @@ if __name__ == "__main__":
     perm = torch.randperm(batch_size)
     targets = targets[perm]
 
-    print(f"\nTest setup:")
+    print("\nTest setup:")
     print(f"  Predictions shape: {predictions.shape}")
     print(f"  Targets shape: {targets.shape}")
     print(f"  Positive samples: {(targets == 1).sum().item()}")
@@ -499,16 +584,16 @@ if __name__ == "__main__":
     metrics = calculator.calculate(predictions, targets)
 
     print(f"\n{metrics}")
-    print(f"\nConfusion Matrix:")
+    print("\nConfusion Matrix:")
     print(f"  TP: {metrics.true_positives} | FP: {metrics.false_positives}")
     print(f"  FN: {metrics.false_negatives} | TN: {metrics.true_negatives}")
-    print(f"  ✅ MetricsCalculator works")
+    print("  ✅ MetricsCalculator works")
 
     # Test confusion matrix
     print("\n2. Testing confusion matrix calculation...")
     conf_matrix = calculator.confusion_matrix(predictions, targets, num_classes=2)
     print(f"  Confusion matrix:\n{conf_matrix}")
-    print(f"  ✅ Confusion matrix works")
+    print("  ✅ Confusion matrix works")
 
     # Test MetricsTracker
     print("\n3. Testing MetricsTracker (multi-batch)...")
@@ -541,7 +626,7 @@ if __name__ == "__main__":
     best_epoch, best_metrics = tracker.get_best_epoch("f1_score")
     f1 = best_metrics.f1_score if best_metrics else 0.0
     print(f"  Best epoch: {best_epoch + 1} with F1={f1:.4f}")
-    print(f"  ✅ MetricsTracker works")
+    print("  ✅ MetricsTracker works")
 
     # Test MetricMonitor
     print("\n4. Testing MetricMonitor...")
@@ -555,7 +640,7 @@ if __name__ == "__main__":
 
     running_avg = monitor.get_running_averages()
     print(f"  Running averages: Loss={running_avg['loss']:.4f}, Acc={running_avg['accuracy']:.4f}")
-    print(f"  ✅ MetricMonitor works")
+    print("  ✅ MetricMonitor works")
 
     # Test class weights calculation
     print("\n5. Testing class weights calculation...")
@@ -565,7 +650,7 @@ if __name__ == "__main__":
         weights = calculate_class_weights(dataset_stats, method=method, device=device)
         print(f"  {method}: {weights}")
 
-    print(f"  ✅ Class weights calculation works")
+    print("  ✅ Class weights calculation works")
 
     print("\n✅ All metrics tests passed successfully")
     print("Metrics module loaded successfully")

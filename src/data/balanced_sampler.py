@@ -3,11 +3,11 @@ Balanced Batch Sampler for controlling class ratios in batches
 Ensures each batch has specified proportions of positive, negative, and hard negative samples
 """
 
-from typing import Iterator, List
+from typing import Iterator, List, Optional
 
 import numpy as np
 import structlog
-from torch.utils.data import Sampler
+from torch.utils.data import Dataset, Sampler
 
 logger = structlog.get_logger(__name__)
 
@@ -126,7 +126,71 @@ class BalancedBatchSampler(Sampler):
         return int(min(max_batches_pos, max_batches_neg, max_batches_hard))
 
 
-from torch.utils.data import Dataset
+class CalibrationSampler:
+    """
+    Selects a representative mix of positive and negative samples for quantization calibration.
+    Unlike a batch sampler, this returns a fixed list of indices for calibration.
+    """
+
+    def __init__(
+        self,
+        idx_pos: List[int],
+        idx_neg: List[int],
+        idx_hard_neg: Optional[List[int]] = None,
+        num_samples: int = 100,
+        positive_ratio: float = 0.5,
+    ):
+        if idx_hard_neg is None:
+            idx_hard_neg = []
+        """
+        Initialize calibration sampler
+
+        Args:
+            idx_pos: Indices of positive samples
+            idx_neg: Indices of negative samples
+            idx_hard_neg: Indices of hard negative samples (optional)
+            num_samples: Total number of samples to select
+            positive_ratio: Ratio of positive samples (0.0 to 1.0)
+        """
+        self.idx_pos = idx_pos
+        self.idx_neg = idx_neg
+        self.idx_hard_neg = idx_hard_neg
+        self.num_samples = num_samples
+        self.positive_ratio = positive_ratio
+
+    def get_indices(self) -> List[int]:
+        """
+        Get a fixed list of indices for calibration
+
+        Returns:
+            List of indices
+        """
+        n_pos = int(self.num_samples * self.positive_ratio)
+        n_neg = self.num_samples - n_pos
+
+        # Ensure we don't request more than available
+        n_pos = min(n_pos, len(self.idx_pos))
+        n_neg = min(n_neg, len(self.idx_neg) + len(self.idx_hard_neg))
+
+        # Randomly sample positives
+        sampled_pos = (
+            np.random.choice(self.idx_pos, size=n_pos, replace=False) if n_pos > 0 and self.idx_pos else np.array([])
+        )
+
+        # Randomly sample negatives (combine normal and hard negatives)
+        all_neg = np.concatenate([self.idx_neg, self.idx_hard_neg])
+        sampled_neg = (
+            np.random.choice(all_neg, size=n_neg, replace=False) if n_neg > 0 and len(all_neg) > 0 else np.array([])
+        )
+
+        indices = np.concatenate([sampled_pos, sampled_neg]).astype(int)
+        np.random.shuffle(indices)
+
+        logger.info(
+            f"CalibrationSampler selected {len(indices)} samples: " f"pos={len(sampled_pos)}, neg={len(sampled_neg)}"
+        )
+
+        return indices.tolist()
 
 
 def create_balanced_sampler_from_dataset(
@@ -192,6 +256,60 @@ def create_balanced_sampler_from_dataset(
     )
 
 
+def create_calibration_sampler_from_dataset(
+    dataset: Dataset, num_samples: int = 100, positive_ratio: float = 0.5
+) -> CalibrationSampler:
+    """
+    Create calibration sampler from dataset
+
+    Args:
+        dataset: PyTorch dataset
+        num_samples: Total number of samples
+        positive_ratio: Ratio of positive samples
+
+    Returns:
+        CalibrationSampler
+    """
+    # Collect indices by category (reusing the logic or just using the helper if we can refactor)
+    # For now, let's extract indices
+    idx_pos = []
+    idx_neg = []
+    idx_hard_neg = []
+
+    if hasattr(dataset, "files"):
+        for i, file_info in enumerate(dataset.files):
+            category = file_info.get("category", "")
+            if category == "positive":
+                idx_pos.append(i)
+            elif category == "negative":
+                idx_neg.append(i)
+            elif category == "hard_negative":
+                idx_hard_neg.append(i)
+    else:
+        # Fallback to iteration
+        for i in range(len(dataset)):  # type: ignore[arg-type]
+            try:
+                _, _, metadata = dataset[i]
+                category = metadata.get("category", "")
+                if category == "positive":
+                    idx_pos.append(i)
+                elif category == "negative":
+                    idx_neg.append(i)
+                elif category == "hard_negative":
+                    idx_hard_neg.append(i)
+            except Exception:
+                # Skip indices where metadata cannot be retrieved; calibration can proceed with available samples
+                pass
+
+    return CalibrationSampler(
+        idx_pos=idx_pos,
+        idx_neg=idx_neg,
+        idx_hard_neg=idx_hard_neg,
+        num_samples=num_samples,
+        positive_ratio=positive_ratio,
+    )
+
+
 if __name__ == "__main__":
     # Test balanced sampler
     print("BalancedBatchSampler Test")
@@ -202,7 +320,7 @@ if __name__ == "__main__":
     idx_neg = list(range(100, 300))  # 200 negative samples
     idx_hard_neg = list(range(300, 400))  # 100 hard negative samples
 
-    print(f"Test dataset:")
+    print("Test dataset:")
     print(f"  Positive: {len(idx_pos)}")
     print(f"  Negative: {len(idx_neg)}")
     print(f"  Hard Negative: {len(idx_hard_neg)}")
@@ -217,14 +335,14 @@ if __name__ == "__main__":
         ratio=(1, 1, 1),
     )
 
-    print(f"\nSampler created:")
+    print("\nSampler created:")
     print(f"  Batch size: {batch_size}")
-    print(f"  Ratio: (1, 1, 1)")
+    print("  Ratio: (1, 1, 1)")
     print(f"  Samples per batch: pos={sampler.n_pos}, neg={sampler.n_neg}, hard_neg={sampler.n_hard_neg}")
     print(f"  Total batches: {len(sampler)}")
 
     # Generate a few batches
-    print(f"\nGenerating batches:")
+    print("\nGenerating batches:")
     for i, batch_idx in enumerate(sampler):
         if i >= 3:
             break
@@ -237,7 +355,7 @@ if __name__ == "__main__":
         print(f"  Batch {i+1}: size={len(batch_idx)}, pos={n_pos}, neg={n_neg}, hard_neg={n_hard}")
 
     # Test with different ratio (1:2:1)
-    print(f"\nTesting with ratio (1:2:1):")
+    print("\nTesting with ratio (1:2:1):")
     sampler2 = BalancedBatchSampler(
         idx_pos=idx_pos,
         idx_neg=idx_neg,

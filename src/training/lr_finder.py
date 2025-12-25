@@ -308,13 +308,13 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
 
     # Run LR finder
-    print(f"\nRunning LR finder...")
+    print("\nRunning LR finder...")
 
     lr_finder = LRFinder(model, optimizer, criterion, device)
 
     lrs, losses = lr_finder.range_test(train_loader, start_lr=1e-6, end_lr=1e-2, num_iter=100)
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  LR range: [{min(lrs):.2e}, {max(lrs):.2e}]")
     print(f"  Loss range: [{min(losses):.4f}, {max(losses):.4f}]")
 

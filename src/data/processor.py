@@ -10,19 +10,18 @@ from typing import Optional, cast
 import torch
 import torch.nn as nn
 
+from src.config.defaults import WakewordConfig
 from src.data.cmvn import CMVN
 from src.data.feature_extraction import FeatureExtractor
 
 logger = logging.getLogger(__name__)
-
-from src.config.defaults import WakewordConfig
 
 
 class AudioProcessor(nn.Module):
     """
     GPU-accelerated Audio Processor.
     Handles feature extraction (Mel/MFCC) and CMVN on GPU.
-    
+
     Note: Audio augmentation is handled separately in the Trainer class
     to avoid double augmentation and allow proper epoch-based scheduling.
     """
@@ -45,13 +44,14 @@ class AudioProcessor(nn.Module):
 
         # CMVN
         self.cmvn = None
+        self.cmvn_mismatch = False
         # Check if we should use CMVN (assuming normalize_audio implies normalization)
         # Or check specific flag if available.
         # Existing code passed cmvn_path, so we assume usage if path exists.
         if cmvn_path:
             try:
                 temp_cmvn = CMVN(stats_path=cmvn_path)
-                
+
                 # Verify dimensions match config
                 expected_dim = config.data.n_mfcc if config.data.feature_type == "mfcc" else config.data.n_mels
                 if temp_cmvn.mean.shape[0] != expected_dim:
@@ -59,6 +59,7 @@ class AudioProcessor(nn.Module):
                         f"CMVN stats dimension mismatch! Loaded: {temp_cmvn.mean.shape[0]}, "
                         f"Expected: {expected_dim}. Disabling CMVN for this run."
                     )
+                    self.cmvn_mismatch = True
                     self.cmvn = None
                 else:
                     self.cmvn = temp_cmvn

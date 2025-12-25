@@ -27,6 +27,32 @@ from src.exceptions import WakewordException
 
 logger = structlog.get_logger(__name__)
 
+
+def sanitize_path(user_path: str, allowed_root: Path) -> Path:
+    """
+    Validate path is within allowed directory to prevent path traversal.
+
+    Args:
+        user_path: User-provided path string
+        allowed_root: Root directory that's allowed
+
+    Returns:
+        Validated and resolved Path
+
+    Raises:
+        ValueError: If path is outside allowed directory
+    """
+    full_path = Path(user_path).resolve()
+    allowed_root = allowed_root.resolve()
+
+    try:
+        full_path.relative_to(allowed_root)
+    except ValueError:
+        raise ValueError(f"Path {user_path} outside allowed directory {allowed_root}")
+
+    return full_path
+
+
 # Global state for panel
 _current_scanner = None
 _current_dataset_info = None
@@ -144,7 +170,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                         with gr.Row():
                             extract_n_mels = gr.Number(
                                 label="Mel Channels",
-                                value=40,
+                                value=64,
                                 precision=0,
                                 info="Number of mel filterbanks (frequency resolution)",
                             )
@@ -202,10 +228,10 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                         with gr.Row():
                             val_sample_rate = gr.Number(label="Target Sample Rate", value=16000)
                             val_duration = gr.Number(label="Target Duration (s)", value=1.0, precision=1)
-                            val_n_mels = gr.Number(label="Mel Channels", value=40, precision=0)
+                            val_n_mels = gr.Number(label="Mel Channels", value=64, precision=0)
                             val_hop_length = gr.Number(label="Hop Length", value=160)
 
-                        validate_shape_checkbox = gr.Checkbox(
+                        gr.Checkbox(
                             label="Validate Shapes",
                             value=True,
                             info="Check dimensions against target config",
@@ -301,7 +327,11 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
 
         # Event handlers with full implementation
         def scan_datasets_handler(
-            root_path: str, skip_val: bool, move_unqualified: bool, move_quality_warning: bool = False, progress: gr.Progress = gr.Progress()
+            root_path: str,
+            skip_val: bool,
+            move_unqualified: bool,
+            move_quality_warning: bool = False,
+            progress: gr.Progress = gr.Progress(),
         ) -> Tuple[dict, str, str]:
             """Scan datasets and return statistics and health report"""
             global _current_scanner, _current_dataset_info
@@ -314,7 +344,12 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                         "No folder selected",
                     )
 
-                root_path_obj = Path(root_path)
+                # Validate path is within allowed directories to prevent traversal
+                try:
+                    root_path_obj = sanitize_path(root_path, Path.cwd())
+                except ValueError as e:
+                    return ({}, f"❌ Path validation failed: {e}", "Invalid path")
+
                 if not root_path_obj.exists():
                     return (
                         {},
@@ -466,7 +501,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     npy_source_path = Path(root_path) / "npy"
 
                 progress(0.2, desc="Splitting datasets...")
-                splits = splitter.split_datasets(
+                splitter.split_datasets(
                     train_ratio=train,
                     val_ratio=val,
                     test_ratio=test,
@@ -569,12 +604,12 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     logger.info("Updating global configuration with extraction parameters")
                     if state.value is None:
                         state.value = {}
-                    
+
                     # Get existing config or create new
                     current_config = state.value.get("config")
                     if current_config is None:
                         current_config = WakewordConfig()
-                    
+
                     # Update data config
                     current_config.data = data_config
                     state.value["config"] = current_config
@@ -682,9 +717,18 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 if not npy_path:
                     if not root_path:
                         return "❌ Please provide either .npy folder path or scan datasets first"
-                    npy_path_obj = Path(root_path) / "npy"
+                    # Validate root_path
+                    try:
+                        validated_root = sanitize_path(root_path, Path.cwd())
+                    except ValueError as e:
+                        return f"❌ Path validation failed: {e}"
+                    npy_path_obj = validated_root / "npy"
                 else:
-                    npy_path_obj = Path(npy_path)
+                    # Validate npy_path
+                    try:
+                        npy_path_obj = sanitize_path(npy_path, Path.cwd())
+                    except ValueError as e:
+                        return f"❌ Path validation failed: {e}"
 
                 if not npy_path_obj.exists():
                     return f"❌ Directory not found: {npy_path_obj}"
@@ -709,7 +753,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
 
                 # Extract and analyze
                 progress(0.1, desc=f"Processing {len(npy_files)} .npy files...")
-                results = extractor.extract_and_convert(npy_files, progress_callback=update_progress)
+                extractor.extract_and_convert(npy_files, progress_callback=update_progress)
 
                 # Generate report
                 progress(0.95, desc="Generating report...")
@@ -745,9 +789,18 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 if not npy_path:
                     if not root_path:
                         return "❌ Please provide either .npy folder path or scan datasets first"
-                    npy_path_obj = Path(root_path) / "npy"
+                    # Validate root_path
+                    try:
+                        validated_root = sanitize_path(root_path, Path.cwd())
+                    except ValueError as e:
+                        return f"❌ Path validation failed: {e}"
+                    npy_path_obj = validated_root / "npy"
                 else:
-                    npy_path_obj = Path(npy_path)
+                    # Validate npy_path
+                    try:
+                        npy_path_obj = sanitize_path(npy_path, Path.cwd())
+                    except ValueError as e:
+                        return f"❌ Path validation failed: {e}"
 
                 if not npy_path_obj.exists():
                     return f"❌ Directory not found: {npy_path_obj}"
@@ -845,11 +898,17 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 if not root_path:
                     return "❌ Please provide dataset root path"
 
+                # Validate root_path to prevent path traversal
+                try:
+                    validated_path = sanitize_path(root_path, Path.cwd())
+                except ValueError as e:
+                    return f"❌ Path validation failed: {e}"
+
                 # We filter the manifest files in the splits/ directory (or we could scan directories directly)
                 # But usually we rely on the manifest generated by "Scan Datasets"
                 # Let's assume we operate on the "dataset_manifest.json" generated by Scan
 
-                manifest_path = Path(root_path).parent / "splits" / "dataset_manifest.json"
+                manifest_path = validated_path.parent / "splits" / "dataset_manifest.json"
 
                 if not manifest_path.exists():
                     return "❌ Manifest not found. Please 'Scan Datasets' first."
@@ -973,7 +1032,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 progress(0.7, desc="Step 4/5: Loading Configuration...")
                 log("\n--- STEP 4: PREPARING CONFIGURATION ---")
 
-                from src.config.defaults import DataConfig, ModelConfig, TrainingConfig, WakewordConfig
+                from src.config.defaults import DataConfig, WakewordConfig
 
                 # Create config matching UI parameters
                 config = WakewordConfig()

@@ -46,6 +46,27 @@ Production-ready platform for training custom wakeword detection models with **G
     ```
     The application will open at `http://localhost:7860`
 
+### 🚀 Quick Start (Docker - Recommended)
+
+For a consistent environment across Windows and Linux:
+
+1.  **Configure Environment**
+    ```bash
+    cp .env.example .env
+    # Edit .env to set your QUANTIZATION_BACKEND (fbgemm for Win, qnnpack for Linux)
+    ```
+
+2.  **Launch via Docker Compose**
+    ```bash
+    docker-compose up -d
+    ```
+
+3.  **Access Services**
+    - **Dashboard**: `http://localhost:7860`
+    - **Inference Server**: `http://localhost:8000`
+    - **Jupyter Lab**: `http://localhost:8888`
+    - **TensorBoard**: `http://localhost:6006`
+
 ---
 
 ## 📂 Data Preparation
@@ -73,8 +94,11 @@ The system will automatically create these directories on first run.
 
 ---
 
-## � What's New in v4.0
+##  What's New in v4.0
 
+- **📉 New**: Focal Loss implementation for superior hard-negative handling
+- **⚡ New**: QAT Accuracy Recovery pipeline (FP32 baseline to INT8 fine-tuning)
+- **📏 New**: Model Size Insight & Platform Constraints validation for Edge deployment
 - **✨ New**: Advanced GPU acceleration with Mixed Precision training
 - **🚀 New**: Comprehensive HPO (Hyperparameter Optimization) system
 - **📦 New**: Production-ready ONNX and TFLite export

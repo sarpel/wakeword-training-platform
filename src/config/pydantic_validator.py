@@ -85,7 +85,7 @@ class ModelConfig(BaseModel):
     hidden_size: int = Field(128, ge=16)
     num_layers: int = Field(2, ge=1)
     bidirectional: bool = True
-    # TCN & CD-DNN fields are optional or handled via extra fields if passed, 
+    # TCN & CD-DNN fields are optional or handled via extra fields if passed,
     # but adding them explicitly is better if they are in the default config.
     tcn_num_channels: List[int] = [64, 128, 256]
     tcn_kernel_size: int = 3
@@ -194,9 +194,51 @@ class DistillationConfig(BaseModel):
     teacher_on_cpu: bool = False
     teacher_mixed_precision: bool = True
     log_memory_usage: bool = False
-    teacher_architecture: Literal["wav2vec2"] = "wav2vec2"
+    teacher_architecture: Literal["wav2vec2", "conformer", "dual"] = "dual"
     temperature: float = Field(2.0, ge=1.0, le=10.0)
     alpha: float = Field(0.5, ge=0.0, le=1.0)
+
+
+class CMVNConfig(BaseModel):
+    """Pydantic model for CMVN configuration"""
+
+    enabled: bool = True
+    stats_path: str = "data/cache/cmvn_stats.json"
+    calculate_on_fly: bool = True
+
+
+class StreamingConfig(BaseModel):
+    """Pydantic model for streaming detection configuration"""
+
+    hysteresis_high: float = Field(0.7, ge=0.0, le=1.0)
+    hysteresis_low: float = Field(0.3, ge=0.0, le=1.0)
+    buffer_length_ms: int = Field(1500, gt=0)
+    smoothing_window: int = Field(5, ge=1)
+    cooldown_ms: int = Field(500, ge=0)
+
+    @root_validator(skip_on_failure=True)
+    def hysteresis_order(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        low = values.get("hysteresis_low")
+        high = values.get("hysteresis_high")
+        if low is not None and high is not None and low >= high:
+            raise ValueError(
+                f"hysteresis_low ({low}) must be less than hysteresis_high ({high})"
+            )
+        return values
+
+
+class SizeTargetConfig(BaseModel):
+    """Pydantic model for model size target configuration"""
+
+    max_flash_kb: int = Field(0, ge=0)
+    max_ram_kb: int = Field(0, ge=0)
+
+
+class CalibrationConfig(BaseModel):
+    """Pydantic model for quantization calibration configuration"""
+
+    num_samples: int = Field(100, ge=10)
+    positive_ratio: float = Field(0.5, ge=0.0, le=1.0)
 
 
 class WakewordPydanticConfig(BaseModel):
@@ -204,14 +246,18 @@ class WakewordPydanticConfig(BaseModel):
 
     config_name: str = "default"
     description: str = "Default wakeword training configuration"
-    data: DataConfig = Field(default_factory=lambda: DataConfig())  # type: ignore
-    training: TrainingConfig = Field(default_factory=lambda: TrainingConfig())  # type: ignore
-    model: ModelConfig = Field(default_factory=lambda: ModelConfig())  # type: ignore
-    augmentation: AugmentationConfig = Field(default_factory=lambda: AugmentationConfig())  # type: ignore
-    optimizer: OptimizerConfig = Field(default_factory=lambda: OptimizerConfig())  # type: ignore
-    loss: LossConfig = Field(default_factory=lambda: LossConfig())  # type: ignore
-    qat: QATConfig = Field(default_factory=lambda: QATConfig())  # type: ignore
-    distillation: DistillationConfig = Field(default_factory=lambda: DistillationConfig())  # type: ignore
+    data: DataConfig = Field(default_factory=DataConfig)  # type: ignore
+    training: TrainingConfig = Field(default_factory=TrainingConfig)  # type: ignore
+    model: ModelConfig = Field(default_factory=ModelConfig)  # type: ignore
+    augmentation: AugmentationConfig = Field(default_factory=AugmentationConfig)  # type: ignore
+    optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)  # type: ignore
+    loss: LossConfig = Field(default_factory=LossConfig)  # type: ignore
+    qat: QATConfig = Field(default_factory=QATConfig)  # type: ignore
+    distillation: DistillationConfig = Field(default_factory=DistillationConfig)  # type: ignore
+    cmvn: CMVNConfig = Field(default_factory=CMVNConfig)  # type: ignore
+    streaming: StreamingConfig = Field(default_factory=StreamingConfig)  # type: ignore
+    size_targets: SizeTargetConfig = Field(default_factory=SizeTargetConfig)  # type: ignore
+    calibration: CalibrationConfig = Field(default_factory=CalibrationConfig)  # type: ignore
 
     @root_validator(skip_on_failure=True)
     def cross_dependencies(cls, values: Dict[str, Any]) -> Dict[str, Any]:

@@ -5,11 +5,12 @@ Implements global normalization statistics with persistence
 
 import json
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import structlog
 import torch
 import torch.nn as nn
+from torch.utils.data import Dataset
 
 logger = structlog.get_logger(__name__)
 
@@ -106,7 +107,7 @@ class CMVN(nn.Module):
         self.count.fill_(total_frames)
         self._initialized = True
 
-        logger.info(f"CMVN stats computed:")
+        logger.info("CMVN stats computed:")
         logger.info(f"  Total frames: {total_frames}")
         logger.info(f"  Feature dim: {self.mean.shape[0]}")
         logger.info(f"  Mean range: [{self.mean.min():.4f}, {self.mean.max():.4f}]")
@@ -122,7 +123,7 @@ class CMVN(nn.Module):
         """
         Apply CMVN normalization to features (batch-aware)
         Args:
-            features: Input features (B, C, T) or (C, T)
+            features: Input features (B, 1, C, T), (B, C, T) or (C, T)
         """
         if not self._initialized:
             # If loaded via state_dict, check buffers
@@ -131,21 +132,33 @@ class CMVN(nn.Module):
             else:
                 raise RuntimeError("CMVN stats not computed. Call compute_stats() first.")
 
-        # Handle batch dimension
+        # Handle different input shapes
+        original_shape = features.shape
         original_ndim = features.ndim
+
         if original_ndim == 2:  # (C, T)
-            features = features.unsqueeze(0)
+            # Reshape to (1, 1, C, T) for uniform processing
+            features = features.unsqueeze(0).unsqueeze(0)
+        elif original_ndim == 3:  # (B, C, T)
+            features = features.unsqueeze(1)
+        elif original_ndim == 4:  # (B, 1, C, T)
+            pass
+        else:
+            raise ValueError(f"Unsupported input shape for CMVN: {original_shape}")
 
         # Normalize: (x - mean) / std
         # mean, std: (C,)
-        # features: (B, C, T)
-        mean = self.mean.view(1, -1, 1)
-        std = self.std.view(1, -1, 1)
+        # Reshape mean/std to (1, 1, C, 1) for broadcasting over (B, 1, C, T)
+        mean = self.mean.view(1, 1, -1, 1)
+        std = self.std.view(1, 1, -1, 1)
 
         normalized = (features - mean) / std
 
+        # Restore original shape
         if original_ndim == 2:
-            normalized = normalized.squeeze(0)
+            normalized = normalized.squeeze(0).squeeze(0)
+        elif original_ndim == 3:
+            normalized = normalized.squeeze(1)
 
         return normalized
 
@@ -233,9 +246,6 @@ class CMVN(nn.Module):
         logger.info(f"CMVN stats loaded from {load_path} (dim={self.mean.shape[0]})")
 
 
-from torch.utils.data import Dataset
-
-
 def compute_cmvn_from_dataset(dataset: Dataset, stats_path: Path, max_samples: Optional[int] = None) -> CMVN:
     """
     Compute CMVN statistics from a PyTorch dataset
@@ -290,7 +300,7 @@ if __name__ == "__main__":
     cmvn = CMVN(stats_path=Path("test_cmvn_stats.json"))
     mean, std = cmvn.compute_stats(features_list)
 
-    print(f"\nComputed stats:")
+    print("\nComputed stats:")
     print(f"  Mean: {mean[:5]} ...")
     print(f"  Std: {std[:5]} ...")
 
@@ -298,14 +308,14 @@ if __name__ == "__main__":
     test_features = torch.randn(feature_dim, time_steps)
     normalized = cmvn.normalize(test_features)
 
-    print(f"\nTest normalization:")
+    print("\nTest normalization:")
     print(f"  Input mean: {test_features.mean():.4f}")
     print(f"  Normalized mean: {normalized.mean():.4f}")
     print(f"  Normalized std: {normalized.std():.4f}")
 
     # Test save/load
     cmvn.save_stats()
-    print(f"\nStats saved to test_cmvn_stats.json")
+    print("\nStats saved to test_cmvn_stats.json")
 
     # Load in new object
     cmvn2 = CMVN(stats_path=Path("test_cmvn_stats.json"))
@@ -313,6 +323,6 @@ if __name__ == "__main__":
     # Verify loaded stats match
     assert torch.allclose(cmvn.mean, cmvn2.mean)
     assert torch.allclose(cmvn.std, cmvn2.std)
-    print(f"✅ Save/load verification passed")
+    print("✅ Save/load verification passed")
 
     print("\n✅ CMVN module test complete")

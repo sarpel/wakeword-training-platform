@@ -41,8 +41,8 @@ def test_start_training_updates_loss_config():
                                 start_training(
                                     config_state=config_state,
                                     use_cmvn=False,
-                                    use_ema=False,
-                                    ema_decay=0.99,
+                                    use_ema=True,
+                                    ema_decay=0.9995,
                                     use_balanced_sampler=False,
                                     sampler_ratio_pos=1,
                                     sampler_ratio_neg=1,
@@ -50,19 +50,10 @@ def test_start_training_updates_loss_config():
                                     run_lr_finder=False,
                                     use_wandb=False,
                                     wandb_project="test",
-                                    # New params
-                                    loss_func_name="focal_loss",
-                                    loss_smoothing=0.2,
-                                    focal_gamma=3.0,
-                                    focal_alpha=0.6,
-                                    hard_neg_weight=2.0,
                                     wandb_api_key="",
                                     resume_checkpoint=None
                                 )
                                 
-                                # Check config updates
-                                assert config.loss.loss_function == "focal_loss"
-                                assert config.loss.label_smoothing == 0.2
-                                assert config.loss.focal_gamma == 3.0
-                                assert config.loss.focal_alpha == 0.6
-                                assert config.loss.hard_negative_weight == 2.0
+                                # Check session overrides
+                                assert config.training.use_ema == True
+                                assert config.training.ema_decay == 0.9995

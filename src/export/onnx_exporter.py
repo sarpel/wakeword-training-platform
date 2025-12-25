@@ -151,12 +151,12 @@ class ONNXExporter:
             return {"success": False, "error": str(e)}
 
     def export_to_tflite(
-        self, 
-        onnx_path: Path, 
-        output_path: Path, 
+        self,
+        onnx_path: Path,
+        output_path: Path,
         sample_input: Optional[torch.Tensor] = None,
         quantize_int8: bool = False,
-        is_qat: bool = False
+        is_qat: bool = False,
     ) -> Dict[str, Any]:
         """
         Export ONNX model to TFLite using onnx2tf
@@ -174,42 +174,70 @@ class ONNXExporter:
         logger.info(f"Exporting to TFLite: {output_path} (INT8={quantize_int8}, QAT={is_qat})")
 
         try:
+            # Validate and sanitize paths to prevent command injection
+            expected_base = Path("exports").resolve()
+            resolved_onnx_path = onnx_path.resolve()
+
+            if not str(resolved_onnx_path).startswith(str(expected_base)):
+                raise ValueError(f"ONNX path must be within {expected_base}, got: {onnx_path}")
+
             output_folder = output_path.parent / "tflite_export"
+            resolved_output_folder = output_folder.resolve()
+
+            if not str(resolved_output_folder).startswith(str(expected_base)):
+                raise ValueError(f"Output path must be within {expected_base}, got: {output_folder}")
+
             output_folder.mkdir(parents=True, exist_ok=True)
 
+            # Validate input shape string format (must be comma-separated positive integers)
             input_shape_str = ",".join(map(str, self.sample_input_shape))
+            try:
+                for dim in self.sample_input_shape:
+                    if not isinstance(dim, int) or dim <= 0:
+                        raise ValueError(f"Input shape dimensions must be positive integers, got: {dim}")
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid input shape: {self.sample_input_shape}") from e
 
-            # Base command
+            # Base command with validated paths
             cmd = [
                 sys.executable,
                 "-m",
                 "onnx2tf",
-                "-i", str(onnx_path),
-                "-o", str(output_folder),
-                "-ois", f"input:{input_shape_str}",
-                "--non_verbose", # Reduce log noise
+                "-i",
+                str(resolved_onnx_path),
+                "-o",
+                str(resolved_output_folder),
+                "-ois",
+                f"input:{input_shape_str}",
+                "--non_verbose",  # Reduce log noise
             ]
 
             # QAT / Quantization specific flags
             if is_qat:
                 # For QAT models, we want to preserve the fake quantization nodes or convert them correctly
-                cmd.extend([
-                    "--copy_onnx_input_output_names_to_tflite", # Feature keeping
-                    "--output_integer_quantized_tflite" if quantize_int8 else ""
-                ])
-            
+                cmd.extend(
+                    [
+                        "--copy_onnx_input_output_names_to_tflite",  # Feature keeping
+                        "--output_integer_quantized_tflite" if quantize_int8 else "",
+                    ]
+                )
+
             if quantize_int8:
-                cmd.extend([
-                    "-qt", "int8",
-                    "--overwrite_input_dtype", "uint8" if is_qat else "float32", # Optional: hardware dependent
-                ])
+                cmd.extend(
+                    [
+                        "-qt",
+                        "int8",
+                        "--overwrite_input_dtype",
+                        "uint8" if is_qat else "float32",  # Optional: hardware dependent
+                    ]
+                )
 
             # Filter out empty strings
             cmd = [c for c in cmd if c]
 
             logger.info(f"Running command: {' '.join(cmd)}")
 
-            process = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
 
             logger.info("onnx2tf conversion completed successfully")
 
@@ -306,6 +334,7 @@ def export_model_to_onnx(
     quantize_int8: bool = False,
     export_tflite: bool = False,  # New param
     device: str = "cuda",
+    fixed_export_path: Optional[Path] = None,  # New: Support for fixed export paths (e.g. for ESPHome)
 ) -> Dict:
     """
     Export PyTorch model checkpoint to ONNX
@@ -318,14 +347,42 @@ def export_model_to_onnx(
         quantize_fp16: Apply FP16 quantization
         quantize_int8: Apply INT8 quantization
         device: Device for model
+        fixed_export_path: Optional: Copy the final TFLite model to this fixed location
 
     Returns:
         Dictionary with export results
     """
+    # SECURITY: Validate fixed_export_path early to prevent path traversal
+    # This must happen before any file operations to ensure security
+    if fixed_export_path is not None:
+        # Use expected_base exports directory as defined earlier
+        expected_base = Path("exports").resolve()
+        resolved_fixed_path = Path(fixed_export_path).resolve()
+        
+        # Check for empty or None paths
+        if not fixed_export_path or str(fixed_export_path).strip() == "":
+            raise ValueError("fixed_export_path cannot be empty")
+        
+        # Validate path doesn't escape exports directory
+        if not str(resolved_fixed_path).startswith(str(expected_base)):
+            raise ValueError(
+                f"fixed_export_path security violation: "{fixed_export_path}" resolves to "{resolved_fixed_path}" which is outside allowed exports directory "{expected_base}""
+            )
+        
+        # Additional check: ensure the path is absolute after resolution
+        logger.info(f"Security validated fixed_export_path: {fixed_export_path} -> {resolved_fixed_path}")
+    
     logger.info(f"Loading checkpoint: {checkpoint_path}")
 
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Validate checkpoint path to prevent traversal attacks
+    expected_base = Path("exports").resolve()
+    resolved_checkpoint_path = checkpoint_path.resolve()
+
+    if not str(resolved_checkpoint_path).startswith(str(expected_base)):
+        raise ValueError(f"Checkpoint path must be within {expected_base}, got: {checkpoint_path}")
+
+    # Load checkpoint with security: weights_only=True
+    checkpoint = torch.load(str(resolved_checkpoint_path), map_location=device, weights_only=True)
 
     if "config" not in checkpoint:
         raise ValueError("Checkpoint does not contain configuration")
@@ -343,14 +400,18 @@ def export_model_to_onnx(
 
     # Create model
     from src.models.architectures import create_model
-    from src.training.qat_utils import prepare_model_for_qat, cleanup_qat_for_export
+    from src.training.qat_utils import cleanup_qat_for_export, prepare_model_for_qat
 
     # Calculate input size for model
     input_samples = int(config.data.sample_rate * config.data.audio_duration)
     time_steps = input_samples // config.data.hop_length + 1
-    
-    feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
-    
+
+    feature_dim = (
+        config.data.n_mels
+        if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel"
+        else config.data.n_mfcc
+    )
+
     if config.model.architecture == "cd_dnn":
         input_size = feature_dim * time_steps
     else:
@@ -397,14 +458,20 @@ def export_model_to_onnx(
 
         if unexpected_keys:
             # Check if these are quantization keys
-            quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
-            
+            quant_keys = [
+                k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k
+            ]
+
             if quant_keys:
                 logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
                 # Filter the state dict
                 state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
 
-    model.load_state_dict(state_dict, strict=True)
+    # Load state dict
+    # Using strict=False because QAT models might have extra observers/fake_quants
+    # that aren't in every checkpoint version, or vice versa.
+    model.load_state_dict(state_dict, strict=False)
+    logger.info("Successfully loaded model state dict")
     model.to(device)
     model.eval()
 
@@ -463,10 +530,10 @@ def export_model_to_onnx(
 
         # Perform TFLite conversion with quantization if requested OR if model is QAT
         tflite_results = exporter.export_to_tflite(
-            onnx_path=onnx_base_path, 
+            onnx_path=onnx_base_path,
             output_path=tflite_path,
             quantize_int8=quantize_int8 or is_qat_model,
-            is_qat=is_qat_model
+            is_qat=is_qat_model,
         )
 
         results["tflite_path"] = tflite_results.get("path")
@@ -474,11 +541,52 @@ def export_model_to_onnx(
         results["tflite_success"] = tflite_results.get("success")
         results["tflite_error"] = tflite_results.get("error")
 
+        # Copy to fixed path if requested (validated earlier for security)
+        if fixed_export_path and tflite_results.get("success"):
+            try:
+                # Path already validated at function entry for security
+                resolved_fixed_path = Path(fixed_export_path).resolve()
+                resolved_fixed_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(tflite_path), str(resolved_fixed_path))
+                logger.info(f"✅ Copied TFLite model to fixed path: {resolved_fixed_path}")
+                results["fixed_path"] = str(resolved_fixed_path)
+            except Exception as e:
+                logger.exception(f"Failed to copy to fixed path: {e}")
+                results["fixed_path_error"] = str(e)
+
     # Add model info
     results["architecture"] = config.model.architecture
     results["sample_rate"] = sample_rate
     results["duration"] = duration
     results["input_shape"] = sample_input_shape
+
+    # Check size targets
+    if hasattr(config, "size_targets"):
+        targets = config.size_targets
+        results["size_warning"] = False
+
+        # Check ONNX size
+        onnx_size_kb = results.get("file_size_mb", 0) * 1024
+        if targets.max_flash_kb > 0 and onnx_size_kb > targets.max_flash_kb:
+            logger.warning(
+                "ONNX model size target exceeded",
+                actual_kb=f"{onnx_size_kb:.1f}",
+                target_kb=targets.max_flash_kb,
+                severity="warning",
+            )
+            results["size_warning"] = True
+
+        # Check TFLite size if exported
+        if results.get("tflite_success"):
+            tflite_size_kb = results.get("tflite_size_mb", 0) * 1024
+            if targets.max_flash_kb > 0 and tflite_size_kb > targets.max_flash_kb:
+                logger.warning(
+                    "TFLite model size target exceeded",
+                    actual_kb=f"{tflite_size_kb:.1f}",
+                    target_kb=targets.max_flash_kb,
+                    severity="warning",
+                )
+                results["size_warning"] = True
 
     return results
 

@@ -4,6 +4,7 @@ import os
 import sys
 import io
 import soundfile as sf
+import pickle
 from pathlib import Path
 from typing import Dict, Any
 
@@ -46,7 +47,15 @@ class InferenceEngine:
                 raise FileNotFoundError(f"Model not found at {model_path}")
 
         logger.info(f"Loading checkpoint from {model_path}")
-        checkpoint = torch.load(model_path, map_location=self.device)
+        try:
+            # weights_only=False required because checkpoint contains non-tensor data (config, metrics, etc.)
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+        except TypeError:
+            # Fallback for older torch versions
+            checkpoint = torch.load(model_path, map_location=self.device)
+        except Exception as e:
+            logger.exception(f"Failed to load checkpoint from {model_path}")
+            raise FileNotFoundError(f"Model not found or corrupted at {model_path}") from e
         
         # Reconstruct Config
         config_data = checkpoint.get("config")
@@ -63,6 +72,8 @@ class InferenceEngine:
         
         if config.model.architecture == "cd_dnn":
             input_size = feature_dim * time_steps
+        elif config.model.architecture == "wav2vec2":
+            input_size = None # Handled by Wav2VecWakeword internally
         else:
             input_size = feature_dim
 

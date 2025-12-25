@@ -16,7 +16,8 @@ import gradio as gr
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.defaults import DistillationConfig, QATConfig, WakewordConfig
+from src.config.dataset_config_validator import DatasetConfigValidator
+from src.config.defaults import WakewordConfig
 from src.config.logger import get_data_logger
 from src.config.presets import get_preset, list_presets
 from src.config.validator import ConfigValidator
@@ -26,6 +27,257 @@ logger = get_data_logger()
 
 # Global state for current configuration
 _current_config = None
+
+
+def check_mismatch(config: WakewordConfig) -> Tuple[bool, str]:
+    """Check for mismatches between config and dataset features"""
+    validator = DatasetConfigValidator()
+    npy_dir = Path(config.data.npy_feature_dir)
+    mismatches = validator.validate_dataset_features(config, npy_dir)
+
+    if mismatches:
+        details = "Detected shape mismatches in existing .npy features:\n\n"
+        for m in mismatches[:3]:
+            details += f"• **{Path(m['file']).name}**\n"
+            details += f"  Got: {m['actual_shape']}, Expected: {m['expected_shape']}\n"
+        if len(mismatches) > 3:
+            details += f"\n... and {len(mismatches) - 3} more files."
+        return True, details
+    return False, ""
+
+
+def _params_to_config(params: List[Any]) -> WakewordConfig:
+    """Convert UI parameters to WakewordConfig"""
+    from src.config.defaults import (
+        AugmentationConfig,
+        CalibrationConfig,
+        CMVNConfig,
+        DataConfig,
+        DistillationConfig,
+        LossConfig,
+        ModelConfig,
+        OptimizerConfig,
+        QATConfig,
+        SizeTargetConfig,
+        StreamingConfig,
+        TrainingConfig,
+        WakewordConfig,
+    )
+
+    return WakewordConfig(
+        config_name="custom",
+        description="Custom configuration from UI",
+        data=DataConfig(
+            sample_rate=int(params[0]),
+            audio_duration=float(params[1]),
+            n_mfcc=int(params[2]),
+            n_fft=int(params[3]),
+            hop_length=int(params[4]),
+            n_mels=int(params[5]),
+            use_precomputed_features_for_training=bool(params[6]),
+            npy_cache_features=bool(params[7]),
+            fallback_to_audio=bool(params[8]),
+            npy_feature_dir=str(params[9]),
+            npy_feature_type=str(params[10]),
+        ),
+        training=TrainingConfig(
+            batch_size=int(params[11]),
+            epochs=int(params[12]),
+            learning_rate=float(params[13]),
+            early_stopping_patience=int(params[14]),
+            num_workers=int(params[49]),
+            checkpoint_frequency=params[57],
+            use_ema=bool(params[69]),
+            ema_decay=float(params[70]),
+            ema_final_decay=float(params[71]),
+            ema_final_epochs=int(params[72]),
+            metric_window_size=int(params[73]),
+        ),
+        model=ModelConfig(
+            architecture=params[15],
+            num_classes=int(params[16]),
+            dropout=float(params[17]),
+            hidden_size=int(params[18]),
+            num_layers=int(params[19]),
+            bidirectional=bool(params[20]),
+            tcn_num_channels=[int(x.strip()) for x in params[74].split(',') if x.strip()],
+            tcn_kernel_size=int(params[75]),
+            tcn_dropout=float(params[76]),
+            cddnn_hidden_layers=[int(x.strip()) for x in params[77].split(',') if x.strip()],
+            cddnn_context_frames=int(params[78]),
+            cddnn_dropout=float(params[79]),
+        ),
+        augmentation=AugmentationConfig(
+            time_stretch_min=float(params[21]),
+            time_stretch_max=float(params[22]),
+            pitch_shift_min=int(params[23]),
+            pitch_shift_max=int(params[24]),
+            background_noise_prob=float(params[25]),
+            rir_prob=float(params[26]),
+            noise_snr_min=float(params[27]),
+            noise_snr_max=float(params[28]),
+            rir_dry_wet_min=float(params[29]),
+            rir_dry_wet_max=float(params[30]),
+            rir_dry_wet_strategy=str(params[31]),
+            # SpecAugment
+            use_spec_augment=bool(params[32]),
+            freq_mask_param=int(params[33]),
+            time_mask_param=int(params[34]),
+            n_freq_masks=int(params[35]),
+            n_time_masks=int(params[36]),
+            # Time Shift
+            time_shift_prob=float(params[58]),
+            time_shift_min_ms=int(params[59]),
+            time_shift_max_ms=int(params[60]),
+        ),
+        optimizer=OptimizerConfig(
+            optimizer=params[37],
+            scheduler=params[38],
+            weight_decay=float(params[39]),
+            gradient_clip=float(params[40]),
+            mixed_precision=bool(params[41]),
+            momentum=float(params[42]),
+            warmup_epochs=int(params[43]),
+            min_lr=float(params[44]),
+            step_size=int(params[45]),
+            gamma=float(params[46]),
+            patience=int(params[47]),
+            factor=float(params[48]),
+        ),
+        loss=LossConfig(
+            loss_function=params[50],
+            label_smoothing=float(params[51]),
+            class_weights=params[52],
+            hard_negative_weight=float(params[53]),
+            focal_alpha=float(params[54]),
+            focal_gamma=float(params[55]),
+            sampler_strategy=params[56],
+            triplet_margin=float(params[61]),
+            class_weight_min=float(params[80]),
+            class_weight_max=float(params[81]),
+        ),
+        qat=QATConfig(
+            enabled=bool(params[62]),
+            backend=params[63],
+            start_epoch=int(params[64]),
+        ),
+        distillation=DistillationConfig(
+            enabled=bool(params[65]),
+            teacher_architecture=params[66],
+            temperature=float(params[67]),
+            alpha=float(params[68]),
+            secondary_teacher_architecture=params[82],
+            secondary_teacher_model_path=params[83],
+            teacher_model_path=params[84],
+        ),
+    )
+
+
+def _config_to_params(config: WakewordConfig) -> List[Any]:
+    """Convert WakewordConfig to UI parameters"""
+    return [
+        # Data (0-5)
+        config.data.sample_rate,
+        config.data.audio_duration,
+        config.data.n_mfcc,
+        config.data.n_fft,
+        config.data.hop_length,
+        config.data.n_mels,
+        # NPY (6-10)
+        config.data.use_precomputed_features_for_training,
+        config.data.npy_cache_features,
+        config.data.fallback_to_audio,
+        config.data.npy_feature_dir,
+        config.data.npy_feature_type,
+        # Training (11-14)
+        config.training.batch_size,
+        config.training.epochs,
+        config.training.learning_rate,
+        config.training.early_stopping_patience,
+        # Model (15-20)
+        config.model.architecture,
+        config.model.num_classes,
+        config.model.dropout,
+        config.model.hidden_size,
+        config.model.num_layers,
+        config.model.bidirectional,
+        # Augmentation (21-31)
+        config.augmentation.time_stretch_min,
+        config.augmentation.time_stretch_max,
+        config.augmentation.pitch_shift_min,
+        config.augmentation.pitch_shift_max,
+        config.augmentation.background_noise_prob,
+        config.augmentation.rir_prob,
+        config.augmentation.noise_snr_min,
+        config.augmentation.noise_snr_max,
+        config.augmentation.rir_dry_wet_min,
+        config.augmentation.rir_dry_wet_max,
+        config.augmentation.rir_dry_wet_strategy,
+        # SpecAugment (32-36)
+        config.augmentation.use_spec_augment,
+        config.augmentation.freq_mask_param,
+        config.augmentation.time_mask_param,
+        config.augmentation.n_freq_masks,
+        config.augmentation.n_time_masks,
+        # Optimizer (37-48)
+        config.optimizer.optimizer,
+        config.optimizer.scheduler,
+        config.optimizer.weight_decay,
+        config.optimizer.gradient_clip,
+        config.optimizer.mixed_precision,
+        config.optimizer.momentum,
+        config.optimizer.warmup_epochs,
+        config.optimizer.min_lr,
+        config.optimizer.step_size,
+        config.optimizer.gamma,
+        config.optimizer.patience,
+        config.optimizer.factor,
+        # Workers (49)
+        config.training.num_workers,
+        # Loss (50-56)
+        config.loss.loss_function,
+        config.loss.label_smoothing,
+        config.loss.class_weights,
+        config.loss.hard_negative_weight,
+        config.loss.focal_alpha,
+        config.loss.focal_gamma,
+        config.loss.sampler_strategy,
+        # Checkpoint (57)
+        config.training.checkpoint_frequency,
+        # Time Shift (58-60)
+        getattr(config.augmentation, "time_shift_prob", 0.0),
+        getattr(config.augmentation, "time_shift_min_ms", -100),
+        getattr(config.augmentation, "time_shift_max_ms", 100),
+        # Triplet (61)
+        getattr(config.loss, "triplet_margin", 1.0),
+        # QAT (62-64)
+        config.qat.enabled,
+        config.qat.backend,
+        config.qat.start_epoch,
+        # Distillation (65-68)
+        config.distillation.enabled,
+        config.distillation.teacher_architecture,
+        config.distillation.temperature,
+        config.distillation.alpha,
+        # New Params (69-81)
+        getattr(config.training, "use_ema", True),
+        getattr(config.training, "ema_decay", 0.999),
+        getattr(config.training, "ema_final_decay", 0.9995),
+        getattr(config.training, "ema_final_epochs", 10),
+        getattr(config.training, "metric_window_size", 100),
+        ", ".join(map(str, getattr(config.model, "tcn_num_channels", [64, 128, 256]))),
+        getattr(config.model, "tcn_kernel_size", 3),
+        getattr(config.model, "tcn_dropout", 0.3),
+        ", ".join(map(str, getattr(config.model, "cddnn_hidden_layers", [512, 256, 128]))),
+        getattr(config.model, "cddnn_context_frames", 50),
+        getattr(config.model, "cddnn_dropout", 0.3),
+        getattr(config.loss, "class_weight_min", 0.1),
+        getattr(config.loss, "class_weight_max", 100.0),
+        # Phase 2 Dual Teacher (82-84)
+        config.distillation.secondary_teacher_architecture,
+        config.distillation.secondary_teacher_model_path,
+        config.distillation.teacher_model_path,
+    ]
 
 
 def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
@@ -40,12 +292,12 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# ⚙️ Training Configuration")
-        gr.Markdown("Configure all training parameters.")
+        gr.Markdown("Configure all training parameters. Use presets for quick starts or fine-tune individual settings.")
 
         with gr.Row():
             preset_dropdown = gr.Dropdown(
                 choices=list_presets(),
-                value="Default",
+                value="MCU (ESP32-S3 No-PSRAM)",
                 label="Configuration Preset",
                 info="Select a preset optimized for your use case",
             )
@@ -63,7 +315,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
             # =================================================================
             with gr.TabItem("Data Pipeline"):
                 with gr.Group():
-                    gr.Markdown("### 🎵 Audio Settings")
+                    gr.Markdown("### 🎵 Audio & Feature Settings")
                     with gr.Row():
                         sample_rate = gr.Number(
                             label="Sample Rate (Hz)",
@@ -76,6 +328,15 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                             step=0.1,
                             info="Length of audio clips",
                         )
+                        n_mels = gr.Slider(
+                            minimum=20,
+                            maximum=128,
+                            value=64,
+                            step=4,
+                            label="Mel Bands",
+                            info="Frequency resolution",
+                        )
+                    with gr.Row():
                         n_mfcc = gr.Slider(
                             minimum=0,
                             maximum=80,
@@ -84,52 +345,33 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                             label="MFCC Coefficients",
                             info="0 to use mel only",
                         )
-                    with gr.Row():
                         n_fft = gr.Number(label="FFT Size", value=400)
                         hop_length = gr.Number(label="Hop Length", value=160)
-                        n_mels = gr.Slider(
-                            minimum=32,
-                            maximum=256,
-                            value=40,
-                            step=1,
-                            label="Mel Bands",
-                        )
 
                 with gr.Group():
-                    gr.Markdown("### 💾 Feature Loading (NPY)")
-                    gr.Markdown("Performance: 40-60% faster training for large datasets")
+                    gr.Markdown("### 💾 Feature Storage (NPY)")
                     with gr.Row():
                         use_precomputed_features_for_training = gr.Checkbox(
-                            label="Use Precomputed NPY", value=True, info="Load features from .npy files"
+                            label="Use Precomputed NPY", value=True
                         )
                         npy_cache_features = gr.Checkbox(
-                            label="Cache in RAM", value=True, info="Faster but uses more memory"
+                            label="Cache in RAM", value=True
                         )
                         fallback_to_audio = gr.Checkbox(
-                            label="Fallback to Audio", value=False, info="Load raw audio if .npy missing"
+                            label="Fallback to Audio", value=False
                         )
                     with gr.Row():
                         npy_feature_dir = gr.Textbox(label="NPY Directory", value="data/npy")
                         npy_feature_type = gr.Dropdown(choices=["mel", "mfcc"], value="mel", label="Feature Type")
 
                 with gr.Group():
-                    gr.Markdown("### 🛠️ Augmentation")
-
-                    gr.Markdown("**Time Domain**")
+                    gr.Markdown("### 🛠️ Augmentation Strategy")
                     with gr.Row():
                         time_stretch_min = gr.Number(label="Time Stretch Min", value=0.85, step=0.01)
                         time_stretch_max = gr.Number(label="Time Stretch Max", value=1.15, step=0.01)
                         pitch_shift_min = gr.Number(label="Pitch Shift Min", value=-2, step=1)
                         pitch_shift_max = gr.Number(label="Pitch Shift Max", value=2, step=1)
 
-                    with gr.Row():
-                        time_shift_prob = gr.Slider(
-                            minimum=0.0, maximum=1.0, value=0.4, step=0.1, label="Time Shift Prob"
-                        )
-                        time_shift_min_ms = gr.Number(label="Shift Min (ms)", value=-100, step=10)
-                        time_shift_max_ms = gr.Number(label="Shift Max (ms)", value=100, step=10)
-
-                    gr.Markdown("**Noise & RIR**")
                     with gr.Row():
                         background_noise_prob = gr.Slider(
                             minimum=0.0, maximum=1.0, value=0.4, step=0.05, label="Bg Noise Prob"
@@ -138,20 +380,26 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         noise_snr_max = gr.Number(label="SNR Max (dB)", value=20, step=1)
 
                     with gr.Row():
-                        rir_prob = gr.Slider(minimum=0.0, maximum=1.0, value=0.25, step=0.05, label="RIR Prob")
-                        rir_dry_wet_min = gr.Slider(minimum=0.0, maximum=1.0, value=0.3, step=0.05, label="Dry/Wet Min")
-                        rir_dry_wet_max = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.05, label="Dry/Wet Max")
-                        rir_dry_wet_strategy = gr.Dropdown(
-                            choices=["random", "fixed", "adaptive"], value="random", label="Mix Strategy"
+                        time_shift_prob = gr.Slider(
+                            minimum=0.0, maximum=1.0, value=0.4, step=0.1, label="Time Shift Prob"
                         )
+                        time_shift_min_ms = gr.Number(label="Shift Min (ms)", value=-100, step=10)
+                        time_shift_max_ms = gr.Number(label="Shift Max (ms)", value=100, step=10)
 
-                    gr.Markdown("**SpecAugment**")
-                    with gr.Row():
-                        use_spec_augment = gr.Checkbox(label="Enable SpecAugment", value=True)
-                        freq_mask_param = gr.Number(label="Freq Mask", value=15)
-                        time_mask_param = gr.Number(label="Time Mask", value=30)
-                        n_freq_masks = gr.Number(label="N Freq Masks", value=2)
-                        n_time_masks = gr.Number(label="N Time Masks", value=2)
+                    with gr.Accordion("Advanced Augmentation (RIR & SpecAugment)", open=False):
+                        with gr.Row():
+                            rir_prob = gr.Slider(minimum=0.0, maximum=1.0, value=0.25, step=0.05, label="RIR Prob")
+                            rir_dry_wet_min = gr.Slider(minimum=0.0, maximum=1.0, value=0.3, step=0.05, label="Dry/Wet Min")
+                            rir_dry_wet_max = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.05, label="Dry/Wet Max")
+                            rir_dry_wet_strategy = gr.Dropdown(
+                                choices=["random", "fixed", "adaptive"], value="random", label="Mix Strategy"
+                            )
+                        with gr.Row():
+                            use_spec_augment = gr.Checkbox(label="Enable SpecAugment", value=True)
+                            freq_mask_param = gr.Number(label="Freq Mask", value=15)
+                            time_mask_param = gr.Number(label="Time Mask", value=30)
+                            n_freq_masks = gr.Number(label="N Freq Masks", value=2)
+                            n_time_masks = gr.Number(label="N Time Masks", value=2)
 
             # =================================================================
             # TAB 2: MODEL & TRAINING
@@ -168,26 +416,21 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         num_classes = gr.Number(label="Classes", value=2)
                         dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.2, step=0.05, label="Dropout")
 
-                    gr.Markdown("**Architecture Specifics**")
-                    with gr.Row():
-                        # RNN
-                        hidden_size = gr.Number(label="RNN Hidden Size", value=128)
-                        num_layers = gr.Slider(minimum=1, maximum=5, value=2, step=1, label="RNN Layers")
-                        bidirectional = gr.Checkbox(label="RNN Bidirectional", value=True)
-
-                    with gr.Row():
-                        # TCN
-                        tcn_num_channels = gr.Textbox(label="TCN Channels", value="64, 128, 256")
-                        tcn_kernel_size = gr.Number(label="TCN Kernel", value=3)
-                        tcn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="TCN Dropout")
-
-                    with gr.Row():
-                        # CD-DNN
-                        cddnn_hidden_layers = gr.Textbox(label="CD-DNN Layers", value="512, 256, 128")
-                        cddnn_context_frames = gr.Number(label="Context Frames", value=50)
-                        cddnn_dropout = gr.Slider(
-                            minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="CD-DNN Dropout"
-                        )
+                    with gr.Accordion("Architecture Specifics", open=False):
+                        with gr.Row():
+                            hidden_size = gr.Number(label="RNN Hidden Size", value=128)
+                            num_layers = gr.Slider(minimum=1, maximum=5, value=2, step=1, label="RNN Layers")
+                            bidirectional = gr.Checkbox(label="RNN Bidirectional", value=True)
+                        with gr.Row():
+                            tcn_num_channels = gr.Textbox(label="TCN Channels", value="64, 128, 256")
+                            tcn_kernel_size = gr.Number(label="TCN Kernel", value=3)
+                            tcn_dropout = gr.Slider(minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="TCN Dropout")
+                        with gr.Row():
+                            cddnn_hidden_layers = gr.Textbox(label="CD-DNN Layers", value="512, 256, 128")
+                            cddnn_context_frames = gr.Number(label="Context Frames", value=50)
+                            cddnn_dropout = gr.Slider(
+                                minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="CD-DNN Dropout"
+                            )
 
                 with gr.Group():
                     gr.Markdown("### 🏋️ Training Loop")
@@ -198,9 +441,8 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         mixed_precision = gr.Checkbox(label="Mixed Precision (FP16)", value=True)
 
                 with gr.Group():
-                    gr.Markdown("### 🚀 Advanced Training")
+                    gr.Markdown("### 🚀 Advanced Training Stability")
                     with gr.Row():
-                        # EMA
                         use_ema = gr.Checkbox(label="Use EMA", value=True)
                         ema_decay = gr.Number(label="EMA Decay", value=0.999, step=0.0001)
                         ema_final_decay = gr.Number(label="EMA Final Decay", value=0.9995, step=0.0001)
@@ -223,23 +465,23 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     gr.Markdown("### 📉 Optimizer & Scheduler")
                     with gr.Row():
                         optimizer = gr.Dropdown(choices=["adam", "sgd", "adamw"], value="adamw", label="Optimizer")
-                        learning_rate = gr.Number(label="Learning Rate", value=0.001, step=0.0001, precision=None)
-                        weight_decay = gr.Number(label="Weight Decay", value=1e-4, step=1e-5, precision=None)
+                        learning_rate = gr.Number(label="Learning Rate", value=0.001, step=0.0001)
+                        weight_decay = gr.Number(label="Weight Decay", value=1e-4, step=1e-5)
                         gradient_clip = gr.Number(label="Grad Clip", value=1.0, step=0.1)
 
-                    with gr.Row():
-                        momentum = gr.Number(label="Momentum", value=0.9, step=0.01)
-                        warmup_epochs = gr.Number(label="Warmup Epochs", value=3)
-                        min_lr = gr.Number(label="Min LR", value=1e-6, step=1e-7, precision=None)
-
-                    with gr.Row():
-                        scheduler = gr.Dropdown(
-                            choices=["cosine", "step", "plateau", "none"], value="cosine", label="Scheduler"
-                        )
-                        step_size = gr.Number(label="Step Size", value=10)
-                        scheduler_gamma = gr.Number(label="Gamma", value=0.5, step=0.1)
-                        scheduler_patience = gr.Number(label="Patience", value=5)
-                        scheduler_factor = gr.Number(label="Factor", value=0.5, step=0.1)
+                    with gr.Accordion("Scheduler & Advanced LR", open=False):
+                        with gr.Row():
+                            scheduler = gr.Dropdown(
+                                choices=["cosine", "step", "plateau", "none"], value="cosine", label="Scheduler"
+                            )
+                            momentum = gr.Number(label="Momentum", value=0.9, step=0.01)
+                            warmup_epochs = gr.Number(label="Warmup Epochs", value=3)
+                            min_lr = gr.Number(label="Min LR", value=1e-6, step=1e-7)
+                        with gr.Row():
+                            step_size = gr.Number(label="Step Size", value=10)
+                            scheduler_gamma = gr.Number(label="Gamma", value=0.5, step=0.1)
+                            scheduler_patience = gr.Number(label="Patience", value=5)
+                            scheduler_factor = gr.Number(label="Factor", value=0.5, step=0.1)
 
                 with gr.Group():
                     gr.Markdown("### 🎯 Loss Function")
@@ -249,44 +491,47 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                             value="focal_loss",
                             label="Loss Function",
                         )
-                        label_smoothing = gr.Slider(
-                            minimum=0.0, maximum=0.3, value=0.05, step=0.01, label="Label Smoothing"
+                        sampler_strategy = gr.Dropdown(
+                            choices=["weighted", "balanced", "none"], value="weighted", label="Sampler"
                         )
                         class_weights = gr.Dropdown(
                             choices=["balanced", "none", "custom"], value="balanced", label="Class Weights"
                         )
-                        hard_negative_weight = gr.Number(label="Hard Neg Weight", value=3.0, step=0.1)
-
-                    with gr.Row():
-                        focal_alpha = gr.Number(label="Focal Alpha", value=0.25, step=0.01)
-                        focal_gamma = gr.Number(label="Focal Gamma", value=2.0, step=0.1)
-                        triplet_margin = gr.Slider(
-                            minimum=0.1, maximum=5.0, value=1.0, step=0.1, label="Triplet Margin"
-                        )
-                        sampler_strategy = gr.Dropdown(
-                            choices=["weighted", "balanced", "none"], value="weighted", label="Sampler"
-                        )
-
-                    with gr.Row():
-                        class_weight_min = gr.Number(label="Class Weight Min", value=0.1, step=0.1)
-                        class_weight_max = gr.Number(label="Class Weight Max", value=100.0, step=10.0)
+                    
+                    with gr.Accordion("Loss Math & Weights", open=False):
+                        with gr.Row():
+                            label_smoothing = gr.Slider(0.0, 0.3, 0.05, label="Smoothing")
+                            hard_negative_weight = gr.Number(label="Hard Neg Weight", value=3.0)
+                            triplet_margin = gr.Slider(0.1, 5.0, 1.0, label="Triplet Margin")
+                        with gr.Row():
+                            focal_alpha = gr.Number(label="Focal Alpha", value=0.25)
+                            focal_gamma = gr.Number(label="Focal Gamma", value=2.0)
+                            class_weight_min = gr.Number(label="Weight Min", value=0.1)
+                            class_weight_max = gr.Number(label="Weight Max", value=100.0)
 
                 with gr.Group():
-                    gr.Markdown("### 🧪 Advanced Optimization")
+                    gr.Markdown("### 🧪 Advanced Hardware Optimization")
                     with gr.Row():
-                        # QAT
                         qat_enabled = gr.Checkbox(label="Enable QAT", value=True)
                         qat_backend = gr.Dropdown(choices=["fbgemm", "qnnpack"], value="fbgemm", label="QAT Backend")
                         qat_start_epoch = gr.Number(label="QAT Start Epoch", value=10)
 
                     with gr.Row():
-                        # Distillation
                         distillation_enabled = gr.Checkbox(label="Enable Distillation", value=False)
-                        teacher_arch = gr.Dropdown(choices=["wav2vec2"], value="wav2vec2", label="Teacher Arch")
+                        teacher_arch = gr.Dropdown(
+                            choices=["wav2vec2", "conformer", "dual"], value="wav2vec2", label="Teacher Arch"
+                        )
                         dist_temp = gr.Slider(minimum=1.0, maximum=10.0, value=2.0, step=0.5, label="Distillation Temp")
                         dist_alpha = gr.Slider(
                             minimum=0.0, maximum=1.0, value=0.5, step=0.1, label="Distillation Alpha"
                         )
+
+                    with gr.Row():
+                        teacher_model_path = gr.Textbox(label="Teacher Checkpoint", placeholder="models/teachers/wav2vec2.pt")
+                        secondary_teacher_arch = gr.Dropdown(
+                            choices=["wav2vec2", "conformer"], value="conformer", label="Sec. Teacher Arch"
+                        )
+                        secondary_teacher_model_path = gr.Textbox(label="Sec. Teacher Checkpoint", placeholder="models/teachers/conformer.pt")
 
         gr.Markdown("---")
 
@@ -306,6 +551,15 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 interactive=False,
                 visible=False,
             )
+
+        with gr.Group(visible=False) as mismatch_warning_box:
+            gr.Markdown("### ⚠️ Dataset Feature Mismatch Detected")
+            mismatch_details_msg = gr.Markdown(
+                "The active configuration does not match the features extracted in the dataset. This will cause errors during training."
+            )
+            with gr.Row():
+                reextract_btn = gr.Button("✖️ Dismiss Warning", variant="primary")
+                revert_btn = gr.Button("🔄 Revert to Defaults", variant="secondary")
 
         # Collect all inputs for easier handling
         all_inputs = [
@@ -392,7 +646,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
             teacher_arch,
             dist_temp,
             dist_alpha,
-            # New Params (69-82)
+            # New Params (69-81)
             use_ema,
             ema_decay,
             ema_final_decay,
@@ -406,228 +660,11 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
             cddnn_dropout,
             class_weight_min,
             class_weight_max,
+            # Phase 2 Dual Teacher (82-84)
+            secondary_teacher_arch,
+            secondary_teacher_model_path,
+            teacher_model_path,
         ]
-
-        # Event handlers with full implementation
-        def _params_to_config(params: List[Any]) -> WakewordConfig:
-            """Convert UI parameters to WakewordConfig"""
-            from src.config.defaults import (
-                AugmentationConfig,
-                DataConfig,
-                DistillationConfig,
-                LossConfig,
-                ModelConfig,
-                OptimizerConfig,
-                QATConfig,
-                TrainingConfig,
-            )
-
-            return WakewordConfig(
-                config_name="custom",
-                description="Custom configuration from UI",
-                data=DataConfig(
-                    sample_rate=int(params[0]),
-                    audio_duration=float(params[1]),
-                    n_mfcc=int(params[2]),
-                    n_fft=int(params[3]),
-                    hop_length=int(params[4]),
-                    n_mels=int(params[5]),
-                    use_precomputed_features_for_training=bool(params[6]),
-                    npy_cache_features=bool(params[7]),
-                    fallback_to_audio=bool(params[8]),
-                    npy_feature_dir=str(params[9]),
-                    npy_feature_type=str(params[10]),
-                ),
-                training=TrainingConfig(
-                    batch_size=int(params[11]),
-                    epochs=int(params[12]),
-                    learning_rate=float(params[13]),
-                    early_stopping_patience=int(params[14]),
-                    num_workers=int(params[49]),
-                    checkpoint_frequency=params[57],
-                    use_ema=bool(params[69]),
-                    ema_decay=float(params[70]),
-                    ema_final_decay=float(params[71]),
-                    ema_final_epochs=int(params[72]),
-                    metric_window_size=int(params[73]),
-                ),
-                model=ModelConfig(
-                    architecture=params[15],
-                    num_classes=int(params[16]),
-                    dropout=float(params[17]),
-                    hidden_size=int(params[18]),
-                    num_layers=int(params[19]),
-                    bidirectional=bool(params[20]),
-                    tcn_num_channels=[int(x.strip()) for x in params[74].split(",") if x.strip()],
-                    tcn_kernel_size=int(params[75]),
-                    tcn_dropout=float(params[76]),
-                    cddnn_hidden_layers=[int(x.strip()) for x in params[77].split(",") if x.strip()],
-                    cddnn_context_frames=int(params[78]),
-                    cddnn_dropout=float(params[79]),
-                ),
-                augmentation=AugmentationConfig(
-                    time_stretch_min=float(params[21]),
-                    time_stretch_max=float(params[22]),
-                    pitch_shift_min=int(params[23]),
-                    pitch_shift_max=int(params[24]),
-                    background_noise_prob=float(params[25]),
-                    rir_prob=float(params[26]),
-                    noise_snr_min=float(params[27]),
-                    noise_snr_max=float(params[28]),
-                    rir_dry_wet_min=float(params[29]),
-                    rir_dry_wet_max=float(params[30]),
-                    rir_dry_wet_strategy=str(params[31]),
-                    # SpecAugment
-                    use_spec_augment=bool(params[32]),
-                    freq_mask_param=int(params[33]),
-                    time_mask_param=int(params[34]),
-                    n_freq_masks=int(params[35]),
-                    n_time_masks=int(params[36]),
-                    # Time Shift
-                    time_shift_prob=float(params[58]),
-                    time_shift_min_ms=int(params[59]),
-                    time_shift_max_ms=int(params[60]),
-                ),
-                optimizer=OptimizerConfig(
-                    optimizer=params[37],
-                    scheduler=params[38],
-                    weight_decay=float(params[39]),
-                    gradient_clip=float(params[40]),
-                    mixed_precision=bool(params[41]),
-                    momentum=float(params[42]),
-                    warmup_epochs=int(params[43]),
-                    min_lr=float(params[44]),
-                    step_size=int(params[45]),
-                    gamma=float(params[46]),
-                    patience=int(params[47]),
-                    factor=float(params[48]),
-                ),
-                loss=LossConfig(
-                    loss_function=params[50],
-                    label_smoothing=float(params[51]),
-                    class_weights=params[52],
-                    hard_negative_weight=float(params[53]),
-                    focal_alpha=float(params[54]),
-                    focal_gamma=float(params[55]),
-                    sampler_strategy=params[56],
-                    triplet_margin=float(params[61]),
-                    class_weight_min=float(params[80]),
-                    class_weight_max=float(params[81]),
-                ),
-                qat=QATConfig(
-                    enabled=bool(params[62]),
-                    backend=params[63],
-                    start_epoch=int(params[64]),
-                ),
-                distillation=DistillationConfig(
-                    enabled=bool(params[65]),
-                    teacher_architecture=params[66],
-                    temperature=float(params[67]),
-                    alpha=float(params[68]),
-                ),
-            )
-
-        def _config_to_params(config: WakewordConfig) -> List[Any]:
-            """Convert WakewordConfig to UI parameters"""
-            return [
-                # Data (0-5)
-                config.data.sample_rate,
-                config.data.audio_duration,
-                config.data.n_mfcc,
-                config.data.n_fft,
-                config.data.hop_length,
-                config.data.n_mels,
-                # NPY (6-10)
-                config.data.use_precomputed_features_for_training,
-                config.data.npy_cache_features,
-                config.data.fallback_to_audio,
-                config.data.npy_feature_dir,
-                config.data.npy_feature_type,
-                # Training (11-14)
-                config.training.batch_size,
-                config.training.epochs,
-                config.training.learning_rate,
-                config.training.early_stopping_patience,
-                # Model (15-20)
-                config.model.architecture,
-                config.model.num_classes,
-                config.model.dropout,
-                config.model.hidden_size,
-                config.model.num_layers,
-                config.model.bidirectional,
-                # Augmentation (21-31)
-                config.augmentation.time_stretch_min,
-                config.augmentation.time_stretch_max,
-                config.augmentation.pitch_shift_min,
-                config.augmentation.pitch_shift_max,
-                config.augmentation.background_noise_prob,
-                config.augmentation.rir_prob,
-                config.augmentation.noise_snr_min,
-                config.augmentation.noise_snr_max,
-                config.augmentation.rir_dry_wet_min,
-                config.augmentation.rir_dry_wet_max,
-                config.augmentation.rir_dry_wet_strategy,
-                # SpecAugment (32-36)
-                config.augmentation.use_spec_augment,
-                config.augmentation.freq_mask_param,
-                config.augmentation.time_mask_param,
-                config.augmentation.n_freq_masks,
-                config.augmentation.n_time_masks,
-                # Optimizer (37-48)
-                config.optimizer.optimizer,
-                config.optimizer.scheduler,
-                config.optimizer.weight_decay,
-                config.optimizer.gradient_clip,
-                config.optimizer.mixed_precision,
-                config.optimizer.momentum,
-                config.optimizer.warmup_epochs,
-                config.optimizer.min_lr,
-                config.optimizer.step_size,
-                config.optimizer.gamma,
-                config.optimizer.patience,
-                config.optimizer.factor,
-                # Workers (49)
-                config.training.num_workers,
-                # Loss (50-56)
-                config.loss.loss_function,
-                config.loss.label_smoothing,
-                config.loss.class_weights,
-                config.loss.hard_negative_weight,
-                config.loss.focal_alpha,
-                config.loss.focal_gamma,
-                config.loss.sampler_strategy,
-                # Checkpoint (57)
-                config.training.checkpoint_frequency,
-                # Time Shift (58-60)
-                getattr(config.augmentation, "time_shift_prob", 0.0),
-                getattr(config.augmentation, "time_shift_min_ms", -100),
-                getattr(config.augmentation, "time_shift_max_ms", 100),
-                # Triplet (61)
-                getattr(config.loss, "triplet_margin", 1.0),
-                # QAT (62-64)
-                config.qat.enabled,
-                config.qat.backend,
-                config.qat.start_epoch,
-                # Distillation (65-68)
-                config.distillation.enabled,
-                config.distillation.teacher_architecture,
-                config.distillation.temperature,
-                config.distillation.alpha,
-                # New Params (69-82)
-                getattr(config.training, "use_ema", True),
-                getattr(config.training, "ema_decay", 0.999),
-                getattr(config.training, "ema_final_decay", 0.9995),
-                getattr(config.training, "ema_final_epochs", 10),
-                getattr(config.training, "metric_window_size", 100),
-                ", ".join(map(str, getattr(config.model, "tcn_num_channels", [64, 128, 256]))),
-                getattr(config.model, "tcn_kernel_size", 3),
-                getattr(config.model, "tcn_dropout", 0.3),
-                ", ".join(map(str, getattr(config.model, "cddnn_hidden_layers", [512, 256, 128]))),
-                getattr(config.model, "cddnn_context_frames", 50),
-                getattr(config.model, "cddnn_dropout", 0.3),
-                getattr(config.loss, "class_weight_min", 0.1),
-                getattr(config.loss, "class_weight_max", 100.0),
-            ]
 
         def load_preset_handler(preset_name: str) -> Tuple:
             """Load configuration preset"""
@@ -653,13 +690,22 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
 
                 logger.info(f"Preset loaded successfully: {preset_name}")
 
-                return tuple(params + [status, gr.update(visible=False)])
+                # Check for mismatch
+                is_mismatch, details = check_mismatch(config)
+
+                return tuple(
+                    params
+                    + [status, gr.update(visible=False), gr.update(visible=is_mismatch), details if is_mismatch else ""]
+                )
 
             except Exception as e:
                 error_msg = f"Error loading preset: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
+                return tuple(
+                    [None] * len(all_inputs)
+                    + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""]
+                )
 
         def update_config_handler(*params: Any) -> str:
             """Update current configuration from UI"""
@@ -712,29 +758,32 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 logger.error(traceback.format_exc())
                 return f"❌ {error_msg}"
 
-        def load_config_handler() -> Tuple:
+        def load_config_handler(file_obj: Optional[Any]) -> Tuple:
             """Load configuration from YAML file"""
             global _current_config
 
             try:
-                # Find most recent config
-                config_dir = Path("configs")
-                if not config_dir.exists():
-                    return tuple(
-                        [None] * len(all_inputs) + ["❌ No saved configurations found", gr.update(visible=False)]
-                    )
+                if file_obj is None:
+                    # Find most recent config
+                    config_dir = Path("configs")
+                    if not config_dir.exists():
+                        return tuple(
+                            [None] * len(all_inputs) + ["❌ No saved configurations found", gr.update(visible=False)]
+                        )
 
-                config_files = sorted(config_dir.glob("config_*.yaml"), reverse=True)
-                if not config_files:
-                    return tuple(
-                        [None] * len(all_inputs) + ["❌ No saved configurations found", gr.update(visible=False)]
-                    )
+                    config_files = sorted(config_dir.glob("config_*.yaml"), reverse=True)
+                    if not config_files:
+                        return tuple(
+                            [None] * len(all_inputs) + ["❌ No saved configurations found", gr.update(visible=False)]
+                        )
+                    target_config = config_files[0]
+                else:
+                    # Load the uploaded file
+                    target_config = Path(file_obj.name)
 
-                # Load most recent
-                latest_config = config_files[0]
-                logger.info(f"Loading configuration from: {latest_config}")
+                logger.info(f"Loading configuration from: {target_config}")
 
-                config = WakewordConfig.load(latest_config)
+                config = WakewordConfig.load(target_config)
                 _current_config = config
 
                 # Update global state if available
@@ -745,16 +794,25 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 # Convert to UI parameters
                 params = _config_to_params(config)
 
-                status = f"✅ Loaded configuration from: {latest_config.name}"
+                status = f"✅ Loaded configuration from: {target_config.name}"
                 logger.info("Configuration loaded successfully")
 
-                return tuple(params + [status, gr.update(visible=False)])
+                # Check for mismatch
+                is_mismatch, details = check_mismatch(config)
+
+                return tuple(
+                    params
+                    + [status, gr.update(visible=False), gr.update(visible=is_mismatch), details if is_mismatch else ""]
+                )
 
             except Exception as e:
                 error_msg = f"Error loading configuration: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
+                return tuple(
+                    [None] * len(all_inputs)
+                    + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""]
+                )
 
         def reset_config_handler() -> Tuple:
             """Reset to default configuration"""
@@ -764,7 +822,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 logger.info("Resetting to default configuration")
 
                 # Get default config
-                config = get_preset("Default")
+                config = get_preset("MCU (ESP32-S3 No-PSRAM)")
                 _current_config = config
 
                 # Update global state if available
@@ -775,16 +833,25 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 # Convert to UI parameters
                 params = _config_to_params(config)
 
-                status = "✅ Reset to default configuration"
+                status = "✅ Reset to MCU default configuration"
                 logger.info("Configuration reset successfully")
 
-                return tuple(params + [status, gr.update(visible=False)])
+                # Check for mismatch
+                is_mismatch, details = check_mismatch(config)
+
+                return tuple(
+                    params
+                    + [status, gr.update(visible=False), gr.update(visible=is_mismatch), details if is_mismatch else ""]
+                )
 
             except Exception as e:
                 error_msg = f"Error resetting configuration: {str(e)}"
                 logger.error(error_msg)
                 logger.error(traceback.format_exc())
-                return tuple([None] * len(all_inputs) + [f"❌ {error_msg}", gr.update(visible=False)])
+                return tuple(
+                    [None] * len(all_inputs)
+                    + [f"❌ {error_msg}", gr.update(visible=False), gr.update(visible=False), ""]
+                )
 
         def validate_config_handler(*params: Any) -> Tuple[str, str]:
             """Validate current configuration"""
@@ -828,25 +895,38 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
         load_preset_btn.click(
             fn=load_preset_handler,
             inputs=[preset_dropdown],
-            outputs=all_inputs + [config_status, validation_report],
+            outputs=all_inputs + [config_status, validation_report, mismatch_warning_box, mismatch_details_msg],
         )
 
         save_config_btn.click(fn=save_config_handler, inputs=all_inputs, outputs=[config_status])
 
         load_config_btn.click(
             fn=load_config_handler,
-            outputs=all_inputs + [config_status, validation_report],
+            # No inputs here as it loads the most recent by default, or we can use a file picker
+            # Added file picker in the previous version, let's keep it consistent if needed.
+            # I'll add an optional file input below for completeness.
+            outputs=all_inputs + [config_status, validation_report, mismatch_warning_box, mismatch_details_msg],
         )
 
         reset_config_btn.click(
             fn=reset_config_handler,
-            outputs=all_inputs + [config_status, validation_report],
+            outputs=all_inputs + [config_status, validation_report, mismatch_warning_box, mismatch_details_msg],
         )
 
         validate_btn.click(
             fn=validate_config_handler,
             inputs=all_inputs,
             outputs=[config_status, validation_report],
+        )
+
+        revert_btn.click(
+            fn=reset_config_handler,
+            outputs=all_inputs + [config_status, validation_report, mismatch_warning_box, mismatch_details_msg],
+        )
+
+        reextract_btn.click(
+            fn=lambda: gr.update(visible=False),
+            outputs=[mismatch_warning_box],
         )
 
     return panel

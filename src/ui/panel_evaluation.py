@@ -16,24 +16,26 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
 import plotly.graph_objects as go
+import torch
 
 matplotlib.use("Agg")
 import structlog
 
+from src.config.cuda_utils import get_cuda_validator
 from src.data.dataset import WakewordDataset
-from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
 from src.evaluation.advanced_evaluator import ThresholdAnalyzer
+from src.evaluation.background_miner import BackgroundMiner
+from src.evaluation.benchmarking import BenchmarkRunner
+from src.evaluation.judge_client import JudgeClient
 from src.evaluation.data_collector import FalsePositiveCollector
+from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
 from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
+from src.evaluation.mining import HardNegativeMiner
+from src.evaluation.stages import SentryInferenceStage
 from src.evaluation.types import EvaluationResult
 from src.exceptions import WakewordException
 from src.training.metrics import MetricResults
-from src.evaluation.benchmarking import BenchmarkRunner
-from src.evaluation.stages import SentryInferenceStage
-from src.config.cuda_utils import get_cuda_validator
-from src.evaluation.mining import HardNegativeMiner
 
 logger = structlog.get_logger(__name__)
 
@@ -47,7 +49,7 @@ class EvaluationState:
         self.evaluator: Optional[ModelEvaluator] = None
         self.mic_inference: Optional[Union[MicrophoneInference, SimulatedMicrophoneInference]] = None
         self.is_mic_recording = False
-        
+
         # Detect device
         validator = get_cuda_validator(allow_cpu=True)
         self.device = "cuda" if validator.validate()[0] and validator.cuda_available else "cpu"
@@ -75,10 +77,87 @@ class EvaluationState:
         self.threshold_analyzer: Optional[ThresholdAnalyzer] = None
         self.fp_collector = FalsePositiveCollector()
         self.miner = HardNegativeMiner()
+        self.bg_miner: Optional[BackgroundMiner] = None
+        self.judge_client: Optional[JudgeClient] = None
+        self.last_audio_chunk: Optional[np.ndarray] = None
 
 
 # Global state
 eval_state = EvaluationState()
+
+
+def verify_with_judge(url: str, api_key: str) -> str:
+    """Verify the last audio chunk with the remote Judge server."""
+    if eval_state.last_audio_chunk is None:
+        return "❌ No audio chunk available. Try speaking into the microphone or evaluating a file first."
+    
+    if not url:
+        return "❌ Please provide a Judge Server URL."
+
+    try:
+        if eval_state.judge_client is None or eval_state.judge_client.base_url != url:
+            eval_state.judge_client = JudgeClient(url, api_key=api_key if api_key else None)
+        
+        result = eval_state.judge_client.verify_audio(eval_state.last_audio_chunk, sample_rate=eval_state.waveform_sr)
+        
+        if "error" in result:
+            return f"❌ Judge Error: {result['error']}\nDetail: {result.get('detail', '')}"
+        
+        status = "✅ VERIFIED" if result.get("verified") else "❌ REJECTED"
+        return (
+            f"Judge Result: {status}\n"
+            f"Confidence: {result.get('confidence', 0.0):.2%}\n"
+            f"Network Latency: {result.get('network_latency_ms', 0.0):.1f}ms\n"
+            f"Judge Inference: {result.get('inference_latency_ms', 0.0):.1f}ms"
+        )
+    except Exception as e:
+        logger.error(f"Judge verification failed: {e}")
+        return f"❌ Error: {str(e)}"
+
+
+def check_judge_health(url: str) -> str:
+    """Check if the remote Judge server is reachable."""
+    if not url:
+        return "❌ Provide URL"
+    try:
+        client = JudgeClient(url)
+        if client.check_health():
+            return "✅ Online"
+        return "❌ Offline"
+    except Exception:
+        return "❌ Error"
+
+
+def run_background_mining(file_path: str, threshold: float, resume: bool, progress=gr.Progress()) -> str:
+    """Run long-form background mining."""
+    if eval_state.evaluator is None:
+        return "❌ Please load a model first"
+    
+    if not file_path or not Path(file_path).exists():
+        return "❌ Please provide a valid audio file path"
+
+    try:
+        if eval_state.bg_miner is None:
+            eval_state.bg_miner = BackgroundMiner(eval_state.evaluator, eval_state.miner)
+        
+        def update_progress(p, msg):
+            progress(p, desc=msg)
+            
+        result = eval_state.bg_miner.process_file(
+            Path(file_path), 
+            threshold=threshold, 
+            resume=resume, 
+            progress_callback=update_progress
+        )
+        
+        return (
+            f"✅ Mining Complete for {result['file']}\n"
+            f"Found {result['found']} potential false positives.\n"
+            f"Processed {result['processed_sec']:.1f}s of {result['total_sec']:.1f}s."
+        )
+    except Exception as e:
+        logger.error(f"Background mining failed: {e}")
+        return f"❌ Error: {str(e)}"
 
 
 def get_available_models() -> List[str]:
@@ -123,10 +202,16 @@ def load_model(model_path: str) -> str:
         eval_state.model_info = info
         eval_state.evaluator = evaluator
         eval_state.waveform_sr = info["config"].data.sample_rate
-        
+
         # Format status message
-        status = f"✅ Model Loaded Successfully\n"
+        status = "✅ Model Loaded Successfully\n"
         status += f"Architecture: {info['config'].model.architecture}\n"
+        
+        # Add Audio Feature Details
+        feat_type = info['config'].data.feature_type
+        feat_dim = info['config'].data.n_mels if feat_type == "mel" else info['config'].data.n_mfcc
+        status += f"Features: {feat_type.upper()} ({feat_dim} bins)\n"
+        
         status += f"Training Epoch: {info['epoch'] + 1}\n"
         status += f"Val Loss: {info['val_loss']:.4f}\n"
 
@@ -152,6 +237,7 @@ def _ensure_waveform_fig() -> None:
         ax.set_ylim([-1.0, 1.0])
         eval_state.waveform_fig, eval_state.waveform_ax, eval_state.waveform_line = fig, ax, line
 
+
 def _update_waveform_plot(audio: np.ndarray) -> Any:
     _ensure_waveform_fig()
     max_len = int(eval_state.waveform_sr * eval_state.window_sec)
@@ -163,16 +249,20 @@ def _update_waveform_plot(audio: np.ndarray) -> Any:
         eval_state.waveform_line.set_ydata(y)
     return eval_state.waveform_fig
 
+
 def evaluate_uploaded_files(files: List, threshold: float) -> Tuple[pd.DataFrame, str]:
     if eval_state.evaluator is None:
         return None, "❌ Please load a model first"
     try:
         results = eval_state.evaluator.evaluate_files([Path(f.name) for f in files], threshold=threshold, batch_size=32)
         eval_state.file_results = results
-        data = [{"Filename": r.filename, "Prediction": r.prediction, "Confidence": f"{r.confidence:.2%}"} for r in results]
+        data = [
+            {"Filename": r.filename, "Prediction": r.prediction, "Confidence": f"{r.confidence:.2%}"} for r in results
+        ]
         return pd.DataFrame(data), f"✅ Evaluation Complete. {len(results)} files evaluated."
     except Exception as e:
         return None, str(e)
+
 
 def export_results_to_csv() -> str:
     if not eval_state.file_results:
@@ -186,7 +276,8 @@ def export_results_to_csv() -> str:
     except Exception as e:
         return str(e)
 
-def start_microphone() -> Tuple[str, float, Optional[Any], str]:
+
+def start_microphone(threshold: float) -> Tuple[str, float, Optional[Any], str]:
     if eval_state.evaluator is None:
         return "❌ Please load a model first", 0.0, None, ""
     try:
@@ -194,8 +285,9 @@ def start_microphone() -> Tuple[str, float, Optional[Any], str]:
             model=eval_state.model,
             sample_rate=eval_state.waveform_sr,
             audio_duration=eval_state.model_info["config"].data.audio_duration,
-            threshold=0.5,
+            threshold=threshold,
             device=eval_state.device,
+            config=eval_state.model_info["config"],  # Pass exact config used for training
         )
         mic_inf.start()
         eval_state.mic_inference = mic_inf
@@ -205,6 +297,7 @@ def start_microphone() -> Tuple[str, float, Optional[Any], str]:
     except Exception as e:
         return str(e), 0.0, None, ""
 
+
 def stop_microphone() -> Tuple[str, float, Optional[Any], str]:
     if not eval_state.is_mic_recording:
         return "⚠️ Not recording", 0.0, None, ""
@@ -213,53 +306,74 @@ def stop_microphone() -> Tuple[str, float, Optional[Any], str]:
     eval_state.is_mic_recording = False
     return "🔴 Stopped", 0.0, None, "\n".join(eval_state.mic_history)
 
+
 def get_microphone_status() -> Tuple:
     if not eval_state.is_mic_recording or eval_state.mic_inference is None:
         return "🔴 Not Detecting", 0.0, None, "\n".join(eval_state.mic_history)
     result = eval_state.mic_inference.get_latest_result()
     if result:
         conf, pos, chunk = result
+        eval_state.last_audio_chunk = chunk # Capture for Cascade Judge
         status = "✅ DETECTED!" if pos else "🟢 Listening..."
         eval_state.mic_history.append(f"[{time.strftime('%H:%M:%S')}] {status} ({conf:.2%})")
         return status, round(conf * 100, 2), _update_waveform_plot(chunk), "\n".join(eval_state.mic_history[-50:])
     return "🟢 Listening...", 0.0, None, "\n".join(eval_state.mic_history)
 
-def run_threshold_analysis() -> Tuple[gr.Plot, pd.DataFrame]:
+
+def run_threshold_analysis() -> Tuple[Optional[go.Figure], str]:
     if eval_state.threshold_analyzer is None:
-        return None, None
-    results = eval_state.threshold_analyzer.analyze_range(np.linspace(0, 1, 21))
-    df = pd.DataFrame(results)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['threshold'], y=df['precision'], name='Precision', line=dict(color='cyan')))
-    fig.add_trace(go.Scatter(x=df['threshold'], y=df['recall'], name='Recall', line=dict(color='orange')))
-    fig.update_layout(title="PR vs Threshold", template="plotly_dark", height=400)
-    return fig, df
+        return None, "❌ No analysis data available. Please run 'Test Set Evaluation' first to collect logits."
+    
+    try:
+        results = eval_state.threshold_analyzer.analyze_range(np.linspace(0, 1, 21))
+        df = pd.DataFrame(results)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df["threshold"], y=df["precision"], name="Precision", line=dict(color="cyan")))
+        fig.add_trace(go.Scatter(x=df["threshold"], y=df["recall"], name="Recall", line=dict(color="orange")))
+        fig.update_layout(
+            title="Precision/Recall vs Threshold",
+            template="plotly_dark",
+            height=400,
+            xaxis_title="Threshold",
+            yaxis_title="Score"
+        )
+        return fig, "✅ Analysis complete."
+    except Exception as e:
+        logger.error(f"Threshold analysis failed: {e}")
+        return None, f"❌ Analysis failed: {str(e)}"
+
 
 def run_benchmark_test(num_iterations: int = 10) -> Dict[str, Any]:
     if eval_state.model is None:
         return {"error": "No model loaded"}
     try:
-        stage = SentryInferenceStage(model=eval_state.model, name=eval_state.model_info["config"].model.architecture, device=eval_state.device)
+        stage = SentryInferenceStage(
+            model=eval_state.model, name=eval_state.model_info["config"].model.architecture, device=eval_state.device
+        )
         runner = BenchmarkRunner(stage)
-        audio = np.random.randn(int(eval_state.waveform_sr * eval_state.model_info["config"].data.audio_duration)).astype(np.float32)
+        audio = np.random.randn(
+            int(eval_state.waveform_sr * eval_state.model_info["config"].data.audio_duration)
+        ).astype(np.float32)
         metrics = runner.run_benchmark(audio, num_iterations=num_iterations)
         return {
-            "Model": metrics["name"], 
-            "Mean Latency": f"{metrics['mean_latency_ms']:.2f} ms", 
-            "RAM Usage": f"{metrics['process_memory_mb']:.2f} MB", 
-            "GPU Usage": f"{metrics.get('gpu_memory_allocated_mb', 0):.2f} MB"
+            "Model": metrics["name"],
+            "Mean Latency": f"{metrics['mean_latency_ms']:.2f} ms",
+            "RAM Usage": f"{metrics['process_memory_mb']:.2f} MB",
+            "GPU Usage": f"{metrics.get('gpu_memory_allocated_mb', 0):.2f} MB",
         }
     except Exception as e:
         return {"error": str(e)}
+
 
 def collect_false_positives() -> str:
     if not eval_state.test_results or eval_state.last_labels is None:
         return "Run evaluation first."
     eval_state.fp_collector.clear()
-    for r, l in zip(eval_state.test_results, eval_state.last_labels):
-        if r.prediction == "Positive" and l == 0:
+    for r, label in zip(eval_state.test_results, eval_state.last_labels):
+        if r.prediction == "Positive" and label == 0:
             eval_state.fp_collector.add_sample(r.raw_audio, {"filename": r.filename, "confidence": r.confidence})
     return generate_fp_gallery_html()
+
 
 def generate_fp_gallery_html() -> str:
     samples = eval_state.fp_collector.get_samples()
@@ -267,75 +381,84 @@ def generate_fp_gallery_html() -> str:
         return "<p>No samples.</p>"
     html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px;">'
     for s in samples:
-        audio_url = f"file/{eval_state.fp_collector.output_dir}/{s['audio_path']}"
+        # Resolve absolute path and sanitize for URL (Windows support)
+        full_path = (eval_state.fp_collector.output_dir / s['audio_path']).resolve()
+        safe_path = str(full_path).replace("\\", "/")
+        audio_url = f"/file={safe_path}"
+        
         html += f'<div style="background: #2d2d2d; padding: 10px;"><p>File: {s["metadata"]["filename"]}</p><audio src="{audio_url}" controls></audio></div>'
-    return html + '</div>'
+    return html + "</div>"
+
 
 def clear_false_positives() -> str:
     eval_state.fp_collector.clear()
     return "<p>Cleared.</p>"
 
+
 def mine_hard_negatives_handler() -> str:
+    """
+    Find false positives from test results.
+    These are samples where model predicted "Positive" (wakeword detected) but the actual label is Negative.
+    Users will then verify if these are truly NOT wakewords (to add as hard negatives for training).
+    """
     if not eval_state.test_results:
         return "❌ Run test set evaluation first."
-    
-    count = eval_state.miner.mine_from_results(eval_state.test_results)
-    return f"✅ Mined {count} new potential hard negatives. Check the 'Mining Queue' tab."
 
-def get_mining_gallery_html() -> str:
+    count = eval_state.miner.mine_from_results(eval_state.test_results)
+
+    if count > 0:
+        try:
+            from src.config.presets import get_preset
+
+            # Auto-generate a Strategy A refinement config
+            config = get_preset("Strategy A: Hard Negative Refinement")
+            config_path = Path("configs/strategy_a_auto_refinement.yaml")
+            config.save(config_path)
+
+            return (
+                f"✅ Found {count} false positives (sounds model detected as wakeword but are NOT).\n"
+                f"📂 Training profile saved: {config_path.name}\n"
+                f"💡 Go to 'Mining Queue' tab to review these samples."
+            )
+        except Exception as e:
+            logger.error(f"Error saving auto-refinement config: {e}")
+            return f"✅ Found {count} false positives, but failed to save training profile: {e}"
+
+    return "ℹ️ No false positives found. Model performed well on this test set."
+
+
+def get_mining_queue_data() -> list:
+    """Get pending mining items for Dataframe display."""
     pending = eval_state.miner.get_pending()
     if not pending:
-        return "<p style='text-align: center; padding: 20px;'>Queue is empty. Use the 'Mine Hard Negatives' button in evaluation results.</p>"
-    
-    html = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">'
-    for item in pending:
-        # We assume files are accessible via Gradio or absolute path (if local)
-        # For simplicity, we just display the info and path for now
-        html += f'''
-        <div style="background: #2d2d2d; border-radius: 8px; padding: 15px; border: 1px solid #444; display: flex; justify-content: space-between; align-items: center;">
-            <div style="flex: 1;">
-                <p style="margin: 0; font-weight: bold;">{item["filename"]}</p>
-                <p style="margin: 5px 0; font-size: 0.85em; color: #aaa;">Confidence: {item["confidence"]:.2%}</p>
-                <p style="margin: 0; font-size: 0.7em; color: #888;">Path: {item["full_path"]}</p>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button onclick="confirmSample('{item["full_path"]}')" style="background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">✅ Confirm</button>
-                <button onclick="discardSample('{item["full_path"]}')" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">❌ Discard</button>
-            </div>
-        </div>
-        '''
-    html += '</div>'
-    
-    # Add JS for buttons
-    html += '''
-    <script>
-    function confirmSample(path) {
-        let pathEl = document.querySelector("#mining_verify_path input");
-        let statusEl = document.querySelector("#mining_verify_status input");
-        pathEl.value = path;
-        pathEl.dispatchEvent(new Event('input', { bubbles: true }));
-        statusEl.value = "confirmed";
-        statusEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    function discardSample(path) {
-        let pathEl = document.querySelector("#mining_verify_path input");
-        let statusEl = document.querySelector("#mining_verify_status input");
-        pathEl.value = path;
-        pathEl.dispatchEvent(new Event('input', { bubbles: true }));
-        statusEl.value = "discarded";
-        statusEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    </script>
-    '''
-    return html
+        return []
+    # Return list of [Filename, Confidence, Full Path]
+    return [[item["filename"], f"{item['confidence']:.2%}", item["full_path"]] for item in pending]
 
-def verify_sample_handler(path: str, status: str) -> str:
+
+def verify_sample_action(path: str, status: str):
+    """
+    Update verification status for a sample and refresh the list.
+    """
+    if not path:
+        return get_mining_queue_data(), ""
+    
+    # Update the sample status
     eval_state.miner.update_status(path, status)
-    return get_mining_gallery_html()
+    return get_mining_queue_data(), ""
+
 
 def inject_mined_samples_handler() -> str:
     count = eval_state.miner.inject_to_dataset()
-    return f"✅ Injected {count} confirmed negatives into training data."
+    return f"✅ Successfully added {count} verified hard negative samples to training data."
+
+
+def confirm_all_and_inject_handler() -> str:
+    """Confirm all pending samples and inject them into the dataset."""
+    confirm_count = eval_state.miner.confirm_all_pending()
+    inject_count = eval_state.miner.inject_to_dataset()
+    return f"✅ Bulk Action Complete: Confirmed {confirm_count} and added {inject_count} samples to dataset."
+
 
 def evaluate_test_set(
     data_root: str,
@@ -362,7 +485,7 @@ def evaluate_test_set(
     try:
         # Default to data/splits/test.json if not provided
         from src.config.paths import paths
-        
+
         if not test_split_path or test_split_path.strip() == "":
             test_split_path = str(paths.SPLITS / "test.json")
 
@@ -380,9 +503,9 @@ def evaluate_test_set(
 
         # Load test dataset
         # We rely on GpuAudioProcessor (initialized in ModelEvaluator) to handle CMVN via centralized paths
-        # So we don't need to pass cmvn_path here for GpuAudioProcessor, BUT WakewordDataset might need it 
+        # So we don't need to pass cmvn_path here for GpuAudioProcessor, BUT WakewordDataset might need it
         # if we weren't using return_raw_audio=True. Since we are, it's fine.
-        
+
         # However, to be safe and consistent with training, we pass it.
         cmvn_path = paths.CMVN_STATS
 
@@ -499,6 +622,7 @@ def evaluate_test_set(
         logger.exception(e)
         return {"status": error_msg}, None, None, {}
 
+
 def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
     """Create confusion matrix visualization"""
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -527,7 +651,7 @@ def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
     # Add text annotations
     for i in range(2):
         for j in range(2):
-            text = ax.text(
+            ax.text(
                 j,
                 i,
                 f"{cm[i, j]}",
@@ -543,6 +667,7 @@ def create_confusion_matrix_plot(metrics: "MetricResults") -> plt.Figure:
 
     plt.tight_layout()
     return fig
+
 
 def create_roc_curve_plot(test_dataset: WakewordDataset) -> plt.Figure:
     """Create ROC curve visualization"""
@@ -608,6 +733,7 @@ def create_roc_curve_plot(test_dataset: WakewordDataset) -> plt.Figure:
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.text(0.5, 0.5, f"ROC curve generation failed:\n{str(e)}", ha="center", va="center", transform=ax.transAxes)
         return fig
+
 
 def create_evaluation_panel(state: gr.State) -> gr.Blocks:
     """
@@ -689,13 +815,14 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
                 with gr.Row():
                     with gr.Column():
-                        sensitivity_slider = gr.Slider(
+                        mic_threshold_slider = gr.Slider(
                             minimum=0,
                             maximum=1,
                             value=0.5,
                             step=0.05,
                             label="Detection Sensitivity (Threshold)",
                             info="Lower value = more sensitive (detects easier but more false positives). Higher = stricter.",
+                            interactive=True,
                         )
 
                         with gr.Row():
@@ -724,6 +851,23 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                         interactive=False,
                         autoscroll=True,
                     )
+
+                gr.Markdown("---")
+                with gr.Group():
+                    gr.Markdown("### 🌐 Distributed Cascade (Judge Verification)")
+                    gr.Markdown("Send the last microphone chunk to a remote server for high-accuracy secondary verification.")
+                    with gr.Row():
+                        judge_url = gr.Textbox(
+                            label="Judge Server URL", 
+                            placeholder="http://localhost:8000",
+                            value="http://localhost:8000"
+                        )
+                        judge_api_key = gr.Textbox(label="API Key (Optional)", type="password")
+                        check_health_btn = gr.Button("🔍 Check Health", scale=0)
+                        health_status = gr.Textbox(label="Server Status", placeholder="Click Check Health", interactive=False, scale=0)
+                    
+                    verify_btn = gr.Button("⚖️ Verify Last Detection with Judge", variant="secondary")
+                    judge_output = gr.Textbox(label="Judge Response", lines=5, interactive=False)
 
             # Test set evaluation
             with gr.TabItem("📊 Test Set Evaluation"):
@@ -772,7 +916,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                             label="Test Set Metrics",
                             value={"status": "Click 'Run Test Evaluation' to start"},
                         )
-                        mine_fp_btn = gr.Button("⛏️ Mine Hard Negatives", variant="secondary")
+                        mine_fp_btn = gr.Button("⛏️ Find False Positives (Not Wakewords)", variant="secondary")
                         mining_status = gr.Markdown("")
 
                     with gr.Column():
@@ -792,20 +936,57 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
             # Mining Queue Tab
             with gr.TabItem("⛏️ Mining Queue"):
-                gr.Markdown("### Hard Negative Verification Queue")
-                gr.Markdown("Review mined false positives and confirm them for the next training run.")
-                
-                with gr.Row():
-                    refresh_queue_btn = gr.Button("🔄 Refresh Queue")
-                    inject_mined_btn = gr.Button("💉 Inject Confirmed to Dataset", variant="primary")
-                
-                injection_status = gr.Markdown("")
-                
-                mining_queue_html = gr.HTML(value=get_mining_gallery_html(), label="Verification Queue")
-                
-                # Hidden state for verifying samples via JS
-                verify_path = gr.Textbox(visible=False, elem_id="mining_verify_path")
-                verify_status = gr.Textbox(visible=False, elem_id="mining_verify_status")
+                with gr.Tabs():
+                    with gr.TabItem("📋 Verification Queue"):
+                        gr.Markdown("### Hard Negative Verification Queue")
+                        gr.Markdown("**Review false positives (model detected as wakeword but they are NOT).**")
+                        gr.Markdown("Confirm samples that are NOT wakewords (hard negatives) to add them to your training data and improve accuracy.")
+
+                        with gr.Row():
+                            refresh_queue_btn = gr.Button("🔄 Refresh Queue")
+                            confirm_all_btn = gr.Button("🚀 Confirm & Add All", variant="primary")
+                            inject_mined_btn = gr.Button("💉 Add Verified Samples to Dataset")
+
+                        injection_status = gr.Markdown("")
+
+                        # Dataframe for displaying queue
+                        mining_queue_df = gr.Dataframe(
+                            headers=["Filename", "Confidence", "Full Path"],
+                            datatype=["str", "str", "str"],
+                            value=get_mining_queue_data(),
+                            interactive=False,
+                            label="Verification Queue (Select a row to verify)",
+                            wrap=True
+                        )
+
+                        gr.Markdown("### Verification Actions")
+                        selected_sample_box = gr.Textbox(label="Selected Sample Path", interactive=False, placeholder="Select a row from the table above...")
+                        
+                        with gr.Row():
+                            confirm_btn = gr.Button("✅ Confirm (Not Wakeword)", variant="primary")
+                            discard_btn = gr.Button("❌ Reject Sample", variant="stop")
+
+                    with gr.TabItem("🚜 Background Miner"):
+                        gr.Markdown("### Long-form Background Noise Mining")
+                        gr.Markdown("Analyze long audio recordings (e.g. 24h room noise) to find false positives automatically.")
+                        
+                        with gr.Row():
+                            bg_file_path = gr.Textbox(
+                                label="Background Audio File Path",
+                                placeholder="C:/data/noise/room_24h.wav",
+                                info="Path to a long audio file to mine for false positives."
+                            )
+                            bg_threshold = gr.Slider(
+                                minimum=0.1, maximum=0.9, value=0.4, step=0.05,
+                                label="Mining Threshold",
+                                info="Lower = catch more potential negatives, Higher = stricter."
+                            )
+                        
+                        with gr.Row():
+                            bg_resume = gr.Checkbox(label="Resume from Last Session", value=True)
+                            start_bg_mining_btn = gr.Button("🚀 Start Mining", variant="primary")
+                        
+                        bg_mining_status = gr.Textbox(label="Mining Status", lines=5, interactive=False)
 
             # Analysis Dashboard
             with gr.TabItem("🔍 Analysis Dashboard"):
@@ -815,6 +996,8 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
                 with gr.Row():
                     run_analysis_btn = gr.Button("📊 Run Threshold Analysis", variant="primary")
                     run_bench_btn = gr.Button("⚡ Run Performance Benchmark", variant="secondary")
+
+                analysis_info = gr.Textbox(label="Status", interactive=False)
 
                 with gr.Row():
                     with gr.Column():
@@ -851,6 +1034,7 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
 
         start_mic_btn.click(
             fn=start_microphone,
+            inputs=[mic_threshold_slider],
             outputs=[
                 detection_indicator,
                 confidence_display,
@@ -899,24 +1083,69 @@ def create_evaluation_panel(state: gr.State) -> gr.Blocks:
             outputs=[test_metrics, confusion_matrix, roc_curve, advanced_metrics],
         )
 
-        run_analysis_btn.click(fn=run_threshold_analysis, outputs=[threshold_plot, gr.State()])
+        run_analysis_btn.click(fn=run_threshold_analysis, outputs=[threshold_plot, analysis_info])
         run_bench_btn.click(fn=run_benchmark_test, outputs=[bench_metrics])
         collect_fp_btn.click(fn=collect_false_positives, outputs=[fp_gallery])
         clear_fp_btn.click(fn=clear_false_positives, outputs=[fp_gallery])
 
         # Mining handlers
         mine_fp_btn.click(fn=mine_hard_negatives_handler, outputs=[mining_status])
-        refresh_queue_btn.click(fn=get_mining_gallery_html, outputs=[mining_queue_html])
+        refresh_queue_btn.click(fn=get_mining_queue_data, outputs=[mining_queue_df])
+        confirm_all_btn.click(
+            fn=confirm_all_and_inject_handler, 
+            outputs=[injection_status]
+        ).then(
+            fn=get_mining_queue_data, 
+            outputs=[mining_queue_df]
+        )
         inject_mined_btn.click(fn=inject_mined_samples_handler, outputs=[injection_status])
-        
-        # JS bridge for verification
-        def js_bridge_verify(path, status):
-            return verify_sample_handler(path, status)
-            
-        # We need a way to trigger verification from JS.
-        # Gradio doesn't easily allow arbitrary JS -> Python calls without a hidden component.
-        # I'll use a hidden button or similar if needed, but for now I'll just refresh.
-        # Actually, let's use the hidden textboxes.
-        verify_status.change(fn=js_bridge_verify, inputs=[verify_path, verify_status], outputs=[mining_queue_html])
+
+        start_bg_mining_btn.click(
+            fn=run_background_mining,
+            inputs=[bg_file_path, bg_threshold, bg_resume],
+            outputs=[bg_mining_status]
+        )
+
+        # Selection handler
+        def on_queue_select(df, evt: gr.EventData):
+            try:
+                # df is usually a pandas DataFrame when passed as input
+                # Use EventData to avoid KeyError if 'value' is missing in SelectData
+                data = evt._data
+                if not data or "index" not in data:
+                    return ""
+                    
+                # Index is usually [row, col] for Dataframe
+                row_idx = data["index"][0]
+                
+                # Column 2 is "Full Path" (0-based index)
+                return df.iloc[row_idx, 2]
+            except Exception as e:
+                print(f"Error selecting row: {e}")
+                return ""
+
+        mining_queue_df.select(
+            fn=on_queue_select,
+            inputs=[mining_queue_df],
+            outputs=[selected_sample_box]
+        )
+
+        # Action buttons
+        confirm_btn.click(
+            fn=lambda path: verify_sample_action(path, "confirmed"),
+            inputs=[selected_sample_box],
+            outputs=[mining_queue_df, selected_sample_box]
+        )
+
+        discard_btn.click(
+            fn=lambda path: verify_sample_action(path, "discarded"),
+            inputs=[selected_sample_box],
+            outputs=[mining_queue_df, selected_sample_box]
+        )
+
+        # Cascade events
+        check_health_btn.click(fn=check_judge_health, inputs=[judge_url], outputs=[health_status])
+        verify_btn.click(fn=verify_with_judge, inputs=[judge_url, judge_api_key], outputs=[judge_output])
+
 
     return panel

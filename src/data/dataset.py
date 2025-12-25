@@ -4,7 +4,6 @@ Handles audio loading, preprocessing, and augmentation
 """
 
 import json
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
@@ -112,7 +111,14 @@ class WakewordDataset(Dataset):
             logger.info("CMVN enabled but deferred to GPU pipeline (return_raw_audio=True)")
 
         # Load manifest
-        with open(self.manifest_path, "r") as f:
+        # Security: Validate manifest_path to prevent path traversal attacks
+        abs_manifest_path = Path(self.manifest_path).resolve()
+        if not abs_manifest_path.is_file():
+            raise FileNotFoundError(f"Manifest file not found: {self.manifest_path}")
+        if not abs_manifest_path.suffix.lower() == ".json":
+            raise ValueError(f"Manifest file must be a JSON file: {self.manifest_path}")
+
+        with open(abs_manifest_path, "r", encoding="utf-8") as f:  # type: ignore[assignment]
             manifest = json.load(f)
 
         self.files: List[Dict[str, Any]] = manifest["files"]
@@ -125,11 +131,7 @@ class WakewordDataset(Dataset):
                 mined_files = list(mined_path.glob("*.wav")) + list(mined_path.glob("*.mp3"))
                 logger.info(f"Adding {len(mined_files)} mined negatives to dataset")
                 for f in mined_files:
-                    self.files.append({
-                        "path": str(f),
-                        "category": "hard_negative",
-                        "label": 0
-                    })
+                    self.files.append({"path": str(f), "category": "hard_negative", "label": 0})
 
         # Create label mapping
         self.label_map = self._create_label_map(class_mapping)
@@ -642,7 +644,7 @@ if __name__ == "__main__":
             # Test loading a sample
             if len(train_ds) > 0:
                 audio, label, metadata = train_ds[0]
-                print(f"\nSample:")
+                print("\nSample:")
                 print(f"  Audio shape: {audio.shape}")
                 print(f"  Label: {label}")
                 print(f"  Metadata: {metadata}")

@@ -4,11 +4,13 @@ Defines basic and advanced training hyperparameters
 """
 
 import copy
+import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
+from src.config.env_config import env_config
 
 
 @dataclass
@@ -50,10 +52,15 @@ class TrainingConfig:
     learning_rate: float = 5e-4  # Optimized: 5e-4 for stable training
     early_stopping_patience: int = 15
 
+    # FNR target for early stopping (None = use F1-based stopping)
+    fnr_target: Optional[float] = None  # Target FNR (e.g., 0.02 for 2%)
+
     # Hardware
-    num_workers: int = 16  # Updated default to 16 for 7950X
+    num_workers: int = env_config.get_int("TRAINING_NUM_WORKERS", 8)  # Dynamic default
     pin_memory: bool = True
     persistent_workers: bool = True
+    use_compile: bool = env_config.use_triton  # Enable torch.compile if Triton supported
+    use_gradient_checkpointing: bool = False  # VRAM optimization
 
     # Checkpointing
     checkpoint_frequency: str = "every_5_epochs"  # best_only, every_epoch, every_5_epochs, every_10_epochs
@@ -67,7 +74,7 @@ class TrainingConfig:
 
     # Metrics
     metric_window_size: int = 100
-    
+
     # Hard Negative Mining
     include_mined_negatives: bool = True
 
@@ -180,21 +187,25 @@ class OptimizerConfig:
 class LossConfig:
     """Loss function configuration"""
 
-    loss_function: str = "cross_entropy"  # cross_entropy, focal_loss, triplet_loss
-    label_smoothing: float = 0.05
+    loss_function: str = "focal_loss"  # Changed to focal_loss for FNR optimization
+    label_smoothing: float = 0.1  # Increased label smoothing
 
-    # Focal loss parameters
-    focal_alpha: float = 0.25
-    focal_gamma: float = 2.0
+    # Focal loss parameters - FNR focused!
+    focal_alpha: float = 0.85  # FNR oriented (0.85-0.90 range)
+    focal_gamma: float = 2.5  # Increased for hard example mining
 
     # Triplet loss parameters
     triplet_margin: float = 1.0
 
     # Class weighting
     class_weights: str = "balanced"  # balanced, none, custom
-    hard_negative_weight: float = 1.5
+    hard_negative_weight: float = 2.0  # Increased for FNR optimization
     class_weight_min: float = 0.1
     class_weight_max: float = 100.0
+
+    # Dynamic alpha (FNR-focused training)
+    use_dynamic_alpha: bool = True  # Enable dynamic alpha during training
+    max_focal_alpha: float = 0.90  # Maximum alpha value for dynamic scaling
 
     # Sampling strategy
     sampler_strategy: str = "weighted"  # weighted, balanced, none
@@ -209,7 +220,7 @@ class QATConfig:
     """Quantization Aware Training configuration"""
 
     enabled: bool = False
-    backend: str = "fbgemm"  # fbgemm (x86), qnnpack (ARM)
+    backend: str = env_config.quantization_backend  # Dynamic default: fbgemm (x86), qnnpack (ARM)
 
     # When to start QAT (usually after some epochs of normal training)
     start_epoch: int = 5
@@ -225,28 +236,28 @@ class DistillationConfig:
 
     enabled: bool = False
     teacher_model_path: str = ""
-    
+
     # Memory optimization options
     teacher_on_cpu: bool = False
     teacher_mixed_precision: bool = True
     log_memory_usage: bool = False
-    
+
     # Distillation parameters
-    teacher_architecture: str = "dual" # wav2vec2, conformer, dual (recommended)
+    teacher_architecture: str = "dual"  # wav2vec2, conformer, dual (recommended)
     secondary_teacher_architecture: str = "conformer"
     secondary_teacher_model_path: str = ""
-    
+
     temperature: float = 2.0
-    temperature_scheduler: str = "fixed" # fixed, linear_decay, exponential_decay
+    temperature_scheduler: str = "fixed"  # fixed, linear_decay, exponential_decay
     alpha: float = 0.3  # Optimized: 0.3 is more balanced than 0.5
-    
+
     # Feature Alignment (Intermediate Matching)
     feature_alignment_enabled: bool = False
     feature_alignment_weight: float = 0.1
     # Indices of layers to match (implementation dependent)
     alignment_layers: List[int] = field(default_factory=lambda: [1, 2, 3])
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate parameters after initialization"""
         if not isinstance(self.temperature, (int, float)):
             raise TypeError(f"temperature must be numeric, got {type(self.temperature)}")
@@ -278,6 +289,58 @@ class DistillationConfig:
 
 
 @dataclass
+class CMVNConfig:
+    """CMVN configuration"""
+
+    enabled: bool = True
+    stats_path: str = "data/cache/cmvn_stats.json"
+    calculate_on_fly: bool = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class StreamingConfig:
+    """Streaming detection configuration"""
+
+    hysteresis_high: float = 0.7
+    hysteresis_low: float = 0.3
+    buffer_length_ms: int = 1500
+    smoothing_window: int = 5
+    cooldown_ms: int = 500
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class SizeTargetConfig:
+    """Model size target configuration"""
+
+    max_flash_kb: int = 0  # 0 means no limit
+    max_ram_kb: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
+class CalibrationConfig:
+    """Quantization calibration configuration"""
+
+    num_samples: int = 100
+    positive_ratio: float = 0.5
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
 class WakewordConfig:
     """Complete wakeword training configuration"""
 
@@ -292,6 +355,10 @@ class WakewordConfig:
     # New optional configurations
     qat: QATConfig = field(default_factory=QATConfig)
     distillation: DistillationConfig = field(default_factory=DistillationConfig)
+    cmvn: CMVNConfig = field(default_factory=CMVNConfig)
+    streaming: StreamingConfig = field(default_factory=StreamingConfig)
+    size_targets: SizeTargetConfig = field(default_factory=SizeTargetConfig)
+    calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
 
     # Metadata
     config_name: str = "default"
@@ -310,6 +377,10 @@ class WakewordConfig:
             "loss": self.loss.to_dict(),
             "qat": self.qat.to_dict(),
             "distillation": self.distillation.to_dict(),
+            "cmvn": self.cmvn.to_dict(),
+            "streaming": self.streaming.to_dict(),
+            "size_targets": self.size_targets.to_dict(),
+            "calibration": self.calibration.to_dict(),
         }
 
     @classmethod
@@ -326,6 +397,10 @@ class WakewordConfig:
             loss=LossConfig(**config_dict.get("loss", {})),
             qat=QATConfig(**config_dict.get("qat", {})),
             distillation=DistillationConfig(**config_dict.get("distillation", {})),
+            cmvn=CMVNConfig(**config_dict.get("cmvn", {})),
+            streaming=StreamingConfig(**config_dict.get("streaming", {})),
+            size_targets=SizeTargetConfig(**config_dict.get("size_targets", {})),
+            calibration=CalibrationConfig(**config_dict.get("calibration", {})),
         )
 
     def save(self, path: Path) -> None:
@@ -333,7 +408,7 @@ class WakewordConfig:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)  # <-- safe_dump
 
     @classmethod
@@ -344,7 +419,7 @@ class WakewordConfig:
         if not path.exists():
             raise FileNotFoundError(f"Configuration file not found: {path}")
 
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             config_dict = yaml.safe_load(f)
 
         return cls.from_dict(config_dict)
@@ -365,6 +440,74 @@ def get_default_config() -> WakewordConfig:
         config_name="default",
         description="Default balanced configuration for general use",
     )
+
+
+def load_latest_hpo_profile(config: WakewordConfig, profile_dir: Optional[Path] = None) -> bool:
+    """
+    Load the latest complete HPO profile from disk into an existing config instance.
+
+    Args:
+        config: The WakewordConfig instance to update
+        profile_dir: Optional custom directory to search for profiles
+
+    Returns:
+        bool: True if profile was successfully loaded, False otherwise
+    """
+    if profile_dir is None:
+        profile_dir = Path("configs/profiles")
+    else:
+        profile_dir = Path(profile_dir)
+
+    profile_path = profile_dir / "hpo_best_complete.json"
+
+    if not profile_path.exists():
+        return False
+
+    try:
+        with open(profile_path, "r", encoding="utf-8") as f:
+            profile_data = json.load(f)
+
+        if "parameters" not in profile_data:
+            return False
+
+        params = profile_data["parameters"]
+
+        # Update config sections
+        if "training" in params:
+            for k, v in params["training"].items():
+                if hasattr(config.training, k):
+                    setattr(config.training, k, v)
+
+        if "optimizer" in params:
+            for k, v in params["optimizer"].items():
+                if hasattr(config.optimizer, k):
+                    setattr(config.optimizer, k, v)
+
+        if "model" in params:
+            for k, v in params["model"].items():
+                if hasattr(config.model, k):
+                    setattr(config.model, k, v)
+
+        if "augmentation" in params:
+            for k, v in params["augmentation"].items():
+                if hasattr(config.augmentation, k):
+                    setattr(config.augmentation, k, v)
+
+        if "loss" in params:
+            for k, v in params["loss"].items():
+                if hasattr(config.loss, k):
+                    setattr(config.loss, k, v)
+
+        return True
+    except FileNotFoundError:
+        # Silently ignore if profile file doesn't exist
+        return False
+    except json.JSONDecodeError as e:
+        print(f"Error decoding HPO profile JSON: {e}")
+        return False
+    except KeyError as e:
+        print(f"Error accessing HPO profile data - missing key: {e}")
+        return False
 
 
 # Export all configurations
@@ -402,11 +545,11 @@ if __name__ == "__main__":
 
     # Load back
     loaded_config = WakewordConfig.load(test_path)
-    print(f"Configuration loaded successfully")
+    print("Configuration loaded successfully")
     print(f"  Loaded config name: {loaded_config.config_name}")
 
     # Cleanup
     test_path.unlink()
-    print(f"Test file cleaned up")
+    print("Test file cleaned up")
 
     print("\nConfiguration system test complete")

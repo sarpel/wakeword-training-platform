@@ -7,9 +7,10 @@
 # Core Deep Learning (PyTorch 2.1.2 - Stable with CUDA 11.8)
 # ============================================================================
 # For CUDA 11.8 (NVIDIA GPUs):
-#torch==2.1.2+cu118
-#torchaudio==2.1.2+cu118
-#torchvision==0.16.2+cu118
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.1.2+cu118
+torchaudio==2.1.2+cu118
+torchvision==0.16.2+cu118
 
 # For CPU only (no GPU):
 # torch==2.1.2

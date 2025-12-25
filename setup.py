@@ -59,7 +59,7 @@ setup(
         "gpu-acceleration",
         "production-ready",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=[
         # Core Deep Learning
         "torch>=2.1.0",

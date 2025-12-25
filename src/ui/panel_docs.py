@@ -16,9 +16,7 @@ def create_docs_panel() -> gr.Blocks:
     """
     with gr.Blocks() as panel:
         gr.Markdown("# 📚 Documentation & Knowledge Base")
-        gr.Markdown(
-            "Complete guide to wakeword training, best practices, and troubleshooting."
-        )
+        gr.Markdown("Complete guide to wakeword training, best practices, and troubleshooting.")
 
         with gr.Tabs():
             # Introduction
@@ -1190,9 +1188,7 @@ If issues persist:
                 )
 
         gr.Markdown("---")
-        gr.Markdown(
-            "*This documentation is comprehensive. Use the tabs above to navigate topics.*"
-        )
+        gr.Markdown("*This documentation is comprehensive. Use the tabs above to navigate topics.*")
 
     return panel
 

@@ -40,11 +40,13 @@ Usage:
     study = run_progressive_hpo(config, train_loader, val_loader)
 """
 
+import math
 import shutil
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast 
 
+import numpy as np
 import optuna
 import structlog
 import torch
@@ -53,6 +55,7 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from src.config.defaults import WakewordConfig
 from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
+from src.training.hpo_results import HPOResult
 from src.training.metrics import MetricResults
 from src.training.trainer import Trainer
 
@@ -182,15 +185,9 @@ class OptunaPruningCallback:
         self.log_callback = log_callback
         self.adaptive_epochs = adaptive_epochs
         self.initial_epochs = initial_epochs
-        self.performance_history = []
+        self.performance_history: list[dict[str, Any]] = []
 
-    def on_epoch_end(
-        self,
-        epoch: int,
-        train_loss: float,
-        val_loss: float,
-        val_metrics: MetricResults
-    ) -> None:
+    def on_epoch_end(self, epoch: int, train_loss: float, val_loss: float, val_metrics: MetricResults) -> None:
         """
         Called at the end of each epoch.
 
@@ -201,15 +198,23 @@ class OptunaPruningCallback:
         self.performance_history.append(current_score)
 
         # Report to Optuna for pruning decisions
-        self.trial.report(current_score, epoch)
+        # CRITICAL: trial.report and should_prune are NOT supported for multi-objective optimization
+        is_multi_objective = len(self.trial.study.directions) > 1
 
-        # Check if trial should be pruned
-        if self.trial.should_prune():
-            message = f"Trial pruned at epoch {epoch} with {self.monitor}={current_score:.4f}"
-            logger.info(message)
-            if self.log_callback:
-                self.log_callback(f"✂️ {message}")
-            raise optuna.TrialPruned(message)
+        if not is_multi_objective:
+            self.trial.report(current_score, epoch)
+
+            # Check if trial should be pruned
+            if self.trial.should_prune():
+                message = f"Trial pruned at epoch {epoch} with {self.monitor}={current_score:.4f}"
+                logger.info(message)
+                if self.log_callback:
+                    self.log_callback(f"✂️ {message}")
+                raise optuna.TrialPruned(message)
+        else:
+            # For multi-objective, we can still log progress but can't use trial.report()
+            if self.log_callback and epoch % 5 == 0:
+                self.log_callback(f"📊 Progress [Trial {self.trial.number}]: {self.monitor}={current_score:.4f}")
 
         # Adaptive epoch extension for promising trials
         if self.adaptive_epochs and epoch == self.initial_epochs - 1:
@@ -217,9 +222,7 @@ class OptunaPruningCallback:
             if current_score > 0.8:  # Threshold for "promising"
                 self.trial.set_user_attr("extended_epochs", True)
                 if self.log_callback:
-                    self.log_callback(
-                        f"📈 Extending epochs for promising trial (score: {current_score:.4f})"
-                    )
+                    self.log_callback(f"📈 Extending epochs for promising trial (score: {current_score:.4f})")
 
 
 # =============================================================================
@@ -249,6 +252,7 @@ class Objective:
         cache_dir: Optional[Path] = None,
         enable_profiling: bool = False,
         n_jobs: int = 1,
+        single_objective: bool = False,
     ):
         """
         Initialize the objective function.
@@ -262,6 +266,7 @@ class Objective:
             cache_dir: Directory for caching checkpoints
             enable_profiling: Whether to enable PyTorch profiling
             n_jobs: Number of parallel jobs
+            single_objective: Whether to optimize for F1 score only (maximize)
         """
         self.config = config
         # Default to Training + Model + Augmentation for backwards compatibility
@@ -272,9 +277,10 @@ class Objective:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.enable_profiling = enable_profiling
         self.n_jobs = n_jobs
+        self.single_objective = single_objective
 
         # Performance tracking
-        self.trial_times = []
+        self.trial_times: list[float] = []
         self.dataloader_init_time = 0
 
         # Store base loaders for recreation if needed
@@ -292,18 +298,11 @@ class Objective:
             self._init_reusable_dataloaders(train_loader, val_loader)
             self.dataloader_init_time = time.time() - start_time
 
-            self._log(
-                f"⚡ DataLoaders initialized in {self.dataloader_init_time:.2f}s "
-                f"(reused across all trials)"
-            )
+            self._log(f"⚡ DataLoaders initialized in {self.dataloader_init_time:.2f}s " f"(reused across all trials)")
         else:
             self._log("⚡ Parallel execution enabled: Disabling DataLoader reuse for thread safety.")
 
-    def _init_reusable_dataloaders(
-        self,
-        train_loader: DataLoader,
-        val_loader: DataLoader
-    ):
+    def _init_reusable_dataloaders(self, train_loader: DataLoader, val_loader: DataLoader):
         """
         Initialize DataLoaders that can be reused across all trials.
 
@@ -314,18 +313,12 @@ class Objective:
         4. Create DataLoaders ONCE with persistent workers
         """
         # Create samplers
-        train_sampler = RandomSampler(train_loader.dataset)
-        val_sampler = SequentialSampler(val_loader.dataset)
+        train_sampler = RandomSampler(cast(Any, train_loader.dataset))  # type: ignore[arg-type]
+        val_sampler = SequentialSampler(cast(Any, val_loader.dataset))  # type: ignore[arg-type]
 
         # Create dynamic batch samplers that allow batch size changes
-        self.train_batch_sampler = DynamicBatchSampler(
-            train_sampler,
-            self.config.training.batch_size
-        )
-        self.val_batch_sampler = DynamicBatchSampler(
-            val_sampler,
-            self.config.training.batch_size
-        )
+        self.train_batch_sampler = DynamicBatchSampler(train_sampler, self.config.training.batch_size)
+        self.val_batch_sampler = DynamicBatchSampler(val_sampler, self.config.training.batch_size)
 
         # Limit workers for HPO to avoid memory issues with parallel trials
         # 4 workers is usually sufficient for HPO since we're doing many short trials
@@ -352,24 +345,24 @@ class Objective:
 
     def _create_trial_loaders(self, batch_size: int) -> Tuple[DataLoader, DataLoader]:
         """Create fresh DataLoaders for a parallel trial."""
-        num_workers = min(self.config.training.num_workers, 2) # Low workers for parallel
-        
+        num_workers = min(self.config.training.num_workers, 2)  # Low workers for parallel
+
         train_loader = DataLoader(
             self.base_train_loader.dataset,
             batch_size=batch_size,
             shuffle=True,
             num_workers=num_workers,
             pin_memory=self.config.training.pin_memory,
-            persistent_workers=False
+            persistent_workers=True if num_workers > 0 else False,
         )
-        
+
         val_loader = DataLoader(
             self.base_val_loader.dataset,
             batch_size=batch_size,
             shuffle=False,
             num_workers=num_workers,
             pin_memory=self.config.training.pin_memory,
-            persistent_workers=False
+            persistent_workers=True if num_workers > 0 else False,
         )
         return train_loader, val_loader
 
@@ -379,16 +372,12 @@ class Objective:
         if self.log_callback:
             self.log_callback(message)
 
-    def _get_search_space(
-        self,
-        trial: optuna.trial.Trial,
-        trial_config: WakewordConfig
-    ) -> Dict:
+    def _get_search_space(self, trial: optuna.trial.Trial, trial_config: WakewordConfig) -> Dict:
         """
         Define and apply hyperparameter search space with Exploit-and-Explore mutation.
         """
         params = {}
-        
+
         # EXPLORE vs EXPLOIT logic
         # Every 10th trial (after first 20), we try to "exploit" the best trial found so far
         is_exploit = trial.number > 20 and trial.number % 10 == 0
@@ -416,29 +405,23 @@ class Objective:
                     mutation = (high - low) * 0.1
                     new_val = val + np.random.uniform(-mutation, mutation)
                     new_val = max(low, min(high, new_val))
-                return trial.suggest_float(name, new_val, new_val) # Force it
-            
+                return trial.suggest_float(name, new_val, new_val)  # Force it
+
             if log:
                 return trial.suggest_float(name, low, high, log=True)
             return trial.suggest_float(name, low, high)
 
         # Group: Training (includes critical parameters)
         if "Training" in self.param_groups or "Critical" in self.param_groups:
-            params["learning_rate"] = suggest_with_mutation(
-                "learning_rate", 1e-5, 1e-2, log=True
-            )
-            params["weight_decay"] = suggest_with_mutation(
-                "weight_decay", 1e-6, 1e-3, log=True
-            )
-            
+            params["learning_rate"] = suggest_with_mutation("learning_rate", 1e-5, 1e-2, log=True)
+            params["weight_decay"] = suggest_with_mutation("weight_decay", 1e-6, 1e-3, log=True)
+
             # Batch size is categorical, mutation means picking a neighbor or staying same
             if is_exploit and "batch_size" in best_params:
                 params["batch_size"] = best_params["batch_size"]
                 trial.suggest_categorical("batch_size", [params["batch_size"]])
             else:
-                params["batch_size"] = trial.suggest_categorical(
-                    "batch_size", [32, 64, 128]
-                )
+                params["batch_size"] = trial.suggest_categorical("batch_size", [32, 64, 128])
 
             # Apply to config
             trial_config.training.learning_rate = params["learning_rate"]
@@ -447,9 +430,7 @@ class Objective:
 
             # Optimizer choice (only in full Training group)
             if "Training" in self.param_groups:
-                params["optimizer"] = trial.suggest_categorical(
-                    "optimizer", ["adam", "adamw"]
-                )
+                params["optimizer"] = trial.suggest_categorical("optimizer", ["adam", "adamw"])
                 trial_config.optimizer.optimizer = params["optimizer"]
 
         # Group: Model
@@ -459,9 +440,7 @@ class Objective:
 
             # Architecture-specific parameters
             if trial_config.model.architecture in ["lstm", "gru"]:
-                params["hidden_size"] = trial.suggest_categorical(
-                    "hidden_size", [64, 128, 256]
-                )
+                params["hidden_size"] = trial.suggest_categorical("hidden_size", [64, 128, 256])
                 params["num_layers"] = trial.suggest_int("num_layers", 1, 3)
                 trial_config.model.hidden_size = params["hidden_size"]
                 trial_config.model.num_layers = params["num_layers"]
@@ -471,19 +450,13 @@ class Objective:
 
         # Group: Augmentation
         if "Augmentation" in self.param_groups:
-            params["background_noise_prob"] = trial.suggest_float(
-                "background_noise_prob", 0.1, 0.9
-            )
+            params["background_noise_prob"] = trial.suggest_float("background_noise_prob", 0.1, 0.9)
             params["rir_prob"] = trial.suggest_float("rir_prob", 0.1, 0.8)
-            params["time_stretch_min"] = trial.suggest_float(
-                "time_stretch_min", 0.8, 0.95
-            )
-            params["time_stretch_max"] = trial.suggest_float(
-                "time_stretch_max", 1.05, 1.2
-            )
+            params["time_stretch_min"] = trial.suggest_float("time_stretch_min", 0.8, 0.95)
+            params["time_stretch_max"] = trial.suggest_float("time_stretch_max", 1.05, 1.2)
             params["freq_mask_param"] = trial.suggest_int("freq_mask_param", 10, 40)
             params["time_mask_param"] = trial.suggest_int("time_mask_param", 20, 60)
-            
+
             # New Augmentations
             params["pitch_shift_range"] = trial.suggest_int("pitch_shift_range", 1, 4)
             # We treat range as symmetric +/- value
@@ -504,22 +477,17 @@ class Objective:
             if not self.config.data.use_precomputed_features_for_training:
                 params["n_mels"] = trial.suggest_categorical("n_mels", [40, 64, 80])
                 trial_config.data.n_mels = params["n_mels"]
-                
+
                 params["hop_length"] = trial.suggest_categorical("hop_length", [160, 320])
                 trial_config.data.hop_length = params["hop_length"]
             else:
-                self._log(
-                    f"Skipping data optimization "
-                    f"(using precomputed features)"
-                )
+                self._log("Skipping data optimization " "(using precomputed features)")
 
         # Group: Loss
         if "Loss" in self.param_groups:
-            params["loss_function"] = trial.suggest_categorical(
-                "loss_function", ["cross_entropy", "focal_loss"]
-            )
+            params["loss_function"] = trial.suggest_categorical("loss_function", ["cross_entropy", "focal_loss"])
             trial_config.loss.loss_function = params["loss_function"]
-            
+
             params["label_smoothing"] = trial.suggest_float("label_smoothing", 0.0, 0.2)
             trial_config.loss.label_smoothing = params["label_smoothing"]
 
@@ -545,9 +513,14 @@ class Objective:
             trial: Optuna trial object
 
         Returns:
-            Best F1 score achieved in this trial
+            Best F1 score achieved in this trial or tuple of (pAUC, Latency)
         """
         trial_start_time = time.time()
+
+        # Initialize result variables early to avoid UnboundLocalError in finally block
+        best_f1 = 0.0
+        pauc_val = 0.0
+        latency_val = 1000.0
 
         # Create a copy of the config to avoid side effects
         trial_config = self.config.copy()
@@ -568,10 +541,7 @@ class Objective:
         trial_config.training.epochs = epochs
         trial_config.training.early_stopping_patience = max(3, epochs // 4)
 
-        self._log(
-            f"🚀 Trial {trial.number} started "
-            f"(epochs: {epochs}, params: {len(params)})"
-        )
+        self._log(f"Trial {trial.number} started " f"(epochs: {epochs}, params: {len(params)})")
 
         batch_size = trial_config.training.batch_size
 
@@ -600,9 +570,7 @@ class Objective:
             else:
                 feature_dim = trial_config.data.n_mels
 
-            input_samples = int(
-                trial_config.data.sample_rate * trial_config.data.audio_duration
-            )
+            input_samples = int(trial_config.data.sample_rate * trial_config.data.audio_duration)
             time_steps = input_samples // trial_config.data.hop_length + 1
 
             if trial_config.model.architecture == "cd_dnn":
@@ -642,10 +610,7 @@ class Objective:
             # Train with optional profiling
             if self.enable_profiling:
                 with torch.profiler.profile(
-                    activities=[
-                        torch.profiler.ProfilerActivity.CPU,
-                        torch.profiler.ProfilerActivity.CUDA
-                    ],
+                    activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
                     record_shapes=True,
                     profile_memory=True,
                     with_stack=True,
@@ -658,18 +623,18 @@ class Objective:
             else:
                 results = trainer.train()
 
-            best_f1 = results["best_val_f1"]
-            best_fpr = results["best_val_fpr"]
-            
+            best_f1 = results.get("best_val_f1", 0.0)
+            best_fpr = results.get("best_val_fpr", 1.0)
+
             # Retrieve best pAUC and Latency from tracker
             best_pauc_epoch, best_pauc_metrics = trainer.val_metrics_tracker.get_best_epoch("pauc")
-            
+
             if best_pauc_metrics:
-                pauc_val = best_pauc_metrics.pauc
-                latency_val = best_pauc_metrics.latency_ms
+                pauc_val = getattr(best_pauc_metrics, "pauc", 0.0)
+                latency_val = getattr(best_pauc_metrics, "latency_ms", 1000.0)
             else:
                 pauc_val = 0.0
-                latency_val = 1000.0 # Penalty
+                latency_val = 1000.0  # Penalty
 
             # FPR constraint - still useful to log
             if best_fpr > 0.05:
@@ -684,18 +649,19 @@ class Objective:
                 source_path = checkpoint_dir / "best_model.pt"
                 if source_path.exists():
                     shutil.copy(source_path, save_path)
-                    self._log(f"🏆 New best model saved (F1: {best_f1:.4f})")
+                    self._log(f"NEW BEST TRIAL (F1: {str(f'{best_f1:.4f}').replace('.', ',')} ⭐)")
 
             # Track trial time for performance analysis
             trial_time = time.time() - trial_start_time
             self.trial_times.append(trial_time)
 
+            f1_disp = f"{best_f1:.4f}".replace(".", ",")
             self._log(
-                f"✅ Trial {trial.number} completed in {trial_time:.1f}s "
-                f"(pAUC: {pauc_val:.4f}, Latency: {latency_val:.2f}ms)"
+                f"Trial {trial.number} finished in {trial_time:.1f}s | "
+                f"F1: {f1_disp} ⭐ | pAUC: {pauc_val:.4f} | Latency: {latency_val:.2f}ms"
             )
 
-            # Store multi-objective results in trial attributes for reference
+            # Store results in trial attributes for reference
             trial.set_user_attr("pauc", pauc_val)
             trial.set_user_attr("latency", latency_val)
             trial.set_user_attr("f1", best_f1)
@@ -708,14 +674,18 @@ class Objective:
         except Exception as e:
             self._log(f"❌ Trial {trial.number} failed: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
-            pauc_val = 0.0
-            latency_val = 1000.0
+            # Result variables are already initialized to defaults
         finally:
             # Clean up non-best trials to save disk space
+            # best_f1 is guaranteed to be defined here due to early initialization
             if checkpoint_dir.exists() and best_f1 < self.best_f1:
                 shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
+        # Return values based on objective type
+        if self.single_objective:
+            return best_f1
         return pauc_val, latency_val
 
     def cleanup(self):
@@ -726,9 +696,9 @@ class Objective:
         reports performance statistics.
         """
         # Delete DataLoaders to free workers
-        if hasattr(self, 'reusable_train_loader'):
+        if hasattr(self, "reusable_train_loader"):
             del self.reusable_train_loader
-        if hasattr(self, 'reusable_val_loader'):
+        if hasattr(self, "reusable_val_loader"):
             del self.reusable_val_loader
 
         # Report performance statistics
@@ -745,8 +715,6 @@ class Objective:
 # =============================================================================
 
 
-from src.training.hpo_results import HPOResult
-
 def run_hpo(
     config: WakewordConfig,
     train_loader: DataLoader,
@@ -758,6 +726,7 @@ def run_hpo(
     n_jobs: int = 1,
     cache_dir: Optional[Path] = None,
     enable_profiling: bool = False,
+    single_objective: bool = False,
 ) -> HPOResult:
     """
     Run optimized hyperparameter optimization using Optuna.
@@ -773,12 +742,13 @@ def run_hpo(
         n_jobs: Number of parallel trials (default: 1)
         cache_dir: Directory for caching checkpoints
         enable_profiling: Enable PyTorch profiling
+        single_objective: Whether to optimize for F1 score only (maximize)
 
     Returns:
         HPOResult object with standardized results
     """
     start_time = time.time()
-    
+
     # Create objective with all optimizations
     objective = Objective(
         config,
@@ -789,6 +759,7 @@ def run_hpo(
         cache_dir=cache_dir,
         enable_profiling=enable_profiling,
         n_jobs=n_jobs,
+        single_objective=single_objective,
     )
 
     # Use HyperbandPruner for better resource-efficient pruning
@@ -798,15 +769,20 @@ def run_hpo(
         reduction_factor=3,
     )
 
-    # Use NSGA-II for multi-objective optimization
-    sampler = optuna.samplers.NSGAIISampler(
-        population_size=20,
-        mutation_prob=0.1,
-    )
+    # Use NSGA-II for multi-objective, TPE for single objective
+    if single_objective:
+        sampler = optuna.samplers.TPESampler()
+        directions = ["maximize"]
+    else:
+        sampler = optuna.samplers.NSGAIISampler(
+            population_size=20,
+            mutation_prob=0.1,
+        )
+        directions = ["maximize", "minimize"]
 
-    # Create or load study with multiple objectives: pAUC (maximize) and Latency (minimize)
+    # Create or load study
     study = optuna.create_study(
-        directions=["maximize", "minimize"],
+        directions=directions,
         study_name=study_name,
         pruner=pruner,
         sampler=sampler,
@@ -820,16 +796,12 @@ def run_hpo(
             f"Param groups: {param_groups or ['Training', 'Model', 'Augmentation']}"
         )
 
-    logger.info(
-        f"Starting optimized HPO with {n_trials} trials, {n_jobs} parallel jobs"
-    )
+    logger.info(f"Starting optimized HPO with {n_trials} trials, {n_jobs} parallel jobs")
 
     # Run optimization
     try:
         if n_jobs > 1:
-            logger.warning(
-                "Parallel execution enabled. Ensure GPU memory is sufficient."
-            )
+            logger.warning("Parallel execution enabled. Ensure GPU memory is sufficient.")
             study.optimize(
                 objective,
                 n_trials=n_trials,
@@ -859,12 +831,14 @@ def run_hpo(
 
     # Prepare results
     if len(study.directions) > 1:
-        best_value = [t.values for t in study.best_trials]
-        best_params = study.best_trials[0].params if study.best_trials else {}
-        best_trials_data = [
-            {"number": t.number, "values": t.values, "params": t.params} 
-            for t in study.best_trials
-        ]
+        # For multi-objective, return list of values from first Pareto optimal trial
+        if study.best_trials:
+            best_value = list(study.best_trials[0].values)
+            best_params = study.best_trials[0].params
+        else:
+            best_value = [0.0, 1000.0]  # Default values (pauc, latency)
+            best_params = {}
+        best_trials_data = [{"number": t.number, "values": t.values, "params": t.params} for t in study.best_trials]
     else:
         best_value = study.best_value
         best_params = study.best_params
@@ -876,7 +850,7 @@ def run_hpo(
         best_params=best_params,
         n_trials=len(study.trials),
         duration=duration,
-        best_trials=best_trials_data
+        best_trials=best_trials_data,
     )
 
 
@@ -909,7 +883,7 @@ def run_progressive_hpo(
 
     # Phase 1: Optimize critical parameters only (fast convergence)
     if log_callback:
-        log_callback("🎯 Phase 1: Optimizing critical parameters...")
+        log_callback("🎯 PHASE 1: Optimizing Critical Hyperparameters (LR, Batch Size, Weight Decay)...")
 
     result_phase1 = run_hpo(
         config,
@@ -927,7 +901,7 @@ def run_progressive_hpo(
     # For multi-objective, we pick the first trial in the Pareto front as a heuristic
     best_config = config.copy()
     phase1_params = result_phase1.best_params
-    
+
     for key, value in phase1_params.items():
         if key == "learning_rate":
             best_config.training.learning_rate = value
@@ -940,7 +914,7 @@ def run_progressive_hpo(
 
     # Phase 2: Fine-tune with augmentation parameters
     if log_callback:
-        log_callback("🎯 Phase 2: Fine-tuning with augmentation parameters...")
+        log_callback("🎯 PHASE 2: Fine-tuning with Augmentation & Model Architecture parameters...")
 
     final_result = run_hpo(
         best_config,

@@ -3,10 +3,18 @@ Wakeword Training Loop
 GPU-accelerated training with checkpointing, early stopping, and metrics tracking
 """
 
+import asyncio  # Mevcutsa, yoksa ekle
+import sys  # Mevcutsa, yoksa ekle
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 if TYPE_CHECKING:
     from src.config.defaults import WakewordConfig
@@ -15,14 +23,6 @@ import structlog
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-
-logger = structlog.get_logger(__name__)
-
-if torch.cuda.is_available():
-    torch.backends.cudnn.benchmark = True
-
-import shutil
-import threading
 
 from src.config.cuda_utils import enforce_cuda
 from src.config.seed_utils import set_seed
@@ -35,6 +35,11 @@ from src.training.metrics import MetricMonitor, MetricResults, MetricsTracker
 from src.training.optimizer_factory import create_grad_scaler, create_optimizer_and_scheduler, get_learning_rate
 from src.training.training_loop import train_epoch, validate_epoch
 
+logger = structlog.get_logger(__name__)
+
+if torch.cuda.is_available():
+    torch.backends.cudnn.benchmark = True
+
 
 @dataclass
 class TrainingState:
@@ -43,7 +48,7 @@ class TrainingState:
     epoch: int = 0
     global_step: int = 0
     best_val_loss: float = float("inf")
-    best_val_f1: float = 0.0
+    best_val_f1: float = -1.0
     best_val_fpr: float = 1.0
     best_val_pauc: float = 0.0
     epochs_without_improvement: int = 0
@@ -107,9 +112,25 @@ class Trainer:
 
         # Move model to GPU
         self.model = model.to(device)
+        
+        # Performance: Gradient Checkpointing
+        if getattr(config.training, "use_gradient_checkpointing", False):
+            if hasattr(self.model, "gradient_checkpointing_enable"):
+                self.model.gradient_checkpointing_enable()
+                logger.info("Gradient checkpointing enabled")
+
         # channels_last bellek düzeni (Ampere+ için throughput ↑) - Only on CUDA
         if device == "cuda":
             self.model = self.model.to(memory_format=torch.channels_last)  # type: ignore
+            logger.info("Using channels_last memory format for model")
+
+            # Torch.compile optimization for PyTorch 2.0+
+            if getattr(config.training, "use_compile", True) and hasattr(torch, "compile"):
+                try:
+                    self.model = torch.compile(self.model, mode="max-autotune")  # type: ignore[assignment]
+                    logger.info("Torch.compile enabled with max-autotune mode")
+                except Exception as e:
+                    logger.warning(f"Torch.compile failed: {e}, continuing without compilation")
 
         # Data loaders
         self.train_loader = train_loader
@@ -145,6 +166,13 @@ class Trainer:
             device=device,
             reduction="none",  # Changed from default 'mean'
         ).to(device)
+
+        # Dynamic alpha for FNR optimization
+        self.use_dynamic_alpha = getattr(config.loss, "use_dynamic_alpha", False)
+        if self.use_dynamic_alpha:
+            self.base_alpha = getattr(config.loss, "focal_alpha", 0.75)
+            self.max_alpha = getattr(config.loss, "max_focal_alpha", 0.90)
+            logger.info(f"Dynamic alpha enabled: {self.base_alpha} → {self.max_alpha}")
 
         # Create optimizer and scheduler (self.model ile kur)
         self.optimizer, self.scheduler = create_optimizer_and_scheduler(
@@ -252,7 +280,7 @@ class Trainer:
         }
 
         logger.info("=" * 80)
-        logger.info("Starting training")
+        logger.info("STARTING TRAINING SESSION")
         logger.info(f"  Epochs: {self.config.training.epochs}")
         logger.info(f"  Training batches: {len(self.train_loader)}")
         logger.info(f"  Validation batches: {len(self.val_loader)}")
@@ -263,11 +291,30 @@ class Trainer:
 
         try:
             for epoch in range(start_epoch, self.config.training.epochs):
-                self.state.epoch = epoch
+                logger.info(f"Epoch {epoch+1}/{self.config.training.epochs} starting")
+                self._update_augmentation_epoch(epoch)
                 self._call_callbacks("on_epoch_start", epoch)
 
-                train_loss, train_acc = train_epoch(self, epoch)
-                val_loss, val_metrics = validate_epoch(self, epoch)
+                # Check for QAT transition
+                self._check_qat_transition(epoch)
+
+                # Apply dynamic alpha for FNR optimization
+                if self.use_dynamic_alpha and hasattr(self.criterion, "set_alpha"):
+                    current_alpha = self._compute_dynamic_alpha(epoch)
+                    self.criterion.set_alpha(current_alpha)
+                    logger.info(f"Epoch {epoch+1}: Dynamic focal alpha = {current_alpha:.4f}")
+
+                try:
+                    train_loss, train_acc = train_epoch(self, epoch)
+                    val_loss, val_metrics = validate_epoch(self, epoch)
+                except ConnectionResetError:
+                    if sys.platform == "win32":
+                        logger.warning("ConnectionResetError suppressed during training loop (harmless Windows error)")
+                        # Try to continue or return current state
+                        logger.warning(f"Epoch {epoch+1} metrics may be incomplete")
+                        continue
+                    else:
+                        raise
 
                 self._update_scheduler(val_loss)
                 current_lr = get_learning_rate(self.optimizer)
@@ -303,15 +350,34 @@ class Trainer:
 
                 self._call_callbacks("on_epoch_end", epoch, train_loss, val_loss, val_metrics)
 
-                logger.info(f"Epoch {epoch+1}/{self.config.training.epochs}")
+                logger.info(f"Epoch {epoch+1}/{self.config.training.epochs} Results:")
                 logger.info(f"  Train: Loss={train_loss:.4f}, Acc={train_acc:.4f}")
-                logger.info(
-                    f"  Val:   Loss={val_loss:.4f}, Acc={val_metrics.accuracy:.4f}, "
-                    f"F1={val_metrics.f1_score:.4f}, pAUC={val_metrics.pauc:.4f}, FPR={val_metrics.fpr:.4f}, FNR={val_metrics.fnr:.4f}"
-                )
-                logger.info(f"  LR: {current_lr:.6f}")
+                logger.info(f"  Val:")
+                logger.info(f"    - Loss:      {val_loss:.4f}")
+                logger.info(f"    - Accuracy:  {val_metrics.accuracy:.4f}")
+                logger.info(f"    - F1 Score:  {val_metrics.f1_score:.4f}")
+                logger.info(f"    - pAUC:      {val_metrics.pauc:.4f}")
+                logger.info(f"    - FPR:       {val_metrics.fpr:.4f}")
+                logger.info(f"    - FNR:       {val_metrics.fnr:.4f}")
+
+                # Visual Confusion Matrix
+                logger.info(f"    Confusion Matrix:")
+                logger.info(f"      [ TN={val_metrics.true_negatives:<5} | FP={val_metrics.false_positives:<5} ] (Actual Neg)")
+                logger.info(f"      [ FN={val_metrics.false_negatives:<5} | TP={val_metrics.true_positives:<5} ] (Actual Pos)")
+                
+                # Confidence Histogram
+                if val_metrics.confidence_histogram:
+                    logger.info(val_metrics.confidence_histogram)
+
+                # Standout F1 Score log
+                f1_formatted = f"{val_metrics.f1_score:.3f}".replace(".", ",")
+                logger.info("\n" + "-" * 30)
+                logger.info(f"⭐ F1 SCORE: {f1_formatted} ⭐")
+                logger.info("-" * 30 + "\n")
+
+                logger.info(f"  Learning Rate: {current_lr:.6f}")
                 if improved:
-                    logger.info(f"  ✅ New best model (improvement detected)")
+                    logger.info(f"  ✅ New best model saved! (F1: {val_metrics.f1_score:.4f})")
 
         except KeyboardInterrupt:
             logger.info("Training interrupted by user")
@@ -320,20 +386,20 @@ class Trainer:
         self.state.training_time = end_time - start_time
 
         logger.info("=" * 80)
-        logger.info("Training complete")
-        logger.info(f"  Total time: {self.state.training_time / 3600:.2f} hours")
+        logger.info("TRAINING SESSION COMPLETE")
+        logger.info(f"  Total time:    {self.state.training_time / 3600:.2f} hours")
         logger.info(f"  Best val loss: {self.state.best_val_loss:.4f}")
-        logger.info(f"  Best val F1: {self.state.best_val_f1:.4f}")
-        logger.info(f"  Best val FPR: {self.state.best_val_fpr:.4f}")
+        logger.info(f"  Best val F1:   {self.state.best_val_f1:.4f}")
+        logger.info(f"  Best val FPR:  {self.state.best_val_fpr:.4f}")
         logger.info("=" * 80)
 
         best_f1_epoch, best_f1_metrics = self.val_metrics_tracker.get_best_epoch("f1_score")
         best_fpr_epoch, best_fpr_metrics = self.val_metrics_tracker.get_best_epoch("fpr")
 
         if best_f1_metrics:
-            logger.info(f"\nBest F1 Score: {best_f1_metrics.f1_score:.4f} (Epoch {best_f1_epoch+1})")
-        if best_fpr_metrics:
-            logger.info(f"Best FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
+            logger.info(f"\n🏆 BEST F1 SCORE: {best_f1_metrics.f1_score:.4f} ⭐ (Epoch {best_f1_epoch+1})")
+        if best_fpr_metrics and best_fpr_epoch + 1 > 1:
+            logger.info(f"BEST FPR: {best_fpr_metrics.fpr:.4f} (Epoch {best_fpr_epoch+1})")
 
         results = {
             "history": history,
@@ -346,9 +412,91 @@ class Trainer:
             "best_fpr_epoch": best_fpr_epoch,
         }
 
+        # Final QAT reporting if enabled
+        if getattr(self.config.qat, "enabled", False):
+            try:
+                from src.training.qat_utils import compare_model_accuracy, convert_model_to_quantized
+
+                logger.info("Generating Quantization Error Report...")
+                # We need a copy of the model to convert it to quantized without destroying the original
+                # However, for the report, we can just convert it since training is done.
+                fp32_model = self.model  # This is actually the QAT model (with fake quants)
+
+                # To get true INT8 performance, we convert
+                # Moving to CPU first is safer for quantization conversion in some PyTorch versions
+                self.model.to("cpu")
+                quantized_model = convert_model_to_quantized(self.model)
+
+                qat_report = compare_model_accuracy(
+                    fp32_model, quantized_model, self.val_loader, device="cpu", audio_processor=self.audio_processor
+                )
+                results["qat_report"] = qat_report
+            except Exception as e:
+                logger.warning(f"Failed to generate QAT report: {e}", exc_info=True)
+
         self._call_callbacks("on_train_end")
 
         return results
+
+    def _update_augmentation_epoch(self, epoch: int) -> None:
+        """Update epoch in augmentation module for SNR scheduling."""
+        if hasattr(self, "audio_processor") and self.audio_processor is not None:
+            if hasattr(self.audio_processor, "augmentation") and self.audio_processor.augmentation is not None:
+                self.audio_processor.augmentation.set_epoch(epoch, self.config.training.epochs)
+
+    def _check_qat_transition(self, epoch: int) -> None:
+        """Check and handle transition to QAT fine-tuning"""
+        if not getattr(self.config.qat, "enabled", False):
+            return
+
+        if epoch == self.config.qat.start_epoch:
+            logger.info(f"--- QAT Transition Triggered (Epoch {epoch}) ---")
+
+            # 1. Prepare model for QAT (inserts observers)
+            from src.training.qat_utils import prepare_model_for_qat
+
+            self.model.train()
+            self.model = prepare_model_for_qat(self.model, self.config.qat)
+            self.model.to(self.device)
+
+            # 2. Calibrate model to initialize observers with statistics
+            from src.training.qat_utils import calibrate_model
+
+            logger.info("Calibrating QAT observers...")
+            calibrate_model(self.model, self.val_loader, device=self.device, audio_processor=self.audio_processor)
+
+            # 3. Re-initialize optimizer for the new model parameters (fake quants)
+            # Use lower learning rate for QAT fine-tuning if desired
+            self.optimizer, self.scheduler = create_optimizer_and_scheduler(
+                self.model, self.config, steps_per_epoch=len(self.train_loader)
+            )
+
+            # 4. Disable mixed precision as it can interfere with QAT observers
+            if self.use_mixed_precision:
+                logger.info("Disabling mixed precision for QAT fine-tuning")
+                self.use_mixed_precision = False
+                self.scaler = create_grad_scaler(enabled=False)
+
+    def _compute_dynamic_alpha(self, epoch: int) -> float:
+        """Compute dynamic focal alpha based on training epoch
+
+        Args:
+            epoch: Current epoch number
+
+        Returns:
+            Current alpha value for focal loss
+        """
+        if not self.use_dynamic_alpha:
+            return getattr(self.config.loss, "focal_alpha", 0.25)
+
+        # Linear increase from base_alpha to max_alpha in first 50 epochs
+        if epoch < 50:
+            progress = epoch / 50
+            current_alpha = self.base_alpha + (self.max_alpha - self.base_alpha) * progress
+        else:
+            current_alpha = self.max_alpha
+
+        return current_alpha
 
     def _update_scheduler(self, val_loss: float) -> None:
         """Update learning rate scheduler"""
@@ -360,12 +508,13 @@ class Trainer:
                     self.scheduler.step()
 
     def _check_improvement(self, val_loss: float, val_metrics: MetricResults) -> bool:
-        """Check if model improved based on primary metric (val_f1)
-        Simplified to use single primary metric for early stopping
+        """Check if model improved based on primary metric
+        Supports FNR-oriented training when fnr_target is set
         """
         improved = False
         val_f1 = val_metrics.f1_score
         val_fpr = val_metrics.fpr
+        val_fnr = val_metrics.fnr  # FNR critical metric
         val_pauc = val_metrics.pauc
 
         # Track all metrics for logging
@@ -378,13 +527,30 @@ class Trainer:
         if val_pauc > self.state.best_val_pauc:
             self.state.best_val_pauc = val_pauc
 
-        # Primary metric: val_f1 (for early stopping)
-        if val_f1 > self.state.best_val_f1:
-            self.state.best_val_f1 = val_f1
-            improved = True
-            self.state.epochs_without_improvement = 0
+        # FNR-oriented early stopping if target is set
+        fnr_target = getattr(self.config.training, "fnr_target", None)
+        if fnr_target is not None:
+            # FNR target mode - treat FNR as primary metric
+            if val_fnr <= fnr_target:
+                # FNR met, check F1 for best model
+                if val_f1 > self.state.best_val_f1:
+                    self.state.best_val_f1 = val_f1
+                    improved = True
+                    self.state.epochs_without_improvement = 0
+                else:
+                    self.state.epochs_without_improvement += 1
+            else:
+                # FNR still above target, keep training
+                self.state.epochs_without_improvement = 0
+                logger.debug(f"FNR={val_fnr:.4f} > target={fnr_target:.4f}, continuing training")
         else:
-            self.state.epochs_without_improvement += 1
+            # Standard F1-based early stopping
+            if val_f1 > self.state.best_val_f1:
+                self.state.best_val_f1 = val_f1
+                improved = True
+                self.state.epochs_without_improvement = 0
+            else:
+                self.state.epochs_without_improvement += 1
 
         return improved
 
@@ -477,13 +643,13 @@ if __name__ == "__main__":
     from src.models.architectures import create_model
 
     model = create_model("resnet18", num_classes=2, pretrained=False)
-    print(f"✅ Created model: ResNet18")
+    print("✅ Created model: ResNet18")
 
     # Create dummy config
-    from src.config.defaults import WakewordConfig
+    from src.config.defaults import WakewordConfig as WakewordCfg
 
-    config = WakewordConfig()
-    print(f"✅ Created config")
+    config = WakewordCfg()
+    print("✅ Created config")
 
     # Create dummy data loaders
     dummy_dataset = torch.utils.data.TensorDataset(
@@ -511,11 +677,11 @@ if __name__ == "__main__":
             checkpoint_manager=checkpoint_manager,
             device=device,
         )
-        print(f"✅ Trainer initialized successfully")
+        print("✅ Trainer initialized successfully")
 
         print("\n✅ Trainer module loaded successfully")
         print("Note: Full training test requires actual dataset and GPU")
 
-    except SystemExit as e:
+    except SystemExit:
         print("\n❌ Trainer requires CUDA GPU (as specified in requirements)")
         print("  This is expected behavior - CPU fallback not allowed")

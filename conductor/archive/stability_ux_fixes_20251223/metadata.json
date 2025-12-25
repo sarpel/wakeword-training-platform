@@ -1,0 +1,8 @@
+{
+  "track_id": "stability_ux_fixes_20251223",
+  "type": "bug",
+  "status": "new",
+  "created_at": "2025-12-23T10:00:00Z",
+  "updated_at": "2025-12-23T10:00:00Z",
+  "description": "Comprehensive stability and UX fixes including QAT report mismatch, connection error suppression, ESP32S3 preset updates, and HPO profile loading."
+}

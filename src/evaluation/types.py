@@ -1,11 +1,13 @@
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Optional
+
 import numpy as np
+
 
 class StageBase(ABC):
     """Base class for all inference stages (e.g., Sentry, Judge)"""
-    
+
     @abstractmethod
     def predict(self, audio: np.ndarray) -> dict:
         """Run prediction on an audio segment"""
@@ -17,11 +19,12 @@ class StageBase(ABC):
         """Name of the stage"""
         pass
 
+
 class InferenceEngine(ABC):
     """Base class for the orchestration engine"""
-    
+
     @abstractmethod
-    def add_stage(self, stage: StageBase):
+    def add_stage(self, stage: StageBase) -> None:
         """Add a stage to the pipeline"""
         pass
 
@@ -29,6 +32,7 @@ class InferenceEngine(ABC):
     def run(self, audio: np.ndarray) -> list:
         """Execute the full pipeline"""
         pass
+
 
 @dataclass
 class EvaluationResult:

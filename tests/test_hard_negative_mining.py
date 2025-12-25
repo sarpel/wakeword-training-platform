@@ -61,3 +61,19 @@ def test_update_and_inject(tmp_path):
     count = miner.inject_to_dataset(target_dir=str(inject_dir))
     assert count == 1
     assert (inject_dir / "fake.wav").exists()
+
+def test_confirm_all_pending(tmp_path):
+    queue_file = tmp_path / "queue.json"
+    miner = HardNegativeMiner(queue_path=str(queue_file))
+    
+    miner.queue = [
+        {"filename": "f1.wav", "full_path": "p1", "confidence": 0.9, "status": "pending"},
+        {"filename": "f2.wav", "full_path": "p2", "confidence": 0.8, "status": "pending"},
+        {"filename": "f3.wav", "full_path": "p3", "confidence": 0.7, "status": "discarded"}
+    ]
+    
+    count = miner.confirm_all_pending()
+    assert count == 2
+    assert miner.queue[0]["status"] == "confirmed"
+    assert miner.queue[1]["status"] == "confirmed"
+    assert miner.queue[2]["status"] == "discarded"

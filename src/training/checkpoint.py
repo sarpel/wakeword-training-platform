@@ -35,19 +35,13 @@ def _save_checkpoint(
         return
 
     # Convert config to dict if it has to_dict method, otherwise save as is
-    config_dict = (
-        trainer.config.to_dict()
-        if hasattr(trainer.config, "to_dict")
-        else trainer.config
-    )
+    config_dict = trainer.config.to_dict() if hasattr(trainer.config, "to_dict") else trainer.config
 
     checkpoint = {
         "epoch": epoch,
         "model_state_dict": trainer.model.state_dict(),
         "optimizer_state_dict": trainer.optimizer.state_dict(),
-        "scheduler_state_dict": trainer.scheduler.state_dict()
-        if trainer.scheduler
-        else None,
+        "scheduler_state_dict": trainer.scheduler.state_dict() if trainer.scheduler else None,
         "scaler_state_dict": trainer.scaler.state_dict(),
         "state": trainer.state,
         "config": config_dict,
@@ -71,7 +65,8 @@ def load_checkpoint(trainer: "Trainer", checkpoint_path: Path) -> None:
     """Load checkpoint"""
     logger.info(f"Loading checkpoint from: {checkpoint_path}")
 
-    checkpoint = torch.load(checkpoint_path, map_location=trainer.device)
+    # weights_only=False required because checkpoint contains non-tensor data (epoch, config, metrics, etc.)
+    checkpoint = torch.load(checkpoint_path, map_location=trainer.device, weights_only=False)
 
     trainer.model.load_state_dict(checkpoint["model_state_dict"])
     trainer.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

@@ -135,8 +135,8 @@ class CheckpointManager:
 
         for checkpoint_path in self.checkpoint_dir.glob("*.pt"):
             try:
-                # Load checkpoint metadata
-                checkpoint = torch.load(checkpoint_path, map_location="cpu")
+                # Load checkpoint metadata (only need epoch/metrics, weights_only is fine here)
+                checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
 
                 # Extract metadata
                 epoch = checkpoint.get("epoch", 0)
@@ -217,7 +217,7 @@ class CheckpointManager:
         """
         logger.info(f"Loading checkpoint: {checkpoint_path}")
 
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
         # Load model weights
         if model is not None:
@@ -371,7 +371,7 @@ class CheckpointManager:
 
         logger.info(f"Loading model snapshot: {snapshot_path}")
 
-        snapshot = torch.load(snapshot_path, map_location=device)
+        snapshot = torch.load(snapshot_path, map_location=device, weights_only=True)
         model.load_state_dict(snapshot["model_state_dict"])
 
         return cast(Dict[str, Any], snapshot.get("metadata", {}))
@@ -389,7 +389,7 @@ def extract_model_for_inference(checkpoint_path: Path, output_path: Path, device
     logger.info(f"Extracting model from: {checkpoint_path}")
 
     # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
     # Create inference-only checkpoint
     inference_checkpoint = {
@@ -427,7 +427,7 @@ def compare_checkpoints(checkpoint_paths: List[Path], metric: str = "val_f1") ->
 
     for path in checkpoint_paths:
         try:
-            checkpoint = torch.load(path, map_location="cpu")
+            checkpoint = torch.load(path, map_location="cpu", weights_only=True)
             val_metrics = checkpoint.get("val_metrics", {})
 
             # Map metric name
@@ -469,7 +469,7 @@ if __name__ == "__main__":
 
     # Create checkpoint manager
     manager = CheckpointManager(test_dir)
-    print(f"✅ CheckpointManager created")
+    print("✅ CheckpointManager created")
 
     # Create dummy checkpoints
     print("\n1. Creating dummy checkpoints...")
@@ -500,7 +500,7 @@ if __name__ == "__main__":
         "val_metrics": {"accuracy": 0.92, "f1_score": 0.89, "fpr": 0.05, "fnr": 0.08},
     }
     torch.save(best_checkpoint, test_dir / "best_model.pt")
-    print(f"  Created: best_model.pt")
+    print("  Created: best_model.pt")
 
     # List checkpoints
     print("\n2. Listing checkpoints...")
@@ -520,7 +520,7 @@ if __name__ == "__main__":
     # Export checkpoint info
     print("\n4. Exporting checkpoint info...")
     manager.export_checkpoint_info(test_dir / "checkpoint_info.json")
-    print(f"  ✅ Exported to checkpoint_info.json")
+    print("  ✅ Exported to checkpoint_info.json")
 
     # Cleanup old checkpoints
     print("\n5. Testing cleanup...")
@@ -531,7 +531,7 @@ if __name__ == "__main__":
     # Cleanup test directory
     print("\n6. Cleaning up test files...")
     shutil.rmtree(test_dir)
-    print(f"  ✅ Test directory removed")
+    print("  ✅ Test directory removed")
 
     print("\n✅ All checkpoint manager tests passed successfully")
     print("Checkpoint manager module loaded successfully")

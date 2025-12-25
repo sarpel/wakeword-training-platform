@@ -4,7 +4,7 @@ Supports: ResNet18, MobileNetV3, LSTM, GRU, TCN
 """
 
 import logging
-from typing import Any, List, cast
+from typing import Any, List, Optional, cast
 
 import torch
 import torch.nn as nn
@@ -12,11 +12,13 @@ import torch.nn.functional as F
 
 try:
     import torchvision.models as models
+    from torchvision.models import quantization as quantized_models
 
     HAS_TORCHVISION = True
 except ImportError:
     HAS_TORCHVISION = False
     models = None
+    quantized_models = None
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ class ResNet18Wakeword(nn.Module):
         pretrained: bool = False,
         dropout: float = 0.3,
         input_channels: int = 1,
-        **kwargs: Any  # Accept additional kwargs for flexibility
+        **kwargs: Any,  # Accept additional kwargs for flexibility
     ):
         """
         Initialize ResNet18 for wakeword detection
@@ -48,10 +50,15 @@ class ResNet18Wakeword(nn.Module):
         if not HAS_TORCHVISION:
             raise ImportError("torchvision is required for ResNet18. Please install it.")
 
-        if pretrained:
-            self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        # Use quantized model version if available, as it handles skip connections with FloatFunctional
+        if quantized_models is not None:
+            # We use quantize=False as we handle preparation manually for QAT
+            self.resnet = quantized_models.resnet18(weights=None, quantize=False)
         else:
-            self.resnet = models.resnet18(weights=None)
+            if pretrained:
+                self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            else:
+                self.resnet = models.resnet18(weights=None)
 
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
@@ -60,6 +67,10 @@ class ResNet18Wakeword(nn.Module):
         # Replace final fully connected layer
         num_features = self.resnet.fc.in_features
         self.resnet.fc = nn.Sequential(nn.Dropout(dropout), nn.Linear(num_features, num_classes))
+
+        # NEW: Quantization stubs for QAT support
+        self.quant = torch.ao.quantization.QuantStub()
+        self.dequant = torch.ao.quantization.DeQuantStub()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -71,7 +82,10 @@ class ResNet18Wakeword(nn.Module):
         Returns:
             Output logits (batch, num_classes)
         """
-        return cast(torch.Tensor, self.resnet(x))
+        x = self.quant(x)
+        x = self.resnet(x)
+        x = self.dequant(x)
+        return cast(torch.Tensor, x)
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -110,7 +124,7 @@ class MobileNetV3Wakeword(nn.Module):
         hidden_size: int = 128,
         num_layers: int = 0,
         bidirectional: bool = True,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """
         Initialize MobileNetV3 for wakeword detection with hybrid architecture support
@@ -131,10 +145,13 @@ class MobileNetV3Wakeword(nn.Module):
         if not HAS_TORCHVISION:
             raise ImportError("torchvision is required for MobileNetV3. Please install it.")
 
-        if pretrained:
-            self.mobilenet = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
+        if quantized_models is not None and hasattr(quantized_models, "mobilenet_v3_small"):
+            self.mobilenet = quantized_models.mobilenet_v3_small(weights=None, quantize=False)
         else:
-            self.mobilenet = models.mobilenet_v3_small(weights=None)
+            if pretrained:
+                self.mobilenet = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
+            else:
+                self.mobilenet = models.mobilenet_v3_small(weights=None)
 
         # Modify first conv layer for single channel input if needed
         if input_channels != 3:
@@ -144,27 +161,27 @@ class MobileNetV3Wakeword(nn.Module):
 
         # Extract the feature extractor (without the classifier)
         self.features = self.mobilenet.features
-        
+
         # Get the number of output features from the feature extractor
         num_features = self.mobilenet.classifier[0].in_features
-        
+
         # Build hybrid head based on config
-        head_layers = []
-        
+        head_layers: List[nn.Module] = []
+
         # Add RNN layers if configured
         self.use_rnn = num_layers > 0
         if self.use_rnn:
             rnn_type = kwargs.get("rnn_type", "lstm").lower()
             # hidden_size, num_layers, bidirectional are now passed as args
-            
+
             if rnn_type == "lstm":
-                self.rnn = nn.LSTM(
+                self.rnn: Any = nn.LSTM(
                     input_size=num_features,
                     hidden_size=hidden_size,
                     num_layers=num_layers,
                     bidirectional=bidirectional,
                     dropout=dropout if num_layers > 1 else 0,
-                    batch_first=True
+                    batch_first=True,
                 )
             else:  # gru
                 self.rnn = nn.GRU(
@@ -173,32 +190,36 @@ class MobileNetV3Wakeword(nn.Module):
                     num_layers=num_layers,
                     bidirectional=bidirectional,
                     dropout=dropout if num_layers > 1 else 0,
-                    batch_first=True
+                    batch_first=True,
                 )
-            
+
             # Update num_features for the next layer
             num_features = hidden_size * (2 if bidirectional else 1)
         else:
             self.rnn = None
-        
+
         # Build custom MLP head
         cddnn_hidden_layers = kwargs.get("cddnn_hidden_layers", [1024])
-        
+
         # Build the MLP layers
         for hidden_size in cddnn_hidden_layers:
             head_layers.append(nn.Linear(num_features, hidden_size))
             head_layers.append(nn.Hardswish())
             head_layers.append(nn.Dropout(dropout))
             num_features = hidden_size
-        
+
         # Add final classification layer
         head_layers.append(nn.Linear(num_features, num_classes))
-        
+
         # Create the classifier head
         self.classifier = nn.Sequential(*head_layers)
-        
+
         # Store whether to use adaptive pooling
         self.use_adaptive_pool = True
+
+        # NEW: Quantization stubs for QAT support
+        self.quant = torch.ao.quantization.QuantStub()
+        self.dequant = torch.ao.quantization.DeQuantStub()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -210,16 +231,17 @@ class MobileNetV3Wakeword(nn.Module):
         Returns:
             Output tensor of shape (batch, num_classes)
         """
+        x = self.quant(x)
         # Extract features
         x = self.features(x)
-        
+
         # Adaptive average pooling
         if self.use_adaptive_pool:
             x = F.adaptive_avg_pool2d(x, (1, 1))
-        
+
         # Flatten
         x = x.view(x.size(0), -1)
-        
+
         # Apply RNN if configured
         if self.rnn is not None:
             # Reshape for RNN: (batch, seq_len=1, features)
@@ -227,10 +249,11 @@ class MobileNetV3Wakeword(nn.Module):
             x, _ = self.rnn(x)
             # Take the last output
             x = x[:, -1, :]
-        
+
         # Apply classifier head
         x = self.classifier(x)
-        
+        x = self.dequant(x)
+
         return x
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
@@ -245,24 +268,24 @@ class MobileNetV3Wakeword(nn.Module):
         """
         # Extract features
         x = self.features(x)
-        
+
         # Adaptive average pooling
         if self.use_adaptive_pool:
             x = F.adaptive_avg_pool2d(x, (1, 1))
-        
+
         # Flatten
         x = x.view(x.size(0), -1)
-        
+
         # Apply RNN if configured
         if self.rnn is not None:
             x = x.unsqueeze(1)
             x, _ = self.rnn(x)
             x = x[:, -1, :]
-        
+
         # Apply all layers except the last one
         for layer in self.classifier[:-1]:
             x = layer(x)
-        
+
         return x
 
 
@@ -271,13 +294,13 @@ class LSTMWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 40,  # n_mfcc
+        input_size: int = 64,  # n_mfcc
         hidden_size: int = 128,
         num_layers: int = 2,
         num_classes: int = 2,
         bidirectional: bool = True,
         dropout: float = 0.3,
-        **kwargs: Any  # Accept additional kwargs for flexibility
+        **kwargs: Any,  # Accept additional kwargs for flexibility
     ):
         """
         Initialize LSTM for wakeword detection
@@ -375,13 +398,13 @@ class GRUWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 40,
+        input_size: int = 64,
         hidden_size: int = 128,
         num_layers: int = 2,
         num_classes: int = 2,
         bidirectional: bool = True,
         dropout: float = 0.3,
-        **kwargs: Any  # Accept additional kwargs for flexibility
+        **kwargs: Any,  # Accept additional kwargs for flexibility
     ):
         """
         Initialize GRU for wakeword detection
@@ -478,7 +501,7 @@ class TemporalConvNet(nn.Module):
 
     def __init__(
         self,
-        input_channels: int = 40,
+        input_channels: int = 64,
         num_channels: list = [64, 128, 256],
         kernel_size: int = 3,
         dropout: float = 0.3,
@@ -570,6 +593,7 @@ class TemporalBlock(nn.Module):
         # Downsample for residual connection if needed
         self.downsample = nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels else None
         self.relu = nn.ReLU()
+        self.skip_add = nn.quantized.FloatFunctional()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass"""
@@ -586,7 +610,7 @@ class TemporalBlock(nn.Module):
 
         # Residual connection
         res = x if self.downsample is None else self.downsample(x)
-        return cast(torch.Tensor, self.relu(out + res))
+        return cast(torch.Tensor, self.relu(self.skip_add.add(out, res)))
 
 
 class TCNWakeword(nn.Module):
@@ -594,12 +618,12 @@ class TCNWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 40,
-        num_channels: list = None,
+        input_size: int = 64,
+        num_channels: Optional[list] = None,
         kernel_size: int = 3,
         num_classes: int = 2,
         dropout: float = 0.3,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """
         Initialize TCN for wakeword detection
@@ -620,11 +644,11 @@ class TCNWakeword(nn.Module):
         # Use config parameters from kwargs if available
         if num_channels is None:
             num_channels = kwargs.get("tcn_num_channels", [64, 128, 256])
-        
+
         # Override with kwargs if present
         kernel_size = kwargs.get("tcn_kernel_size", kernel_size)
         dropout = kwargs.get("tcn_dropout", dropout)
-        
+
         self.input_size = input_size  # Store input size for verification/testing
         self.tcn = TemporalConvNet(
             input_channels=input_size,
@@ -701,8 +725,8 @@ class TinyConvWakeword(nn.Module):
         num_classes: int = 2,
         input_channels: int = 1,
         dropout: float = 0.3,
-        tcn_num_channels: list = None,
-        **kwargs: Any
+        tcn_num_channels: Optional[list] = None,
+        **kwargs: Any,
     ) -> None:
         """
         Initialize TinyConvWakeword with dynamic channel configuration
@@ -715,52 +739,55 @@ class TinyConvWakeword(nn.Module):
             **kwargs: Additional arguments
         """
         super().__init__()
-        
+
         # Get channel configuration
         if tcn_num_channels is None:
             tcn_num_channels = [16, 32, 64, 64]
-        
+
         channels = tcn_num_channels
         kernel_size = kwargs.get("kernel_size", 3)
         conv_dropout = kwargs.get("tcn_dropout", dropout)
-        
+
         # Build dynamic feature extraction layers
-        layers = []
+        layers: List[nn.Module] = []
         in_channels = input_channels
-        
+
         for i, out_channels in enumerate(channels):
             # Determine stride (2 for first few layers to downsample, 1 for later layers)
             stride = 2 if i < min(3, len(channels) - 1) else 1
-            
+
             # Add convolutional block
-            layers.append(nn.Conv2d(
-                in_channels, out_channels, 
-                kernel_size=kernel_size, 
-                stride=stride, 
-                padding=kernel_size // 2,  # Same padding
-                bias=False
-            ))
+            layers.append(
+                nn.Conv2d(
+                    in_channels,
+                    out_channels,
+                    kernel_size=kernel_size,
+                    stride=stride,
+                    padding=kernel_size // 2,  # Same padding
+                    bias=False,
+                )
+            )
             layers.append(nn.BatchNorm2d(out_channels))
             layers.append(nn.ReLU(inplace=True))
-            
+
             # Add dropout between conv blocks (except for the last block)
             if i < len(channels) - 1 and conv_dropout > 0:
                 layers.append(nn.Dropout2d(conv_dropout))
-            
+
             in_channels = out_channels
-        
+
         self.features = nn.Sequential(*layers)
-        
+
         # Global average pooling
         self.pool = nn.AdaptiveAvgPool2d(1)
-        
+
         # Classifier with final channel count
         final_channels = channels[-1] if channels else 64
-        self.classifier = nn.Sequential(
-            nn.Flatten(), 
-            nn.Dropout(dropout),
-            nn.Linear(final_channels, num_classes)
-        )
+        self.classifier = nn.Sequential(nn.Flatten(), nn.Dropout(dropout), nn.Linear(final_channels, num_classes))
+
+        # NEW: Quantization stubs for QAT support
+        self.quant = torch.ao.quantization.QuantStub()
+        self.dequant = torch.ao.quantization.DeQuantStub()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -772,9 +799,11 @@ class TinyConvWakeword(nn.Module):
         Returns:
             Output tensor of shape (batch, num_classes)
         """
+        x = self.quant(x)
         x = self.features(x)
         x = self.pool(x)
         x = self.classifier(x)
+        x = self.dequant(x)
         return x
 
 
@@ -787,11 +816,11 @@ class CDDNNWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = None,
-        hidden_layers: list = None,
+        input_size: Optional[int] = None,
+        hidden_layers: Optional[list] = None,
         num_classes: int = 2,
         dropout: float = 0.3,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """
         Initialize CD-DNN with dynamic configuration
@@ -807,18 +836,18 @@ class CDDNNWakeword(nn.Module):
                 - cddnn_dropout: Dropout rate for CD-DNN layers
         """
         super().__init__()
-        
+
         # Use config parameters from kwargs if not provided directly
         if hidden_layers is None:
             hidden_layers = kwargs.get("cddnn_hidden_layers", [512, 256, 128])
-        
+
         # Override dropout if specified in kwargs
         dropout = kwargs.get("cddnn_dropout", dropout)
-        
+
         # Calculate input size if not provided
         if input_size is None:
             # Get from kwargs or use default
-            feature_size = kwargs.get("input_size", 40)
+            feature_size = kwargs.get("input_size", 64)
             context_frames = kwargs.get("cddnn_context_frames", 50)
             input_size = feature_size * context_frames
 
@@ -866,14 +895,14 @@ class ConformerWakeword(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 40,
+        input_size: int = 64,
         num_classes: int = 2,
         encoder_dim: int = 144,
         num_layers: int = 4,
         num_heads: int = 4,
         kernel_size: int = 31,
         dropout: float = 0.1,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """
         Initialize Conformer-style model.
@@ -894,9 +923,7 @@ class ConformerWakeword(nn.Module):
 
         # Input projection
         self.input_proj = nn.Sequential(
-            nn.Linear(input_size, encoder_dim),
-            nn.LayerNorm(encoder_dim),
-            nn.Dropout(dropout)
+            nn.Linear(input_size, encoder_dim), nn.LayerNorm(encoder_dim), nn.Dropout(dropout)
         )
 
         # Transformer blocks with convolutional modules
@@ -906,8 +933,8 @@ class ConformerWakeword(nn.Module):
             nhead=num_heads,
             dim_feedforward=encoder_dim * 4,
             dropout=dropout,
-            activation='gelu',
-            batch_first=True
+            activation="gelu",
+            batch_first=True,
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
@@ -919,15 +946,11 @@ class ConformerWakeword(nn.Module):
             nn.BatchNorm1d(encoder_dim),
             nn.GELU(),
             nn.Conv1d(encoder_dim, encoder_dim, kernel_size=1),
-            nn.Dropout(dropout)
+            nn.Dropout(dropout),
         )
 
         # Classifier
-        self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool1d(1),
-            nn.Flatten(),
-            nn.Linear(encoder_dim, num_classes)
-        )
+        self.classifier = nn.Sequential(nn.AdaptiveAvgPool1d(1), nn.Flatten(), nn.Linear(encoder_dim, num_classes))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -939,24 +962,24 @@ class ConformerWakeword(nn.Module):
                 x = x.squeeze(1)
             if x.size(1) == self.input_size:
                 x = x.transpose(1, 2)
-        
+
         # Project to encoder dim
-        x = self.input_proj(x) # (B, T, D)
-        
+        x = self.input_proj(x)  # (B, T, D)
+
         # Transformer blocks
-        x = self.transformer(x) # (B, T, D)
-        
+        x = self.transformer(x)  # (B, T, D)
+
         # Conv module (needs B, D, T for convolutions, but LayerNorm needs B, T, D)
         residual = x
         x = self.conv_norm(x)
         x = x.transpose(1, 2)
         x = self.conv_module(x)
-        x = x.transpose(1, 2) + residual # Residual in (B, T, D)
-        
+        x = x.transpose(1, 2) + residual  # Residual in (B, T, D)
+
         # Classify (pool needs B, D, T)
         x = x.transpose(1, 2)
         logits = self.classifier(x)
-        
+
         return logits
 
     def embed(self, x: torch.Tensor) -> torch.Tensor:
@@ -966,16 +989,16 @@ class ConformerWakeword(nn.Module):
                 x = x.squeeze(1)
             if x.size(1) == self.input_size:
                 x = x.transpose(1, 2)
-        
+
         x = self.input_proj(x)
         x = self.transformer(x)
-        
+
         residual = x
         x = self.conv_norm(x)
         x = x.transpose(1, 2)
         x = self.conv_module(x)
         x = x.transpose(1, 2) + residual
-        
+
         x = x.transpose(1, 2)
         # Pool to get fixed size embedding
         embedding = F.adaptive_avg_pool1d(x, 1).flatten(1)
@@ -1001,59 +1024,38 @@ def create_model(architecture: str, num_classes: int = 2, pretrained: bool = Fal
     architecture = architecture.lower()
 
     if architecture == "resnet18":
-        return ResNet18Wakeword(
-            num_classes=num_classes,
-            pretrained=pretrained,
-            **kwargs  # Pass all kwargs to model
-        )
+        return ResNet18Wakeword(num_classes=num_classes, pretrained=pretrained, **kwargs)  # Pass all kwargs to model
 
     elif architecture == "mobilenetv3":
-        return MobileNetV3Wakeword(
-            num_classes=num_classes,
-            pretrained=pretrained,
-            **kwargs  # Pass all kwargs to model
-        )
+        return MobileNetV3Wakeword(num_classes=num_classes, pretrained=pretrained, **kwargs)  # Pass all kwargs to model
 
     elif architecture == "lstm":
-        return LSTMWakeword(
-            num_classes=num_classes,
-            **kwargs  # Pass all kwargs to model
-        )
+        return LSTMWakeword(num_classes=num_classes, **kwargs)  # Pass all kwargs to model
 
     elif architecture == "gru":
-        return GRUWakeword(
-            num_classes=num_classes,
-            **kwargs  # Pass all kwargs to model
-        )
+        return GRUWakeword(num_classes=num_classes, **kwargs)  # Pass all kwargs to model
 
     elif architecture == "tcn":
-        return TCNWakeword(
-            num_classes=num_classes,
-            **kwargs  # Pass all kwargs to model
-        )
+        return TCNWakeword(num_classes=num_classes, **kwargs)  # Pass all kwargs to model
 
     elif architecture == "tiny_conv":
-        return TinyConvWakeword(
-            num_classes=num_classes,
-            **kwargs  # Pass all kwargs to model
-        )
+        return TinyConvWakeword(num_classes=num_classes, **kwargs)  # Pass all kwargs to model
 
     elif architecture == "cd_dnn":
-        return CDDNNWakeword(
-            num_classes=num_classes,
-            **kwargs  # Pass all kwargs to model
-        )
+        return CDDNNWakeword(num_classes=num_classes, **kwargs)  # Pass all kwargs to model
 
     elif architecture == "conformer":
-        return ConformerWakeword(
-            num_classes=num_classes,
-            **kwargs
-        )
+        return ConformerWakeword(num_classes=num_classes, **kwargs)
+
+    elif architecture == "wav2vec2":
+        from src.models.huggingface import Wav2VecWakeword
+
+        return Wav2VecWakeword(num_classes=num_classes, **kwargs)
 
     else:
         raise ValueError(
             f"Unknown architecture: {architecture}. "
-            f"Supported: resnet18, mobilenetv3, lstm, gru, tcn, tiny_conv, cd_dnn"
+            f"Supported: resnet18, mobilenetv3, lstm, gru, tcn, tiny_conv, cd_dnn, conformer, wav2vec2"
         )
 
 
@@ -1080,7 +1082,7 @@ if __name__ == "__main__":
             test_input = torch.randn(2, 1, 64, 50).to(device)
         else:
             # Sequential input (batch, time, features)
-            test_input = torch.randn(2, 50, 40).to(device)
+            test_input = torch.randn(2, 50, 64).to(device)
 
         output = model(test_input)
         print(f"  Input shape: {test_input.shape}")

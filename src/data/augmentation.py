@@ -63,7 +63,7 @@ class AudioAugmentation(nn.Module):
 
         self.register_buffer("background_noises", torch.empty(0))
         self.register_buffer("rirs", torch.empty(0))
-        
+
         # NEW: Epoch tracking for scheduling
         self.current_epoch = 0
         self.total_epochs = 100
@@ -214,10 +214,11 @@ class AudioAugmentation(nn.Module):
         return torch.roll(waveform, shifts=shift_samples, dims=-1)
 
     def set_epoch(self, epoch: int, total_epochs: int) -> None:
-        """Update epoch for SNR scheduling (optional feature)."""
+        """Update epoch for SNR scheduling."""
         self.current_epoch = epoch
-        self.total_epochs = max(total_epochs, 1)  # Prevent division by zero
-        self.use_snr_scheduling = True  # Enable scheduling when explicitly called
+        self.total_epochs = max(total_epochs, 1)
+        self.use_snr_scheduling = True
+        logger.debug(f"Augmentation epoch updated: {epoch}/{total_epochs}")
 
     def add_background_noise(self, waveform: torch.Tensor) -> torch.Tensor:
         """
@@ -231,15 +232,15 @@ class AudioAugmentation(nn.Module):
         batch_size, _, samples = waveform.shape
 
         # Determine SNR range
-        if getattr(self, 'use_snr_scheduling', False) and self.total_epochs > 1:
+        if getattr(self, "use_snr_scheduling", False) and self.total_epochs > 1:
             # SNR scheduling: Start with easy SNR, progress to configured range
             progress = self.current_epoch / self.total_epochs
-            
+
             # Initial range (easy)
             easy_min, easy_max = 15.0, 30.0
             # Target range (from config)
             hard_min, hard_max = self.noise_snr_range
-            
+
             curr_min = easy_min - (easy_min - hard_min) * progress
             curr_max = easy_max - (easy_max - hard_max) * progress
         else:
@@ -391,10 +392,10 @@ class SpecAugment(nn.Module):
         # Adaptive masking: don't mask more than 20% of time/freq
         f_max = int(spectrogram.size(-2) * 0.2)
         t_max = int(spectrogram.size(-1) * 0.2)
-        
+
         f_param = min(self.freq_mask_param, f_max)
         t_param = min(self.time_mask_param, t_max)
-        
+
         # Apply frequency masking
         for _ in range(self.n_freq_masks):
             spectrogram = T.FrequencyMasking(f_param)(spectrogram)

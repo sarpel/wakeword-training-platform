@@ -5,7 +5,6 @@ Implements energy-based VAD for dataset cleaning and preprocessing.
 
 from typing import Any, List, Optional
 
-import numpy as np
 import structlog
 import torch
 

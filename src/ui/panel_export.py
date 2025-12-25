@@ -67,6 +67,7 @@ def export_to_onnx(
     quantize_fp16: bool,
     quantize_int8: bool,
     export_tflite: bool = False,
+    esphome_compatible: bool = False,
 ) -> Tuple[str, str]:
     """
     Export PyTorch model to ONNX
@@ -79,6 +80,7 @@ def export_to_onnx(
         quantize_fp16: Apply FP16 quantization
         quantize_int8: Apply INT8 quantization
         export_tflite: Export to TFLite (via onnx2tf)
+        esphome_compatible: Copy to fixed path for ESPHome
 
     Returns:
         Tuple of (status_message, log_message)
@@ -104,6 +106,9 @@ def export_to_onnx(
 
         output_path = export_dir / output_filename
 
+        # ESPHome fixed path
+        fixed_path = Path("exports/esphome/wakeword.tflite") if esphome_compatible else None
+
         logger.info(f"Exporting {checkpoint_path_obj} to {output_path}")
 
         # Build log message
@@ -113,8 +118,10 @@ def export_to_onnx(
         log += f"Opset version: {opset_version}\n"
         log += f"Dynamic batch: {dynamic_batch}\n"
         log += f"FP16 quantization: {quantize_fp16}\n"
-        log += f"INT8 quantization: {quantize_int8}\n"
-        log += f"TFLite Export: {export_tflite}\n"
+        log += f"INT8 quantization: {quantize_int8 or esphome_compatible}\n"
+        log += f"TFLite Export: {export_tflite or esphome_compatible}\n"
+        if esphome_compatible:
+            log += f"ESPHome Compatible: YES (Target: {fixed_path})\n"
         log += "-" * 60 + "\n"
 
         # Export
@@ -124,9 +131,10 @@ def export_to_onnx(
             opset_version=opset_version,
             dynamic_batch=dynamic_batch,
             quantize_fp16=quantize_fp16,
-            quantize_int8=quantize_int8,
-            export_tflite=export_tflite,
+            quantize_int8=quantize_int8 or esphome_compatible,
+            export_tflite=export_tflite or esphome_compatible,
             device="cuda",
+            fixed_export_path=fixed_path,
         )
 
         if not results.get("success", False):
@@ -140,35 +148,41 @@ def export_to_onnx(
         export_state.export_results = results
 
         # Build success message
-        log += f"✅ Base model exported successfully\n"
+        log += "✅ Base model exported successfully\n"
         log += f"   File size: {results['file_size_mb']:.2f} MB\n"
         log += f"   Path: {output_path}\n"
 
         if quantize_fp16 and "fp16_path" in results:
-            log += f"\n✅ FP16 model exported\n"
+            log += "\n✅ FP16 model exported\n"
             log += f"   File size: {results['fp16_size_mb']:.2f} MB\n"
             log += f"   Reduction: {results['fp16_reduction']:.1f}%\n"
             log += f"   Path: {results['fp16_path']}\n"
 
         if quantize_int8 and "int8_path" in results:
-            log += f"\n✅ INT8 model exported\n"
+            log += "\n✅ INT8 model exported\n"
             log += f"   File size: {results['int8_size_mb']:.2f} MB\n"
             log += f"   Reduction: {results['int8_reduction']:.1f}%\n"
             log += f"   Path: {results['int8_path']}\n"
 
         if export_tflite and results.get("tflite_success", False):
-            log += f"\n✅ TFLite model exported\n"
+            log += "\n✅ TFLite model exported\n"
             log += f"   File size: {results['tflite_size_mb']:.2f} MB\n"
             log += f"   Path: {results['tflite_path']}\n"
         elif export_tflite:
-            tflite_error = results.get('tflite_error', 'Unknown conversion error')
+            tflite_error = results.get("tflite_error", "Unknown conversion error")
             log += f"\n❌ TFLite export failed: {tflite_error}\n"
-            log += f"   Hint: Ensure 'onnx2tf' is correctly installed and the model architecture is supported.\n"
+            log += "   Hint: Ensure 'onnx2tf' is correctly installed and the model architecture is supported.\n"
 
-        log += f"\n" + "=" * 60 + "\n"
-        log += f"✅ Export complete!\n"
+        if results.get("fixed_path"):
+            log += "\n✅ Copied to ESPHome fixed path:\n"
+            log += f"   {results['fixed_path']}\n"
+        elif esphome_compatible:
+            log += f"\n❌ Failed to copy to ESPHome fixed path: {results.get('fixed_path_error', 'Unknown error')}\n"
 
-        status = f"✅ Export Successful\n"
+        log += "\n" + "=" * 60 + "\n"
+        log += "✅ Export complete!\n"
+
+        status = "✅ Export Successful\n"
         status += f"Model: {results['architecture']}\n"
         status += f"File: {output_filename} ({results['file_size_mb']:.2f} MB)"
 
@@ -178,8 +192,15 @@ def export_to_onnx(
         if quantize_int8 and "int8_path" in results:
             status += f"\nINT8: {results['int8_size_mb']:.2f} MB ({results['int8_reduction']:.1f}% smaller)"
 
-        if export_tflite and results.get("tflite_success", False):
+        if results.get("tflite_success", False):
             status += f"\nTFLite: {results['tflite_size_mb']:.2f} MB"
+            if results.get("fixed_path"):
+                status += " (ESPHome Ready)"
+
+        # Size warnings
+        if results.get("size_warning", False):
+            status = "⚠️ Export Successful (Size Warning)\n" + status[18:]
+            status += "\n\n⚠️ WARNING: Model exceeds target Flash/RAM limits! Check logs for details."
 
         logger.info("Export complete")
 
@@ -213,7 +234,7 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         logger.info(f"Validating ONNX model: {export_state.last_export_path}")
 
         # Load PyTorch model for comparison
-        checkpoint = torch.load(export_state.last_checkpoint, map_location="cuda")
+        checkpoint = torch.load(export_state.last_checkpoint, map_location="cuda", weights_only=True)
         config_data = checkpoint["config"]
 
         # Convert config dict to WakewordConfig object if needed
@@ -230,9 +251,13 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         # Calculate input size for model
         input_samples = int(config.data.sample_rate * config.data.audio_duration)
         time_steps = input_samples // config.data.hop_length + 1
-        
-        feature_dim = config.data.n_mels if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel" else config.data.n_mfcc
-        
+
+        feature_dim = (
+            config.data.n_mels
+            if config.data.feature_type == "mel_spectrogram" or config.data.feature_type == "mel"
+            else config.data.n_mfcc
+        )
+
         if config.model.architecture == "cd_dnn":
             input_size = feature_dim * time_steps
         else:
@@ -258,7 +283,7 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
             cddnn_context_frames=getattr(config.model, "cddnn_context_frames", 50),
             cddnn_dropout=getattr(config.model, "cddnn_dropout", config.model.dropout),
         )
-        
+
         # Load weights
         state_dict = checkpoint["model_state_dict"]
 
@@ -270,8 +295,10 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
 
         if unexpected_keys:
             # Check if these are quantization keys
-            quant_keys = [k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k]
-            
+            quant_keys = [
+                k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k
+            ]
+
             if quant_keys:
                 logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")
                 # Filter the state dict
@@ -465,6 +492,12 @@ def create_export_panel() -> gr.Blocks:
                     info="Convert ONNX to TFLite for embedded devices",
                 )
 
+                esphome_compatible = gr.Checkbox(
+                    label="ESPHome Atom Echo Compatibility",
+                    value=False,
+                    info="Export to fixed path for Atom Echo firmware",
+                )
+
                 gr.Markdown("**Note**: Quantization reduces model size and improves inference speed")
 
         with gr.Row():
@@ -536,6 +569,7 @@ def create_export_panel() -> gr.Blocks:
                 quantize_fp16,
                 quantize_int8,
                 export_tflite,
+                esphome_compatible,
             ],
             outputs=[export_status, export_log],
         )

@@ -17,6 +17,7 @@ import numpy as np  # For numerical operations on audio arrays
 import structlog  # For structured logging
 import torch  # For PyTorch model inference
 
+from src.config.defaults import StreamingConfig
 from src.evaluation.types import InferenceEngine, StageBase
 
 # Initialize logger for this module
@@ -26,39 +27,36 @@ logger = structlog.get_logger(__name__)
 class CascadeInferenceEngine(InferenceEngine):
     """
     Orchestration engine for distributed cascade inference.
-    
+
     Manages multiple inference stages (e.g., Sentry, Judge) and handles
     the logic for passing results between them.
     """
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         self.stages: List[StageBase] = []
-        
-    def add_stage(self, stage: StageBase):
+
+    def add_stage(self, stage: StageBase) -> None:
         """Add an inference stage to the cascade"""
         self.stages.append(stage)
         logger.info(f"Added stage to cascade: {stage.name}")
-        
+
     def run(self, audio: np.ndarray) -> List[dict]:
         """
         Execute the cascade inference.
-        
-        Follows a sequential pipeline where each stage only runs if 
+
+        Follows a sequential pipeline where each stage only runs if
         the previous stage detected a potential wakeword.
         """
         results = []
         for stage in self.stages:
             stage_result = stage.predict(audio)
-            results.append({
-                "stage": stage.name,
-                "result": stage_result
-            })
-            
+            results.append({"stage": stage.name, "result": stage_result})
+
             # Cascade handoff: stop if not detected
             if not stage_result.get("detected", True):
                 logger.info(f"Cascade stopped at {stage.name} (no detection)")
                 break
-            
+
         return results
 
 
@@ -81,6 +79,7 @@ class StreamingDetector:
         lockout_ms: int = 1500,
         vote_window: int = 5,
         vote_threshold: int = 3,
+        config: Optional[StreamingConfig] = None,
     ):
         """
         Initialize streaming detector
@@ -92,22 +91,33 @@ class StreamingDetector:
             lockout_ms: Lockout period in milliseconds after detection
             vote_window: Window size for voting (number of recent scores)
             vote_threshold: Number of votes needed for detection
+            config: Optional StreamingConfig object to override parameters
         """
-        self.threshold_on = threshold_on
-        self.threshold_off = threshold_off if threshold_off is not None else max(threshold_on - hysteresis, 0)
-        self.lockout_ms = lockout_ms
-        self.vote_window = vote_window
-        self.vote_threshold = vote_threshold
+        if config:
+            self.threshold_on = threshold_on  # threshold_on is usually separate from streaming config
+            self.threshold_off = config.hysteresis_low
+            self.lockout_ms = config.cooldown_ms
+            self.vote_window = config.smoothing_window
+            self.vote_threshold = max(1, config.smoothing_window // 2 + 1)
+            # Override threshold_on if it's explicitly high in config or passed
+            if hasattr(config, "hysteresis_high"):
+                self.threshold_on = config.hysteresis_high
+        else:
+            self.threshold_on = threshold_on
+            self.threshold_off = threshold_off if threshold_off is not None else max(threshold_on - hysteresis, 0)
+            self.lockout_ms = lockout_ms
+            self.vote_window = vote_window
+            self.vote_threshold = vote_threshold
 
         # State
-        self.score_buffer: Deque[float] = deque(maxlen=vote_window)
+        self.score_buffer: Deque[float] = deque(maxlen=self.vote_window)
         self.locked_until_ms = 0
         self.is_active = False
 
         logger.info(
             f"StreamingDetector initialized: "
-            f"threshold_on={threshold_on:.3f}, threshold_off={self.threshold_off:.3f}, "
-            f"lockout={lockout_ms}ms, vote={vote_threshold}/{vote_window}"
+            f"threshold_on={self.threshold_on:.3f}, threshold_off={self.threshold_off:.3f}, "
+            f"lockout={self.lockout_ms}ms, vote={self.vote_threshold}/{self.vote_window}"
         )
 
     def step(self, score: float, timestamp_ms: int) -> bool:
@@ -345,7 +355,7 @@ if __name__ == "__main__":
 
     print(f"  Total detections: {len(detections)}")
     assert len(detections) == 1, "Should have exactly 1 detection"
-    print(f"  ✅ Basic detector test passed")
+    print("  ✅ Basic detector test passed")
 
     # Test 2: Sliding window processor
     print("\n2. Testing SlidingWindowProcessor...")
@@ -357,7 +367,7 @@ if __name__ == "__main__":
 
     windows, timestamps = processor.extract_windows(audio)
 
-    print(f"  Audio duration: 5 seconds")
+    print("  Audio duration: 5 seconds")
     print(f"  Windows extracted: {len(windows)}")
     print(f"  Window shape: {windows[0].shape}")
     print(f"  First timestamp: {timestamps[0]}ms")
@@ -365,7 +375,7 @@ if __name__ == "__main__":
 
     expected_windows = (len(audio) - processor.window_size) // processor.hop_size + 1
     assert len(windows) == expected_windows, f"Expected {expected_windows} windows"
-    print(f"  ✅ Sliding window test passed")
+    print("  ✅ Sliding window test passed")
 
     # Test 3: Hysteresis behavior
     print("\n3. Testing hysteresis...")
@@ -392,6 +402,6 @@ if __name__ == "__main__":
         state = "ACTIVE" if detector_hyst.is_active else "INACTIVE"
         print(f"  t={timestamp_ms}ms, score={score:.2f}, state={state}, detected={detected}")
 
-    print(f"  ✅ Hysteresis test passed")
+    print("  ✅ Hysteresis test passed")
 
     print("\n✅ All streaming detector tests passed")
