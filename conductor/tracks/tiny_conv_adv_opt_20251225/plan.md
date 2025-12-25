@@ -20,7 +20,7 @@ This plan follows the Test-Driven Development (TDD) methodology and phase checkp
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: QAT Stabilization' (Protocol in workflow.md)
 
 ## Phase 3: Advanced Dual-Teacher Distillation Upgrades
-- [ ] Task: Implement Learnable Projectors
+- [x] Task: Implement Learnable Projectors d3a020b
     - [ ] Create `tests/test_distillation_projectors.py` to verify distillation between mismatched dimensions (e.g., 768 -> 64).
     - [ ] Implement `Projector` class and dynamic injection logic in `src/training/distillation_trainer.py`.
 - [ ] Task: Implement Soft-Confidence (Dynamic) Weighting
