@@ -12,7 +12,7 @@ This plan follows the Test-Driven Development (TDD) methodology and phase checkp
     - [ ] Add the toggle to the Gradio UI in `src/ui/panel_config.py`.
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Architecture Upgrade' (Protocol in workflow.md)
 
-## Phase 2: QAT Stabilization (Module Fusion)
+## Phase 2: QAT Stabilization (Module Fusion) [checkpoint: 4e36e28]
 - [x] Task: Implement Automated Fusion Engine bfdb9bd
     - [ ] Create `tests/test_qat_fusion.py` to verify that `Conv+BN+ReLU` layers are correctly collapsed into a single fused module.
     - [ ] Implement `fuse_tiny_conv` logic in `src/training/qat_utils.py` using `torch.ao.quantization.fuse_modules`.
