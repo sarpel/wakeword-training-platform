@@ -2,7 +2,7 @@
 
 This plan outlines the steps to implement environment-specific optimizations, Docker Compose orchestration, and interactive notebooks, ensuring the platform runs optimally across Windows, WSL, and Cloud.
 
-## Phase 1: Environment-Aware Configuration (.env Integration)
+## Phase 1: Environment-Aware Configuration (.env Integration) [checkpoint: 9fb91d7]
 - [x] Task: Implement .env-based feature toggles f4bf4b1
     - [x] Sub-task: Update `.env.example` with flags for `QUANTIZATION_BACKEND` (fbgemm/qnnpack), `MP_START_METHOD` (spawn/fork), and `USE_TRITON` (true/false).
     - [x] Sub-task: Write unit tests in `tests/test_env_config.py` to verify that configuration correctly resolves .env overrides.
