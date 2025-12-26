@@ -42,10 +42,11 @@ repos:
       - id: isort
         args: ["--profile", "black"]
 
-  # GitGuardian secret scanning (existing)
-  - repo: https://github.com/gitguardian/ggshield
-    rev: v1.45.0
-    hooks:
-      - id: ggshield
-        language_version: python3
-        stages: [pre-commit]
+  # GitGuardian secret scanning (optional - requires API key)
+  # Uncomment and run 'ggshield auth login' to enable
+  # - repo: https://github.com/gitguardian/ggshield
+  #   rev: v1.45.0
+  #   hooks:
+  #     - id: ggshield
+  #       language_version: python3
+  #       stages: [pre-commit]
