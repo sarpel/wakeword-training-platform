@@ -5,9 +5,9 @@ Shared fixtures for all tests
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
-import numpy as np
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -17,6 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ==============================================================================
 # Hardware Fixtures
 # ==============================================================================
+
 
 @pytest.fixture(scope="session")
 def device() -> str:
@@ -34,10 +35,12 @@ def cuda_available() -> bool:
 # Configuration Fixtures
 # ==============================================================================
 
+
 @pytest.fixture
 def default_config():
     """Get default configuration"""
     from src.config.defaults import WakewordConfig
+
     return WakewordConfig()
 
 
@@ -45,6 +48,7 @@ def default_config():
 def minimal_config():
     """Minimal config for fast tests"""
     from src.config.defaults import WakewordConfig
+
     config = WakewordConfig()
     config.training.epochs = 2
     config.training.batch_size = 4
@@ -56,19 +60,20 @@ def minimal_config():
 # Data Fixtures
 # ==============================================================================
 
+
 @pytest.fixture
 def sample_audio() -> np.ndarray:
     """Generate synthetic audio sample (1.5s @ 16kHz)"""
     duration = 1.5
     sample_rate = 16000
     samples = int(duration * sample_rate)
-    
+
     # Generate synthetic waveform (sine wave with noise)
     t = np.linspace(0, duration, samples)
     frequency = 440  # Hz
     audio = np.sin(2 * np.pi * frequency * t) * 0.5
     audio += np.random.randn(samples) * 0.1
-    
+
     return audio.astype(np.float32)
 
 
@@ -89,10 +94,12 @@ def sample_labels() -> torch.Tensor:
 # Model Fixtures
 # ==============================================================================
 
+
 @pytest.fixture
 def resnet_model():
     """Create ResNet18 model for testing"""
     from src.models.architectures import create_model
+
     return create_model("resnet18", num_classes=2, pretrained=False)
 
 
@@ -100,6 +107,7 @@ def resnet_model():
 def mobilenet_model():
     """Create MobileNetV3 model for testing"""
     from src.models.architectures import create_model
+
     return create_model("mobilenetv3", num_classes=2, pretrained=False)
 
 
@@ -107,12 +115,14 @@ def mobilenet_model():
 def lstm_model():
     """Create LSTM model for testing"""
     from src.models.architectures import create_model
+
     return create_model("lstm", num_classes=2, input_size=40)
 
 
 # ==============================================================================
 # Temporary Directory Fixtures
 # ==============================================================================
+
 
 @pytest.fixture
 def temp_data_dir(tmp_path) -> Path:
@@ -136,6 +146,7 @@ def temp_checkpoint_dir(tmp_path) -> Path:
 # ==============================================================================
 # Skip Markers
 # ==============================================================================
+
 
 def pytest_configure(config):
     """Configure custom markers"""
