@@ -20,7 +20,8 @@ except Exception:
     from typing import Protocol  # fallback tip
 
     class WakewordConfigProtocol(Protocol):
-        def to_dict(self) -> Dict[str, Any]: ...
+        def to_dict(self) -> Dict[str, Any]:
+            ...
 
     WakewordConfig = WakewordConfigProtocol
 

@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip
 
-# ============================================================================== 
+# ==============================================================================
 # Stage 2: Dependencies
 FROM base AS dependencies
 
@@ -44,7 +44,7 @@ RUN pip install --no-cache-dir \
 # Install remaining requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ============================================================================== 
+# ==============================================================================
 # Stage 3: Production (Dashboard)
 FROM dependencies AS production
 
@@ -81,7 +81,7 @@ EXPOSE 7860 8000 8888
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["dashboard"]
 
-# ============================================================================== 
+# ==============================================================================
 # Stage 4: Development
 FROM production AS development
 

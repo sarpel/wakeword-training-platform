@@ -2,8 +2,8 @@
 
 Production-ready platform for training custom wakeword detection models with **GPU acceleration**, **advanced optimizations**, and a modern web interface. Features enterprise-grade **Distributed Cascade Architecture** for real-time deployment.
 
-🚀 **Current Version**: v4.0 - Production Release  
-🔧 **GPU Support**: CUDA 11.8+ with Mixed Precision  
+🚀 **Current Version**: v4.0 - Production Release
+🔧 **GPU Support**: CUDA 11.8+ with Mixed Precision
 🌐 **Deployment**: ONNX, TensorFlow Lite, Raspberry Pi
 
 ---
@@ -89,7 +89,7 @@ The system will automatically create these directories on first run.
 | **Judge (Local)** | False Positive Filtering | Wav2Vec 2.0 | >99% Accuracy |
 | **Teacher (Cloud)** | Knowledge Distillation | Teacher-Student | 10x Faster Training |
 
-**🔬 Advanced Features**: CMVN, EMA, Mixed Precision, FAH Metrics  
+**🔬 Advanced Features**: CMVN, EMA, Mixed Precision, FAH Metrics
 📖 **[Architecture Deep Dive](DOCUMENTATION.md#distributed-cascade-architecture)**
 
 ---

@@ -37,9 +37,11 @@ class AudioAugmentation(nn.Module):
     rir_prob: float
     rir_dry_wet_min: float
     rir_dry_wet_max: float
-    # NEW: Store all file paths for epoch-based resampling
+    # NEW: Store all file paths and pools for exhaustive resampling
     _all_background_noise_files: List[Path]
     _all_rir_files: List[Path]
+    _remaining_background_noise_files: List[Path]
+    _remaining_rir_files: List[Path]
     _max_background_noises: int
     _max_rirs: int
 
@@ -84,11 +86,17 @@ class AudioAugmentation(nn.Module):
         self.rir_dry_wet_min = rir_dry_wet_min
         self.rir_dry_wet_max = rir_dry_wet_max
 
-        # NEW: Store buffer limits and all file paths for epoch-based resampling
+        # NEW: Store buffer limits and all file paths for exhaustive resampling
         self._max_background_noises = max_background_noises
         self._max_rirs = max_rirs
-        self._all_background_noise_files = list(background_noise_files) if background_noise_files else []
-        self._all_rir_files = list(rir_files) if rir_files else []
+        self._all_background_noise_files = list(set(background_noise_files)) if background_noise_files else []
+        self._all_rir_files = list(set(rir_files)) if rir_files else []
+
+        # Initialize pools with shuffled copies
+        self._remaining_background_noise_files = list(self._all_background_noise_files)
+        random.shuffle(self._remaining_background_noise_files)
+        self._remaining_rir_files = list(self._all_rir_files)
+        random.shuffle(self._remaining_rir_files)
 
         self.register_buffer("background_noises", torch.empty(0))
         self.register_buffer("rirs", torch.empty(0))
@@ -130,15 +138,26 @@ class AudioAugmentation(nn.Module):
 
     def _load_background_noises_subset(self) -> None:
         """
-        Load a random subset of background noise files into buffer.
-        Called at init and can be called again at epoch boundaries for variety.
+        Load a exhaustive subset of background noise files into buffer.
+        Ensures all files are seen before repeating.
         """
         all_files = self._all_background_noise_files
-        sample_size = min(len(all_files), self._max_background_noises)
+        if not all_files:
+            return
 
-        # Random sample from all available files
-        selected_files = random.sample(all_files, sample_size)
-        logger.info(f"Loading {sample_size}/{len(all_files)} background noises (random subset)...")
+        sample_size = min(len(all_files), self._max_background_noises)
+        selected_files: List[Path] = []
+
+        while len(selected_files) < sample_size:
+            if not self._remaining_background_noise_files:
+                logger.info("Background noise pool exhausted, refilling and reshuffling...")
+                self._remaining_background_noise_files = list(all_files)
+                random.shuffle(self._remaining_background_noise_files)
+
+            # Take one from the pool
+            selected_files.append(self._remaining_background_noise_files.pop())
+
+        logger.info(f"Loading {sample_size}/{len(all_files)} background noises (exhaustive selection)...")
 
         loaded_noises = []
         for noise_file in selected_files:
@@ -167,15 +186,26 @@ class AudioAugmentation(nn.Module):
 
     def _load_rirs_subset(self) -> None:
         """
-        Load a random subset of RIR files into buffer.
-        Called at init and can be called again at epoch boundaries for variety.
+        Load a exhaustive subset of RIR files into buffer.
+        Ensures all files are seen before repeating.
         """
-        all_files = list(set(self._all_rir_files))  # Dedupe
-        sample_size = min(len(all_files), self._max_rirs)
+        all_files = self._all_rir_files
+        if not all_files:
+            return
 
-        # Random sample from all available files
-        selected_files = random.sample(all_files, sample_size)
-        logger.info(f"Loading {sample_size}/{len(all_files)} RIRs (random subset)...")
+        sample_size = min(len(all_files), self._max_rirs)
+        selected_files: List[Path] = []
+
+        while len(selected_files) < sample_size:
+            if not self._remaining_rir_files:
+                logger.info("RIR pool exhausted, refilling and reshuffling...")
+                self._remaining_rir_files = list(all_files)
+                random.shuffle(self._remaining_rir_files)
+
+            # Take one from the pool
+            selected_files.append(self._remaining_rir_files.pop())
+
+        logger.info(f"Loading {sample_size}/{len(all_files)} RIRs (exhaustive selection)...")
 
         loaded_rirs = []
         for rir_file in selected_files:

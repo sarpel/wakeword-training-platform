@@ -134,6 +134,8 @@ class BatchFeatureExtractor:
                 rir_dry_wet_max=augmentation_config.rir_dry_wet_max,
                 background_noise_files=background_files,
                 rir_files=rir_files,
+                max_background_noises=augmentation_config.max_background_noises,
+                max_rirs=augmentation_config.max_rirs,
             )
             logger.info(f"Augmentation enabled: {augmentation_multiplier} versions per file")
 
