@@ -8,7 +8,7 @@ The Wakeword Training Platform is designed to democratize high-quality, producti
 
 ## Target Users
 *   **Embedded Systems Developers:** Professionals building voice-enabled products who require ultra-low-power, quantized models (MobileNetV3) that fit on microcontrollers and DSPs.
-*   **Smart Home Hobbyists:** Enthusiasts seeking to add reliable, personalized custom voice triggers to their DIY projects without needing a PhD in machine learning.
+*   **Smart Home Hobbyists:** Enthusiasts seeking to add reliable, personalized custom voice triggers to their DIY projects (ESP32) using ultra-lightweight architectures (TinyConv V2).
 
 ## Core Value Proposition
 *   **Professional Accuracy for Everyone:** Access to advanced techniques like Knowledge Distillation (The Teacher) and False Positive Rejection (The Judge) through a simple UI.
@@ -21,7 +21,8 @@ The Wakeword Training Platform is designed to democratize high-quality, producti
 *   **Closed-Loop Hard Negative Mining:** Interactive system to identify misclassified benchmarking samples and inject them back into training splits for iterative refinement.
 *   **Standardized Benchmarking:** Built-in profiling tools to measure latency and memory usage across all stages of the distributed cascade.
 *   **Robustness Engine:** Advanced acoustic simulation including Room Impulse Response (RIR), background noise with SNR scheduling, and pitch/speed perturbation.
-*   **Precision Training:** Dual-teacher knowledge distillation (Wav2Vec2 + Conformer), intermediate feature alignment, and multi-objective optimization (pAUC vs Latency).
+*   **Precision Training:** Dual-teacher knowledge distillation (Wav2Vec2 + Conformer), multi-layer expert feature alignment with learnable projectors, and dynamic teacher confidence weighting.
+*   **Advanced QAT:** Stabilized Quantization Aware Training using automated module fusion (Conv+BN+ReLU) to minimize INT8 accuracy drop.
 *   **Optimized Hyperparameter Tuning:** Multi-objective HPO using Optuna (NSGA-II) with exploit-and-explore mutation to discover ideal accuracy/speed trade-offs.
 *   **Stable Streaming:** Integrated temporal smoothing and hysteresis logic to eliminate flickering detections in real-time usage.
 *   **Environment-Aware Optimization:** Smart defaults and configuration toggles to ensure peak performance across Native Windows, WSL2, Docker, and Google Colab.

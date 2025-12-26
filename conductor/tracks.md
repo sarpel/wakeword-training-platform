@@ -16,8 +16,3 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ## [x] Track: Dynamic CMVN Dimensions & Hardcoding Removal
 *Link: [./conductor/tracks/dynamic_cmvn_dims_20251223/](./conductor/tracks/dynamic_cmvn_dims_20251223/)*
-
----
-
-## [~] Track: Advanced Optimization for TinyConv: QAT Fusion, Depthwise Convs, and Dual-Teacher Projector Alignment
-*Link: [./conductor/tracks/tiny_conv_adv_opt_20251225/](./conductor/tracks/tiny_conv_adv_opt_20251225/)*

@@ -1,0 +1,114 @@
+{
+  "workflow": {
+    "name": "MLE-STAR: Wakeword Training Platform - Full Repo Review",
+    "description": "Full repo review for wakeword-training-platform: architecture, dataset/CSV+mel/NPY pipeline, training/eval, export/deploy, performance, testability. Produces prioritized actionable plan with file-path evidence.",
+    "version": "1.0.4",
+    "methodology": "Search → Foundation → Refinement → Ensemble → Validation",
+
+    "metadata": {
+      "expected_runtime": "2-4 hours",
+      "owner": "sarpel",
+      "repo_url": "https://github.com/sarpel/wakeword-training-platform",
+      "dataset_csv": "./wakeword_dataset.csv",
+      "output_format": "stream-json",
+      "chaining": true
+    },
+
+    "variables": {
+      "repo_url": "https://github.com/sarpel/wakeword-training-platform",
+      "repo_root": ".",
+      "dataset_csv": "./wakeword_dataset.csv",
+      "expected_outputs_dir": "./reports/mle_star_review"
+    },
+
+    "agents": [
+      { "id": "coordinator", "type": "coordinator", "name": "Coordinator" },
+      { "id": "architect", "type": "architect", "name": "Architect" },
+      { "id": "ml_engineer", "type": "coder", "name": "Training Reviewer" },
+      { "id": "data_engineer", "type": "analyst", "name": "Data/Feature Reviewer" },
+      { "id": "eval_engineer", "type": "tester", "name": "Eval/QA Reviewer" },
+      { "id": "deployment_engineer", "type": "developer", "name": "Export/Deploy Reviewer" }
+    ],
+
+    "tasks": [
+      {
+        "id": "t0_context",
+        "name": "Context + Repo Inventory",
+        "assignTo": "coordinator",
+        "description": "Map the repo: entry points, dataset->features->training->eval->export flow. Output repo map and intended happy-path commands with file paths.",
+        "metadata": { "expected_runtime": "10-20m" },
+        "outputs": [
+          "{{expected_outputs_dir}}/01_repo_map.md",
+          "{{expected_outputs_dir}}/02_happy_path.md"
+        ]
+      },
+      {
+        "id": "t1_architecture",
+        "name": "Architecture Review",
+        "assignTo": "architect",
+        "depends": ["t0_context"],
+        "description": "Review architecture boundaries, config patterns, logging/error handling, maintainability. Provide file-path evidence and refactor suggestions.",
+        "metadata": { "expected_runtime": "15-30m" },
+        "outputs": [
+          "{{expected_outputs_dir}}/03_architecture_review.md"
+        ]
+      },
+      {
+        "id": "t2_data_features",
+        "name": "Dataset/CSV + Mel/NPY Pipeline Review",
+        "assignTo": "data_engineer",
+        "depends": ["t0_context"],
+        "description": "Trace dataset ingestion and feature generation (mel/NPY). Check CSV schema assumptions, label mapping, splits, leakage risk, caching and I/O performance. Propose validators and a robust manifest schema.",
+        "metadata": { "expected_runtime": "20-40m" },
+        "outputs": [
+          "{{expected_outputs_dir}}/04_data_feature_review.md"
+        ]
+      },
+      {
+        "id": "t3_training",
+        "name": "Training Pipeline Review",
+        "assignTo": "ml_engineer",
+        "depends": ["t0_context", "t2_data_features"],
+        "description": "Review training loop: determinism/seeds, batching, imbalance handling, hard negatives, metrics, checkpointing, AMP, config ergonomics. Output prioritized fixes tied to files.",
+        "metadata": { "expected_runtime": "20-45m" },
+        "outputs": [
+          "{{expected_outputs_dir}}/05_training_review.md"
+        ]
+      },
+      {
+        "id": "t4_eval",
+        "name": "Evaluation & QA Review",
+        "assignTo": "eval_engineer",
+        "depends": ["t3_training"],
+        "description": "Review evaluation methodology (low-FPR wakeword focus), threshold selection, test sets (background/hard neg/rirs), and propose automated regression tests.",
+        "metadata": { "expected_runtime": "15-35m" },
+        "outputs": [
+          "{{expected_outputs_dir}}/06_evaluation_qa_review.md"
+        ]
+      },
+      {
+        "id": "t5_export",
+        "name": "Export/Deploy Review (ONNX/TFLite/QAT readiness)",
+        "assignTo": "deployment_engineer",
+        "depends": ["t3_training"],
+        "description": "Review export paths and preprocessing parity. Propose ONNX/TFLite parity tests and quantization/QAT readiness checklist.",
+        "metadata": { "expected_runtime": "15-35m" },
+        "outputs": [
+          "{{expected_outputs_dir}}/07_export_deploy_review.md"
+        ]
+      },
+      {
+        "id": "t6_synthesis",
+        "name": "Synthesis: Final Review + Action Plan",
+        "assignTo": "coordinator",
+        "depends": ["t1_architecture", "t2_data_features", "t3_training", "t4_eval", "t5_export"],
+        "description": "Merge all findings into one prioritized action plan (P0/P1/P2), with concrete tasks, file paths, and acceptance criteria.",
+        "metadata": { "expected_runtime": "15-30m" },
+        "outputs": [
+          "{{expected_outputs_dir}}/00_FINAL_REVIEW.md",
+          "{{expected_outputs_dir}}/00_ACTION_PLAN.md"
+        ]
+      }
+    ]
+  }
+}

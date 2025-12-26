@@ -11,6 +11,7 @@
 *   **ONNX / ONNX Runtime**: Standardized model format for cross-platform inference and export.
 *   **onnx2tf / TFLite**: Tools for converting models to edge-optimized TensorFlow Lite formats.
 *   **Optuna**: Automated hyperparameter optimization (HPO).
+*   **Module Fusion & Projectors**: `torch.ao.quantization` for QAT stabilization and learnable MLP projectors for cross-model feature alignment.
 
 ## Audio Processing
 *   **Librosa / Soundfile**: Core libraries for loading, analyzing, and transforming audio data.
