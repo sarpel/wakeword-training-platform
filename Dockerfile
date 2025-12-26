@@ -63,6 +63,15 @@ COPY --chown=wakeword:wakeword configs/ ./configs/
 COPY --chown=wakeword:wakeword entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
+# SECURITY: Make application code read-only after copy to prevent runtime modifications
+RUN find /app/src -type f -exec chmod 444 {} \; && \
+    find /app/src -type d -exec chmod 555 {} \; && \
+    chmod 444 /app/run.py && \
+    find /app/server -type f -exec chmod 444 {} \; && \
+    find /app/server -type d -exec chmod 555 {} \; && \
+    find /app/configs -type f -exec chmod 444 {} \; && \
+    chmod 555 /app/configs
+
 # Switch to non-root user
 USER wakeword
 

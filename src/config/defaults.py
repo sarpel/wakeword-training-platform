@@ -107,6 +107,9 @@ class ModelConfig:
     cddnn_context_frames: int = 50
     cddnn_dropout: float = 0.3
 
+    # TinyConv Parameters
+    tiny_conv_use_depthwise: bool = False
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)

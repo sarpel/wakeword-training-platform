@@ -366,7 +366,7 @@ def export_model_to_onnx(
         # Validate path doesn't escape exports directory
         if not str(resolved_fixed_path).startswith(str(expected_base)):
             raise ValueError(
-                f"fixed_export_path security violation: "{fixed_export_path}" resolves to "{resolved_fixed_path}" which is outside allowed exports directory "{expected_base}""
+                f'fixed_export_path security violation: "{fixed_export_path}" resolves to "{resolved_fixed_path}" which is outside allowed exports directory "{expected_base}"'
             )
         
         # Additional check: ensure the path is absolute after resolution

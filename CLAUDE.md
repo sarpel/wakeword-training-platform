@@ -1,529 +1,352 @@
-# 🏭 CODE GENERATION PROTOCOL (CLAUDE.md)
+# Claude Code Configuration - SPARC Development Environment
 
-## 🎯 CORE PHILOSOPHY & OBJECTIVES
+## 🚨 CRITICAL: CONCURRENT EXECUTION & FILE MANAGEMENT
 
-### Mission
+**ABSOLUTE RULES**:
+1. ALL operations MUST be concurrent/parallel in a single message
+2. **NEVER save working files, text/mds and tests to the root folder**
+3. ALWAYS organize files in appropriate subdirectories
+4. **USE CLAUDE CODE'S TASK TOOL** for spawning agents concurrently, not just MCP
 
-This project adopts the **"Zero Defect Manufacturing"** philosophy.
-Just like in a high-precision automotive factory, every step is controlled, every component is verified, and every output is tested before integration.
+### ⚡ GOLDEN RULE: "1 MESSAGE = ALL RELATED OPERATIONS"
 
-### Fundamental Principles
+**MANDATORY PATTERNS:**
+- **TodoWrite**: ALWAYS batch ALL todos in ONE call (5-10+ todos minimum)
+- **Task tool (Claude Code)**: ALWAYS spawn ALL agents in ONE message with full instructions
+- **File operations**: ALWAYS batch ALL reads/writes/edits in ONE message
+- **Bash commands**: ALWAYS batch ALL terminal operations in ONE message
+- **Memory operations**: ALWAYS batch ALL memory store/retrieve in ONE message
 
+### 🎯 CRITICAL: Claude Code Task Tool for Agent Execution
+
+**Claude Code's Task tool is the PRIMARY way to spawn agents:**
+```javascript
+// ✅ CORRECT: Use Claude Code's Task tool for parallel agent execution
+[Single Message]:
+  Task("Research agent", "Analyze requirements and patterns...", "researcher")
+  Task("Coder agent", "Implement core features...", "coder")
+  Task("Tester agent", "Create comprehensive tests...", "tester")
+  Task("Reviewer agent", "Review code quality...", "reviewer")
+  Task("Architect agent", "Design system architecture...", "system-architect")
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  1. PLAN  →  2. RESEARCH  →  3. EXECUTE  →  4. TEST  →  5. AUDIT    │
-│      ↑                                                        ↓     │
-│      └────────────── IF ERROR, ROLLBACK & REVISE ─────────────┘     │
-└─────────────────────────────────────────────────────────────────┘
 
+**MCP tools are ONLY for coordination setup:**
+- `mcp__claude-flow__swarm_init` - Initialize coordination topology
+- `mcp__claude-flow__agent_spawn` - Define agent types for coordination
+- `mcp__claude-flow__task_orchestrate` - Orchestrate high-level workflows
+
+### 📁 File Organization Rules
+
+**NEVER save to root folder. Use these directories:**
+- `/src` - Source code files
+- `/tests` - Test files
+- `/docs` - Documentation and markdown files
+- `/config` - Configuration files
+- `/scripts` - Utility scripts
+- `/examples` - Example code
+
+## Project Overview
+
+This project uses SPARC (Specification, Pseudocode, Architecture, Refinement, Completion) methodology with Claude-Flow orchestration for systematic Test-Driven Development.
+
+## SPARC Commands
+
+### Core Commands
+- `npx claude-flow sparc modes` - List available modes
+- `npx claude-flow sparc run <mode> "<task>"` - Execute specific mode
+- `npx claude-flow sparc tdd "<feature>"` - Run complete TDD workflow
+- `npx claude-flow sparc info <mode>` - Get mode details
+
+### Batchtools Commands
+- `npx claude-flow sparc batch <modes> "<task>"` - Parallel execution
+- `npx claude-flow sparc pipeline "<task>"` - Full pipeline processing
+- `npx claude-flow sparc concurrent <mode> "<tasks-file>"` - Multi-task processing
+
+### Build Commands
+- `npm run build` - Build project
+- `npm run test` - Run tests
+- `npm run lint` - Linting
+- `npm run typecheck` - Type checking
+
+## SPARC Workflow Phases
+
+1. **Specification** - Requirements analysis (`sparc run spec-pseudocode`)
+2. **Pseudocode** - Algorithm design (`sparc run spec-pseudocode`)
+3. **Architecture** - System design (`sparc run architect`)
+4. **Refinement** - TDD implementation (`sparc tdd`)
+5. **Completion** - Integration (`sparc run integration`)
+
+## Code Style & Best Practices
+
+- **Modular Design**: Files under 500 lines
+- **Environment Safety**: Never hardcode secrets
+- **Test-First**: Write tests before implementation
+- **Clean Architecture**: Separate concerns
+- **Documentation**: Keep updated
+
+## 🚀 Available Agents (54 Total)
+
+### Core Development
+`coder`, `reviewer`, `tester`, `planner`, `researcher`
+
+### Swarm Coordination
+`hierarchical-coordinator`, `mesh-coordinator`, `adaptive-coordinator`, `collective-intelligence-coordinator`, `swarm-memory-manager`
+
+### Consensus & Distributed
+`byzantine-coordinator`, `raft-manager`, `gossip-coordinator`, `consensus-builder`, `crdt-synchronizer`, `quorum-manager`, `security-manager`
+
+### Performance & Optimization
+`perf-analyzer`, `performance-benchmarker`, `task-orchestrator`, `memory-coordinator`, `smart-agent`
+
+### GitHub & Repository
+`github-modes`, `pr-manager`, `code-review-swarm`, `issue-tracker`, `release-manager`, `workflow-automation`, `project-board-sync`, `repo-architect`, `multi-repo-swarm`
+
+### SPARC Methodology
+`sparc-coord`, `sparc-coder`, `specification`, `pseudocode`, `architecture`, `refinement`
+
+### Specialized Development
+`backend-dev`, `mobile-dev`, `ml-developer`, `cicd-engineer`, `api-docs`, `system-architect`, `code-analyzer`, `base-template-generator`
+
+### Testing & Validation
+`tdd-london-swarm`, `production-validator`
+
+### Migration & Planning
+`migration-planner`, `swarm-init`
+
+## 🎯 Claude Code vs MCP Tools
+
+### Claude Code Handles ALL EXECUTION:
+- **Task tool**: Spawn and run agents concurrently for actual work
+- File operations (Read, Write, Edit, MultiEdit, Glob, Grep)
+- Code generation and programming
+- Bash commands and system operations
+- Implementation work
+- Project navigation and analysis
+- TodoWrite and task management
+- Git operations
+- Package management
+- Testing and debugging
+
+### MCP Tools ONLY COORDINATE:
+- Swarm initialization (topology setup)
+- Agent type definitions (coordination patterns)
+- Task orchestration (high-level planning)
+- Memory management
+- Neural features
+- Performance tracking
+- GitHub integration
+
+**KEY**: MCP coordinates the strategy, Claude Code's Task tool executes with real agents.
+
+## 🚀 Quick Setup
+
+```bash
+# Add MCP servers (Claude Flow required, others optional)
+claude mcp add claude-flow npx claude-flow@alpha mcp start
+claude mcp add ruv-swarm npx ruv-swarm mcp start  # Optional: Enhanced coordination
+claude mcp add flow-nexus npx flow-nexus@latest mcp start  # Optional: Cloud features
 ```
 
-| Principle | Description | Why It Matters? |
-| --- | --- | --- |
-| **Plan First** | Never write code without a blueprint | Unplanned code = Technical Debt |
-| **Verify Before Use** | Verify every API/Library before implementation | Prevention of Hallucinations |
-| **Test Everything** | Untested code is not production code | Regression Prevention |
-| **Explain Everything** | Every line must be educational | Sustainability & Maintainability |
+## MCP Tool Categories
+
+### Coordination
+`swarm_init`, `agent_spawn`, `task_orchestrate`
+
+### Monitoring
+`swarm_status`, `agent_list`, `agent_metrics`, `task_status`, `task_results`
+
+### Memory & Neural
+`memory_usage`, `neural_status`, `neural_train`, `neural_patterns`
+
+### GitHub Integration
+`github_swarm`, `repo_analyze`, `pr_enhance`, `issue_triage`, `code_review`
+
+### System
+`benchmark_run`, `features_detect`, `swarm_monitor`
+
+### Flow-Nexus MCP Tools (Optional Advanced Features)
+Flow-Nexus extends MCP capabilities with 70+ cloud-based orchestration tools:
+
+**Key MCP Tool Categories:**
+- **Swarm & Agents**: `swarm_init`, `swarm_scale`, `agent_spawn`, `task_orchestrate`
+- **Sandboxes**: `sandbox_create`, `sandbox_execute`, `sandbox_upload` (cloud execution)
+- **Templates**: `template_list`, `template_deploy` (pre-built project templates)
+- **Neural AI**: `neural_train`, `neural_patterns`, `seraphina_chat` (AI assistant)
+- **GitHub**: `github_repo_analyze`, `github_pr_manage` (repository management)
+- **Real-time**: `execution_stream_subscribe`, `realtime_subscribe` (live monitoring)
+- **Storage**: `storage_upload`, `storage_list` (cloud file management)
+
+**Authentication Required:**
+- Register: `mcp__flow-nexus__user_register` or `npx flow-nexus@latest register`
+- Login: `mcp__flow-nexus__user_login` or `npx flow-nexus@latest login`
+- Access 70+ specialized MCP tools for advanced orchestration
+
+## 🚀 Agent Execution Flow with Claude Code
+
+### The Correct Pattern:
+
+1. **Optional**: Use MCP tools to set up coordination topology
+2. **REQUIRED**: Use Claude Code's Task tool to spawn agents that do actual work
+3. **REQUIRED**: Each agent runs hooks for coordination
+4. **REQUIRED**: Batch all operations in single messages
+
+### Example Full-Stack Development:
+
+```javascript
+// Single message with all agent spawning via Claude Code's Task tool
+[Parallel Agent Execution]:
+  Task("Backend Developer", "Build REST API with Express. Use hooks for coordination.", "backend-dev")
+  Task("Frontend Developer", "Create React UI. Coordinate with backend via memory.", "coder")
+  Task("Database Architect", "Design PostgreSQL schema. Store schema in memory.", "code-analyzer")
+  Task("Test Engineer", "Write Jest tests. Check memory for API contracts.", "tester")
+  Task("DevOps Engineer", "Setup Docker and CI/CD. Document in memory.", "cicd-engineer")
+  Task("Security Auditor", "Review authentication. Report findings via hooks.", "reviewer")
+  
+  // All todos batched together
+  TodoWrite { todos: [...8-10 todos...] }
+  
+  // All file operations together
+  Write "backend/server.js"
+  Write "frontend/App.jsx"
+  Write "database/schema.sql"
+```
+
+## 📋 Agent Coordination Protocol
+
+### Every Agent Spawned via Task Tool MUST:
+
+**1️⃣ BEFORE Work:**
+```bash
+npx claude-flow@alpha hooks pre-task --description "[task]"
+npx claude-flow@alpha hooks session-restore --session-id "swarm-[id]"
+```
+
+**2️⃣ DURING Work:**
+```bash
+npx claude-flow@alpha hooks post-edit --file "[file]" --memory-key "swarm/[agent]/[step]"
+npx claude-flow@alpha hooks notify --message "[what was done]"
+```
+
+**3️⃣ AFTER Work:**
+```bash
+npx claude-flow@alpha hooks post-task --task-id "[task]"
+npx claude-flow@alpha hooks session-end --export-metrics true
+```
+
+## 🎯 Concurrent Execution Examples
+
+### ✅ CORRECT WORKFLOW: MCP Coordinates, Claude Code Executes
+
+```javascript
+// Step 1: MCP tools set up coordination (optional, for complex tasks)
+[Single Message - Coordination Setup]:
+  mcp__claude-flow__swarm_init { topology: "mesh", maxAgents: 6 }
+  mcp__claude-flow__agent_spawn { type: "researcher" }
+  mcp__claude-flow__agent_spawn { type: "coder" }
+  mcp__claude-flow__agent_spawn { type: "tester" }
+
+// Step 2: Claude Code Task tool spawns ACTUAL agents that do the work
+[Single Message - Parallel Agent Execution]:
+  // Claude Code's Task tool spawns real agents concurrently
+  Task("Research agent", "Analyze API requirements and best practices. Check memory for prior decisions.", "researcher")
+  Task("Coder agent", "Implement REST endpoints with authentication. Coordinate via hooks.", "coder")
+  Task("Database agent", "Design and implement database schema. Store decisions in memory.", "code-analyzer")
+  Task("Tester agent", "Create comprehensive test suite with 90% coverage.", "tester")
+  Task("Reviewer agent", "Review code quality and security. Document findings.", "reviewer")
+  
+  // Batch ALL todos in ONE call
+  TodoWrite { todos: [
+    {id: "1", content: "Research API patterns", status: "in_progress", priority: "high"},
+    {id: "2", content: "Design database schema", status: "in_progress", priority: "high"},
+    {id: "3", content: "Implement authentication", status: "pending", priority: "high"},
+    {id: "4", content: "Build REST endpoints", status: "pending", priority: "high"},
+    {id: "5", content: "Write unit tests", status: "pending", priority: "medium"},
+    {id: "6", content: "Integration tests", status: "pending", priority: "medium"},
+    {id: "7", content: "API documentation", status: "pending", priority: "low"},
+    {id: "8", content: "Performance optimization", status: "pending", priority: "low"}
+  ]}
+  
+  // Parallel file operations
+  Bash "mkdir -p app/{src,tests,docs,config}"
+  Write "app/package.json"
+  Write "app/src/server.js"
+  Write "app/tests/server.test.js"
+  Write "app/docs/API.md"
+```
+
+### ❌ WRONG (Multiple Messages):
+```javascript
+Message 1: mcp__claude-flow__swarm_init
+Message 2: Task("agent 1")
+Message 3: TodoWrite { todos: [single todo] }
+Message 4: Write "file.js"
+// This breaks parallel coordination!
+```
+
+## Performance Benefits
+
+- **84.8% SWE-Bench solve rate**
+- **32.3% token reduction**
+- **2.8-4.4x speed improvement**
+- **27+ neural models**
+
+## Hooks Integration
+
+### Pre-Operation
+- Auto-assign agents by file type
+- Validate commands for safety
+- Prepare resources automatically
+- Optimize topology by complexity
+- Cache searches
+
+### Post-Operation
+- Auto-format code
+- Train neural patterns
+- Update memory
+- Analyze performance
+- Track token usage
+
+### Session Management
+- Generate summaries
+- Persist state
+- Track metrics
+- Restore context
+- Export workflows
+
+## Advanced Features (v2.0.0)
+
+- 🚀 Automatic Topology Selection
+- ⚡ Parallel Execution (2.8-4.4x speed)
+- 🧠 Neural Training
+- 📊 Bottleneck Analysis
+- 🤖 Smart Auto-Spawning
+- 🛡️ Self-Healing Workflows
+- 💾 Cross-Session Memory
+- 🔗 GitHub Integration
+
+## Integration Tips
+
+1. Start with basic swarm init
+2. Scale agents gradually
+3. Use memory for context
+4. Monitor progress regularly
+5. Train patterns from success
+6. Enable hooks automation
+7. Use GitHub tools first
+
+## Support
+
+- Documentation: https://github.com/ruvnet/claude-flow
+- Issues: https://github.com/ruvnet/claude-flow/issues
+- Flow-Nexus Platform: https://flow-nexus.ruv.io (registration required for cloud features)
 
 ---
 
-## 🚨 CRITICAL RULES (NON-NEGOTIABLE)
-
-Violating these rules is strictly prohibited. Each rule is designed to prevent a catastrophic failure scenario.
-
-### Rule 1: NO HALLUCINATIONS
-
-```
-❌ WRONG: "I think this library has a .parse() method."
-✅ RIGHT: Verify with Context7 → Read Documentation → Implement.
-
-```
-
-**Reason:** Incorrect API calls lead to runtime errors, security vulnerabilities, and data corruption.
-
-### Rule 2: NEVER COMPROMISE TYPE SAFETY
-
-```typescript
-❌ WRONG: const data: any = response.json();
-✅ RIGHT:
-interface ApiResponse {
-  users: User[];
-  pagination: Pagination;
-}
-const data: ApiResponse = await response.json();
-
-```
-
-**Reason:** The `any` type disables the compiler's safety net.
-
-### Rule 3: NO SILENT FAILURES
-
-```python
-# ❌ WRONG: Error swallowed, debugging impossible
-try:
-    process_data()
-except:
-    pass
-
-# ✅ RIGHT: Error logged, context preserved
-try:
-    process_data()
-except Exception as e:
-    logger.error(f"process_data failed: {e}", exc_info=True)
-    raise  # or handle gracefully
-
-```
-
-### Rule 4: NO APPROVAL WITHOUT TESTING
-
-```
-Code Written → Test PASS → Code Review → APPROVE
-      ↓             ↓
-   [CONTINUE]   [ERROR: LOOP BACK]
-
-```
-
-### Rule 5: NO DIRECT FILE READING (LARGE PROJECTS)
-
-```
-❌ WRONG: grep -r "functionName" .  (Slow, context-blind)
-✅ RIGHT: Search symbol via Serena LSP (Fast, semantic)
-
-```
-
----
-
-## 🛠️ MCP TOOL ECOSYSTEM
-
-Every tool solves a specific problem. Correct Tool + Correct Timing = Efficiency.
-
-### 📊 Tool Selection Matrix
-
-| Tool | Primary Task | When to Use? | Alternative |
-| --- | --- | --- | --- |
-| **Claude Task Master** | Task Planning | Project start, PRD Analysis | Sequential Thinking |
-| **Claude-Flow** | Memory & Coordination | Multi-step workflows, Context switching | - |
-| **Serena (LSP)** | Code Navigation | Symbol search, Definition lookup | grep (last resort) |
-| **Context7** | API Documentation | Before using any library | Web search |
-| **TestSprite** | Automated Testing | After code implementation | Manual test |
-| **CodeRabbit** | Security Audit | Before PR, Delivery | SonarQube |
-| **Sequential Thinking** | Complex Analysis | Multi-step reasoning | Task Master |
-| **Tavily** | Web Research | Best practices, Error research | Web search |
-
----
-
-### 🔧 TOOL 1: Claude Task Master
-
-**Role:** Strategic Planner
-**Analogy:** The Chief Engineer of a construction project; plans every step from foundation to roof.
-
-#### When to Use
-
-* [ ] Starting a new feature development
-* [ ] Analyzing a PRD (Product Requirements Document)
-* [ ] Planning a complex refactor
-* [ ] Sprint planning
-
-#### Usage Pattern
-
-```
-1. Receive PRD or Requirement
-2. Send to Task Master
-3. Generate tasks.json output
-4. Create Dependency Map
-5. Process tasks sequentially
-
-```
-
-#### Critical Warning
-
-⚠️ **NEVER** skip Task Master. Projects started without a plan accumulate technical debt 80% of the time.
-
----
-
-### 🧠 TOOL 2: Claude-Flow (Memory & Coordination)
-
-**Role:** Project Memory & Orchestrator
-**Analogy:** The Film Producer; coordinates the crew and ensures continuity.
-
-#### When to Use
-
-* [ ] To prevent context loss between tasks
-* [ ] To reference previous decisions
-* [ ] Managing multi-step, parallel jobs
-* [ ] Querying past logic chains from the ReasoningBank
-
-#### Concept Structure
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                   CLAUDE-FLOW                           │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐   │
-│  │ MEMORY      │  │ COORDINATION │  │ REASONING     │   │
-│  │             │  │              │  │               │   │
-│  │ • Decisions │  │ • Sub-agents │  │ • Why X?      │   │
-│  │ • Context   │  │ • Workflow   │  │ • Alt?        │   │
-│  │ • History   │  │ • Ordering   │  │ • Trade-offs  │   │
-│  └─────────────┘  └──────────────┘  └───────────────┘   │
-└─────────────────────────────────────────────────────────┘
-
-```
-
----
-
-### 🔍 TOOL 3: Serena (LSP - Language Server Protocol)
-
-**Role:** Code Navigator & Symbol Detective
-**Analogy:** The Librarian; finds exactly what you are looking for instantly.
-
-#### When to Use
-
-* [ ] Finding a function definition
-* [ ] Finding all usages of a variable
-* [ ] Verifying import paths
-* [ ] Impact analysis before refactoring
-
-#### Why Serena over grep?
-
-| Feature | grep | Serena (LSP) |
-| --- | --- | --- |
-| Speed (Large Projects) | Slow | Fast (Indexed) |
-| Semantic Understanding | No | Yes |
-| Type Information | No | Yes |
-| Go to Definition | Manual | Automatic |
-| Find References | Incomplete | Comprehensive |
-
----
-
-### 📚 TOOL 4: Context7 (API Documentation)
-
-**Role:** Library & Framework Expert
-**Analogy:** The Official Manual – what the manufacturer says is always true.
-
-#### When to Use
-
-* [ ] Before using a new library
-* [ ] Verifying API parameters
-* [ ] Checking for breaking changes
-* [ ] Learning best practices
-
-#### Mandatory Workflow
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│        MANDATORY STEPS BEFORE LIBRARY USAGE                  │
-│                                                              │
-│  1. resolve-library-id   →  Find correct library ID          │
-│            ↓                                                 │
-│  2. get-library-docs     →  Fetch current API docs           │
-│            ↓                                                 │
-│  3. Implement Usage      →  Apply verified pattern           │
-└──────────────────────────────────────────────────────────────┘
-
-```
-
-#### Critical Warning
-
-⚠️ **NEVER** guess APIs. Do not write code without a Context7 result.
-⚠️ Pay attention to framework versions (e.g., Next.js 13 vs 14 differences).
-
----
-
-### 🧪 TOOL 5: TestSprite (Automated Testing)
-
-**Role:** Quality Assurance Engineer
-**Analogy:** Quality Control Unit; prevents defective products from shipping.
-
-#### When to Use
-
-* [ ] Upon writing a new function
-* [ ] When modifying existing code (refactoring)
-* [ ] For regression testing after bug fixes
-* [ ] Running the full test suite before PR
-
-#### Test Pyramid Strategy
-
-* **Unit Tests:** 80% coverage (Function logic)
-* **Integration Tests:** 60% coverage (API endpoints)
-* **E2E Tests:** Critical flows only (Login, Checkout)
-
-#### Critical Warning
-
-⚠️ Do not proceed without **100% PASS**.
-⚠️ Never drop test coverage below 80%.
-⚠️ Fix flaky tests immediately.
-
----
-
-### 🛡️ TOOL 6: CodeRabbit (Security Audit)
-
-**Role:** Security Auditor & Code Quality Gatekeeper
-**Analogy:** Building Inspector; detects structural issues before occupancy.
-
-#### When to Use
-
-* [ ] Before opening a Pull Request
-* [ ] Before confirming task completion
-* [ ] For regular security scans
-* [ ] During code review
-
-#### Audit Layers
-
-* **🔴 CRITICAL SECURITY:** SQL Injection, XSS, CSRF, Hardcoded Credentials.
-* **🟡 CODE QUALITY:** Anti-patterns, DRY violations, Complexity.
-* **🟢 BEST PRACTICES:** Naming conventions, Error handling, Documentation.
-
-#### Critical Warning
-
-⚠️ **🔴 CRITICAL** findings must be fixed before merging.
-⚠️ Run CodeRabbit for every PR.
-
----
-
-### 🧩 TOOL 7: Sequential Thinking (Deep Analysis)
-
-**Role:** Strategic Thought Partner
-**Analogy:** The Grandmaster Chess Player; thinks several moves ahead.
-
-#### When to Use
-
-* [ ] Complex architectural decisions
-* [ ] Trade-off analysis
-* [ ] Multi-step problem solving
-* [ ] Defining refactoring strategies
-
-#### Thinking Process Structure
-
-1. **Define Problem:** Identify the core issue.
-2. **List Alternatives:** Option A vs Option B vs Option C.
-3. **Trade-off Analysis:** Speed vs Complexity vs Scalability.
-4. **Context Evaluation:** Current infrastructure, team capacity.
-5. **Decision & Rationale:** Final choice with "Why".
-
----
-
-### 🌐 TOOL 8: Tavily (Web Research)
-
-**Role:** Research Assistant
-**Analogy:** The Archivist; finds the most relevant external resources.
-
-#### When to Use
-
-* [ ] Best practices research (Current Year)
-* [ ] Resolving obscure error messages
-* [ ] Investigating community consensus
-* [ ] Security vulnerability research (CVE)
-
-#### Critical Warning
-
-⚠️ Verify search results with Context7 where possible.
-⚠️ Check dates on Stack Overflow/GitHub discussions.
-
----
-
-## 🚀 MASTER WORKFLOW
-
-This workflow applies to **every task**. No steps may be skipped.
-
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                          MASTER WORKFLOW                                   │
-│                                                                            │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐   │
-│  │  PLAN   │───▶│  DOCS   │───▶│   NAV   │───▶│  CODE   │───▶│  TEST   │   │
-│  │         │    │         │    │         │    │         │    │         │   │
-│  │ Task    │    │Context7 │    │ Serena  │    │Implement│    │TestSprite│   │
-│  │ Master  │    │ Tavily  │    │         │    │         │    │         │   │
-│  └─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘   │
-│       │                                                           │    │   │
-│       │               ┌─────────┐    ┌─────────┐                  │    │   │
-│       │               │  AUDIT  │◀───│  FAIL?  │◀─────────────────┘    │   │
-│       │               │         │    │         │                       │   │
-│       │               │CodeRabbit│    │  Y / N  │                       │   │
-│       │               └────┬────┘    └────┬────┘                       │   │
-│       │                    │              │                            │   │
-│       │                    ▼              │ Y                          │   │
-│       │               ┌─────────┐         │                            │   │
-│       │               │  DONE   │◀────────┘ (N: Test Pass)             │   │
-│       │               └─────────┘                                      │   │
-│       │                                                                │   │
-│       └─────────── Claude-Flow (Memory & Coordination) ────────────────▶   │
-│                        Active throughout process                       │   │
-└────────────────────────────────────────────────────────────────────────────┘
-
-```
-
-### STEP 1: PLAN (Mandatory Start)
-
-**Tool:** Claude Task Master
-**Goal:** Break task into atomic units.
-**Output Criteria:** `tasks.json` created, dependencies mapped.
-
-### STEP 2: DOCS (Research)
-
-**Tools:** Context7, Tavily
-**Goal:** Verify technologies and APIs.
-**Output Criteria:** All APIs verified, code examples noted.
-
-### STEP 3: NAV (Navigation)
-
-**Tool:** Serena (LSP)
-**Goal:** Understand the existing codebase.
-**Output Criteria:** Inventory of existing patterns and component structures.
-
-### STEP 4: CODE (Implementation)
-
-**Principles:**
-
-1. Write comments first (Explain intent).
-2. Write code second.
-3. Every block must be educational.
-
-### STEP 5: TEST (QA)
-
-**Tool:** TestSprite
-**Goal:** 100% Test Success.
-**Output Criteria:** All tests PASS, Coverage > 80%.
-
-### STEP 6: AUDIT (Security)
-
-**Tool:** CodeRabbit
-**Goal:** Security and Quality Approval.
-**Output Criteria:** No Critical findings, Review Approved.
-
-### STEP 7: DONE (Completion)
-
-**Checklist:** Task marked completed, Logic saved to Claude-Flow, Code committed.
-
----
-
-## 🌳 TOOL SELECTION DECISION TREE
-
-Use this tree to determine the correct tool for any situation:
-
-```
-                              ┌─────────────┐
-                              │  THE TASK?  │
-                              └──────┬──────┘
-                                     │
-              ┌──────────────────────┼──────────────────────┐
-              │                      │                      │
-              ▼                      ▼                      ▼
-       ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
-       │ New Feature  │       │   Bug Fix    │       │ Refactoring  │
-       └──────┬───────┘       └──────┬───────┘       └──────┬───────┘
-              │                      │                      │
-              ▼                      ▼                      ▼
-       ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
-       │ Task Master  │       │    Serena    │       │  Sequential  │
-       │   (Plan)     │       │    (Find)    │       │   Thinking   │
-       └──────┬───────┘       └──────┬───────┘       └──────┬───────┘
-              │                      │                      │
-              ▼                      ▼                      ▼
-       ┌──────────────────────────────────────────────────────────┐
-       │             IS A LIBRARY/API INVOLVED?                   │
-       └───────────────────────────┬──────────────────────────────┘
-                                   │
-                    ┌──────────────┼──────────────┐
-                    │ YES          │ NO           │
-                    ▼              │              │
-             ┌──────────────┐      │              │
-             │   Context7   │      │              │
-             │  (Verify)    │      │              │
-             └──────┬───────┘      │              │
-                    │              │              │
-                    ▼              ▼              │
-       ┌──────────────────────────────────────────────────────────┐
-       │           NEED TO UNDERSTAND EXISTING CODE?              │
-       └───────────────────────────┬──────────────────────────────┘
-                                   │
-                    ┌──────────────┼──────────────┐
-                    │ YES          │ NO           │
-                    ▼              │              │
-             ┌──────────────┐      │              │
-             │    Serena    │      │              │
-             │  (Navigate)  │      │              │
-             └──────┬───────┘      │              │
-                    │              │              │
-                    ▼              ▼              ▼
-       ┌──────────────────────────────────────────────────────────┐
-       │                      WRITE CODE                          │
-       └───────────────────────────┬──────────────────────────────┘
-                                   ▼
-                             TestSprite (Test)
-                                   ▼
-                             CodeRabbit (Audit)
-                                   ▼
-                                DONE ✅
-
-```
-
----
-
-## 🔄 ERROR RECOVERY PROTOCOL
-
-Systematic approach when things go wrong.
-
-1. **Build Error:** Read error → Serena (find file) → Context7 (check syntax) → Fix.
-2. **Runtime Error:** Analyze Stack Trace → Tavily (search error) → Serena (find logic) → Fix + Regression Test.
-3. **Test Error:** Compare Expected vs Actual → Determine if Code or Test is wrong → Fix → Retest.
-4. **API Error:** Check Status Code → Log Body → Context7 (Verify Spec) → Fix.
-
----
-
-## 📏 CODE QUALITY STANDARDS
-
-### Naming Conventions
-
-| Type | Format | Example |
-| --- | --- | --- |
-| Variable | camelCase | `userName`, `isLoading` |
-| Function | camelCase | `getUserById`, `validateEmail` |
-| Class/Interface | PascalCase | `UserService`, `IUserRepository` |
-| Constant | SCREAMING_SNAKE | `MAX_RETRY_COUNT` |
-| Component | PascalCase | `ProfileCard.tsx` |
-
-### Documentation Mandate (ELI15)
-
-**"Explain Like I'm 15"** - Explain complex concepts simply.
-
-```typescript
-// ✅ GOOD: Detailed explanation
-/**
- * CONCEPT: Debounce
- * PROBLEM: We don't want to call the API on every keystroke (too many requests).
- * SOLUTION: Wait for a pause (e.g., 300ms) after the last keystroke before calling.
- * ANALOGY: Like an elevator door. It waits for people to stop entering before closing.
- */
-const debounce = (fn, delay) => { ... }
-
-```
-
-### Syntax Decoding
-
-Always explain new or complex syntax (e.g., `??`, `?.`, `as const`) in comments immediately preceding usage.
-
----
-
-## 🔐 SECURITY & PERFORMANCE CHECKLIST
-
-Before every PR, verify:
-
-* [ ] **Input Validation:** Are all inputs sanitized?
-* [ ] **Auth:** Are sensitive endpoints protected?
-* [ ] **Data Exposure:** Is sensitive data stripped from logs/responses?
-* [ ] **SQL/XSS/CSRF:** Are standard protections active?
-* [ ] **Dependencies:** Are packages up to date (`npm audit`)?
-* [ ] **Bundle Size:** Is code splitting/tree shaking active?
-* [ ] **Renders:** Are unnecessary re-renders prevented (memoization)?
-* [ ] **Database:** Are N+1 queries avoided?
-
----
-
-## ⚠️ FINAL WARNINGS
-
-1. **Follow this file explicitly.** No steps are optional.
-2. **No Hallucinations.** Context7 + Serena = Truth.
-3. **No Approval without Tests.** 100% PASS = Proceed.
-4. **Educate.** Every line of code is a lesson.
-5. **Security First.** One vulnerability = Failure.
+Remember: **Claude Flow coordinates, Claude Code creates!**
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+Never save working files, text/mds and tests to the root folder.

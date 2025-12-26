@@ -106,6 +106,7 @@ def _params_to_config(params: List[Any]) -> WakewordConfig:
             cddnn_hidden_layers=[int(x.strip()) for x in params[77].split(',') if x.strip()],
             cddnn_context_frames=int(params[78]),
             cddnn_dropout=float(params[79]),
+            tiny_conv_use_depthwise=bool(params[85]),
         ),
         augmentation=AugmentationConfig(
             time_stretch_min=float(params[21]),
@@ -277,6 +278,8 @@ def _config_to_params(config: WakewordConfig) -> List[Any]:
         config.distillation.secondary_teacher_architecture,
         config.distillation.secondary_teacher_model_path,
         config.distillation.teacher_model_path,
+        # Phase 3 Optimization (85)
+        getattr(config.model, "tiny_conv_use_depthwise", False),
     ]
 
 
@@ -430,6 +433,10 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                             cddnn_context_frames = gr.Number(label="Context Frames", value=50)
                             cddnn_dropout = gr.Slider(
                                 minimum=0.0, maximum=0.9, value=0.3, step=0.05, label="CD-DNN Dropout"
+                            )
+                        with gr.Row():
+                            tiny_conv_use_depthwise = gr.Checkbox(
+                                label="TinyConv Depthwise", value=False, info="Use Depthwise Separable Convolutions"
                             )
 
                 with gr.Group():
@@ -664,6 +671,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
             secondary_teacher_arch,
             secondary_teacher_model_path,
             teacher_model_path,
+            tiny_conv_use_depthwise,
         ]
 
         def load_preset_handler(preset_name: str) -> Tuple:

@@ -747,6 +747,7 @@ class TinyConvWakeword(nn.Module):
         channels = tcn_num_channels
         kernel_size = kwargs.get("kernel_size", 3)
         conv_dropout = kwargs.get("tcn_dropout", dropout)
+        use_depthwise = kwargs.get("use_depthwise", False)
 
         # Build dynamic feature extraction layers
         layers: List[nn.Module] = []
@@ -756,17 +757,47 @@ class TinyConvWakeword(nn.Module):
             # Determine stride (2 for first few layers to downsample, 1 for later layers)
             stride = 2 if i < min(3, len(channels) - 1) else 1
 
-            # Add convolutional block
-            layers.append(
-                nn.Conv2d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    padding=kernel_size // 2,  # Same padding
-                    bias=False,
+            if use_depthwise and in_channels > 1:
+                # Depthwise Separable Convolution
+                # 1. Depthwise
+                layers.append(
+                    nn.Conv2d(
+                        in_channels,
+                        in_channels,
+                        kernel_size=kernel_size,
+                        stride=stride,
+                        padding=kernel_size // 2,
+                        groups=in_channels,
+                        bias=False,
+                    )
                 )
-            )
+                layers.append(nn.BatchNorm2d(in_channels))
+                layers.append(nn.ReLU(inplace=True))
+
+                # 2. Pointwise
+                layers.append(
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=1,
+                        stride=1,
+                        padding=0,
+                        bias=False,
+                    )
+                )
+            else:
+                # Standard Convolution
+                layers.append(
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=kernel_size,
+                        stride=stride,
+                        padding=kernel_size // 2,  # Same padding
+                        bias=False,
+                    )
+                )
+
             layers.append(nn.BatchNorm2d(out_channels))
             layers.append(nn.ReLU(inplace=True))
 
@@ -805,6 +836,24 @@ class TinyConvWakeword(nn.Module):
         x = self.classifier(x)
         x = self.dequant(x)
         return x
+
+    def embed(self, x: torch.Tensor, layer_index: Optional[int] = None) -> torch.Tensor:
+        """
+        Extract embeddings for distillation.
+        
+        Args:
+            x: Input tensor
+            layer_index: Ignored for now as TinyConv is very shallow,
+                        returns the pooled features.
+        """
+        if x.dim() == 2:
+            # Handle flattened input if necessary, but TinyConv expects 4D
+            pass
+            
+        x = self.quant(x)
+        x = self.features(x)
+        x = self.pool(x)
+        return x.flatten(1)
 
 
 class CDDNNWakeword(nn.Module):
@@ -982,26 +1031,36 @@ class ConformerWakeword(nn.Module):
 
         return logits
 
-    def embed(self, x: torch.Tensor) -> torch.Tensor:
-        """Get embeddings"""
+    def embed(self, x: torch.Tensor, layer_index: Optional[int] = None) -> torch.Tensor:
+        """
+        Get embeddings for distillation.
+        
+        Args:
+            x: Input tensor
+            layer_index: Optional index of the transformer layer to extract from.
+        """
         if x.dim() == 4:
             if x.size(1) == 1:
                 x = x.squeeze(1)
             if x.size(1) == self.input_size:
                 x = x.transpose(1, 2)
 
-        x = self.input_proj(x)
-        x = self.transformer(x)
+        # Project to encoder dim
+        x = self.input_proj(x)  # (B, T, D)
 
-        residual = x
-        x = self.conv_norm(x)
-        x = x.transpose(1, 2)
-        x = self.conv_module(x)
-        x = x.transpose(1, 2) + residual
+        # Transformer blocks
+        if layer_index is not None:
+            # Manually iterate through layers up to layer_index
+            for i, layer in enumerate(self.transformer.layers):
+                x = layer(x)
+                if i == layer_index:
+                    break
+        else:
+            x = self.transformer(x)
 
-        x = x.transpose(1, 2)
         # Pool to get fixed size embedding
-        embedding = F.adaptive_avg_pool1d(x, 1).flatten(1)
+        # shape: (B, T, D) -> mean(T) -> (B, D)
+        embedding = torch.mean(x, dim=1)
         return embedding
 
 

@@ -15,6 +15,72 @@ from src.config.defaults import QATConfig
 logger = logging.getLogger(__name__)
 
 
+def fuse_tiny_conv(model: nn.Module) -> None:
+    """
+    Fuse Conv+BN+ReLU modules in TinyConvWakeword for QAT.
+    Supports both standard and Depthwise Separable configurations.
+    """
+    # Find the features Sequential module and its name in the parent
+    features_name = None
+    features = None
+    
+    # Strategy 1: Check if model HAS features directly
+    if hasattr(model, "features") and isinstance(model.features, nn.Sequential):
+        features_name = "features"
+        features = model.features
+    else:
+        # Strategy 2: Search for it (handling wrappers)
+        for name, m in model.named_children():
+            if hasattr(m, "features") and isinstance(m.features, nn.Sequential):
+                features_name = f"{name}.features"
+                features = m.features
+                break
+            # If the model ITSELF is the Sequential features (less likely but possible)
+            if isinstance(m, nn.Sequential) and "features" in name:
+                features_name = name
+                features = m
+                break
+
+    if features is not None and features_name is not None:
+        was_training = model.training
+        model.eval()
+
+        modules_to_fuse = []
+        i = 0
+        # We peek into the features to find patterns
+        while i < len(features):
+            # Check for Conv + BN + ReLU sequence
+            if (
+                i + 2 < len(features)
+                and isinstance(features[i], nn.Conv2d)
+                and isinstance(features[i + 1], nn.BatchNorm2d)
+                and isinstance(features[i + 2], (nn.ReLU, nn.ReLU6))
+            ):
+                modules_to_fuse.append([f"{features_name}.{i}", f"{features_name}.{i+1}", f"{features_name}.{i+2}"])
+                i += 3
+            # Check for Conv + BN sequence
+            elif (
+                i + 1 < len(features)
+                and isinstance(features[i], nn.Conv2d)
+                and isinstance(features[i + 1], nn.BatchNorm2d)
+            ):
+                modules_to_fuse.append([f"{features_name}.{i}", f"{features_name}.{i+1}"])
+                i += 2
+            else:
+                i += 1
+
+        if modules_to_fuse:
+            logger.info(f"Fusing {len(modules_to_fuse)} blocks in TinyConv features")
+            try:
+                # We fuse on the top-level model using full paths
+                torch.ao.quantization.fuse_modules(model, modules_to_fuse, inplace=True)
+            except Exception as e:
+                logger.warning(f"Module fusion failed: {e}. Falling back to individual layer quantization.")
+
+        if was_training:
+            model.train()
+
+
 def prepare_model_for_qat(
     model: nn.Module, config: QATConfig, input_example: Optional[torch.Tensor] = None
 ) -> nn.Module:
@@ -57,13 +123,29 @@ def prepare_model_for_qat(
     if execution_engine != "none":
         torch.backends.quantized.engine = execution_engine
 
-    # 2. Fuse modules (Optional but recommended for performance/accuracy)
-    # Ideally, we would identify the model type and fuse appropriate layers.
-    # For standard torchvision models (ResNet, MobileNet), they often have
-    # built-in fuse_model() methods if we used the quantized versions,
-    # but here we are wrapping standard float models.
-    # We will skip manual fusion for now to keep it generic, or add simple
-    # pattern matching later if needed.
+    # 2. Fuse modules (Critical for QAT accuracy)
+    # We check the class name to avoid circular imports
+    model_type = model.__class__.__name__
+    if "TinyConv" in model_type:
+        fuse_tiny_conv(model)
+    elif hasattr(model, "fuse_model"):
+        model.fuse_model()
+    else:
+        # Check submodules
+        found_tiny = False
+        for m in model.children():
+            if "TinyConv" in m.__class__.__name__:
+                fuse_tiny_conv(m)
+                found_tiny = True
+                break
+        
+        if not found_tiny:
+            # Recursive check for deeper wrapping (e.g. distributed)
+            for m in model.modules():
+                if "TinyConv" in m.__class__.__name__:
+                    fuse_tiny_conv(m)
+                    found_tiny = True
+                    break
 
     # 3. Configure Qconfig
     # Use the default qconfig for the specified backend

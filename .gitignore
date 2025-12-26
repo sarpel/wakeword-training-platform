@@ -46,19 +46,19 @@ conductor/
 # Jupyter Notebooks
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
-
+.claude-flow/
 # IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
-
+.claude/
 # Project Specific - Data
 data/
 !src/data/
 unused_datasets/
 unqualified_datasets/
-
+.hive-mind/
 # Project Specific - Models & Logs
 models/
 !src/models/
@@ -96,3 +96,30 @@ cache/
 .env.zai
 quality_warning_dataset/
 *.ps1
+
+# Claude Flow generated files
+.claude/settings.local.json
+.mcp.json
+claude-flow.config.json
+.swarm/
+.hive-mind/
+.claude-flow/
+memory/
+coordination/
+memory/claude-flow-data.json
+memory/sessions/*
+!memory/sessions/README.md
+memory/agents/*
+!memory/agents/README.md
+coordination/memory_bank/*
+coordination/subtasks/*
+coordination/orchestration/*
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+claude-flow
+# Removed Windows wrapper files per user request
+hive-mind-prompt-*.txt
