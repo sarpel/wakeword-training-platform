@@ -64,8 +64,8 @@ class AudioAugmentation(nn.Module):
         background_noise_files: Optional[List[Path]] = None,
         rir_files: Optional[List[Path]] = None,
         # NEW: Buffer size limits (max items in memory at once)
-        max_background_noises: int = 100,
-        max_rirs: int = 200,
+        max_background_noises: int = 500,
+        max_rirs: int = 1000,
     ) -> None:
         """
         Initialize augmentation pipeline
