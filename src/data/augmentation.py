@@ -37,6 +37,11 @@ class AudioAugmentation(nn.Module):
     rir_prob: float
     rir_dry_wet_min: float
     rir_dry_wet_max: float
+    # NEW: Store all file paths for epoch-based resampling
+    _all_background_noise_files: List[Path]
+    _all_rir_files: List[Path]
+    _max_background_noises: int
+    _max_rirs: int
 
     def __init__(
         self,
@@ -58,6 +63,9 @@ class AudioAugmentation(nn.Module):
         # Background noise and RIR paths
         background_noise_files: Optional[List[Path]] = None,
         rir_files: Optional[List[Path]] = None,
+        # NEW: Buffer size limits (max items in memory at once)
+        max_background_noises: int = 100,
+        max_rirs: int = 200,
     ) -> None:
         """
         Initialize augmentation pipeline
@@ -76,6 +84,12 @@ class AudioAugmentation(nn.Module):
         self.rir_dry_wet_min = rir_dry_wet_min
         self.rir_dry_wet_max = rir_dry_wet_max
 
+        # NEW: Store buffer limits and all file paths for epoch-based resampling
+        self._max_background_noises = max_background_noises
+        self._max_rirs = max_rirs
+        self._all_background_noise_files = list(background_noise_files) if background_noise_files else []
+        self._all_rir_files = list(rir_files) if rir_files else []
+
         self.register_buffer("background_noises", torch.empty(0))
         self.register_buffer("rirs", torch.empty(0))
 
@@ -83,11 +97,12 @@ class AudioAugmentation(nn.Module):
         self.current_epoch = 0
         self.total_epochs = 100
 
-        if background_noise_files:
-            self._load_background_noises(background_noise_files)
+        # Load initial random subset
+        if self._all_background_noise_files:
+            self._load_background_noises_subset()
 
-        if rir_files:
-            self._load_rirs(rir_files)
+        if self._all_rir_files:
+            self._load_rirs_subset()
 
         if device and device != "cpu":
             self.to(device)
@@ -113,12 +128,20 @@ class AudioAugmentation(nn.Module):
         # Stack: (N, 1, Samples)
         return torch.stack(padded_waveforms)
 
-    def _load_background_noises(self, noise_files: List[Path]) -> None:
-        """Load background noise files into buffer"""
-        logger.info(f"Loading {len(noise_files)} background noise files...")
-        loaded_noises = []
+    def _load_background_noises_subset(self) -> None:
+        """
+        Load a random subset of background noise files into buffer.
+        Called at init and can be called again at epoch boundaries for variety.
+        """
+        all_files = self._all_background_noise_files
+        sample_size = min(len(all_files), self._max_background_noises)
 
-        for noise_file in noise_files[:100]:  # Limit to 100
+        # Random sample from all available files
+        selected_files = random.sample(all_files, sample_size)
+        logger.info(f"Loading {sample_size}/{len(all_files)} background noises (random subset)...")
+
+        loaded_noises = []
+        for noise_file in selected_files:
             try:
                 waveform, sr = torchaudio.load(str(noise_file))
                 if sr != self.sample_rate:
@@ -137,17 +160,25 @@ class AudioAugmentation(nn.Module):
                 logger.warning(f"Failed to load noise {noise_file}: {e}")
 
         if loaded_noises:
+            # Properly update buffer (delete old, register new)
+            if hasattr(self, "background_noises") and self.background_noises.numel() > 0:
+                delattr(self, "background_noises")
             self.register_buffer("background_noises", self._pad_and_stack(loaded_noises))
 
-    def _load_rirs(self, rir_files: List[Path]) -> None:
-        """Load RIR files into buffer"""
-        # ... similar to previous validation logic ...
-        all_rir_files = list(set(rir_files))
-        max_rirs = min(len(all_rir_files), 200)
-        logger.info(f"Loading up to {max_rirs} RIRs...")
+    def _load_rirs_subset(self) -> None:
+        """
+        Load a random subset of RIR files into buffer.
+        Called at init and can be called again at epoch boundaries for variety.
+        """
+        all_files = list(set(self._all_rir_files))  # Dedupe
+        sample_size = min(len(all_files), self._max_rirs)
+
+        # Random sample from all available files
+        selected_files = random.sample(all_files, sample_size)
+        logger.info(f"Loading {sample_size}/{len(all_files)} RIRs (random subset)...")
 
         loaded_rirs = []
-        for rir_file in all_rir_files[:max_rirs]:
+        for rir_file in selected_files:
             try:
                 waveform, sr = torchaudio.load(str(rir_file))
                 if sr != self.sample_rate:
@@ -167,11 +198,46 @@ class AudioAugmentation(nn.Module):
                 logger.warning(f"Failed to load RIR {rir_file}: {e}")
 
         if loaded_rirs:
-            # BUG FIX: Use register_buffer properly by unregistering old buffer first
+            # Properly update buffer (delete old, register new)
             stacked_rirs = self._pad_and_stack(loaded_rirs)
-            # Delete existing buffer if it exists
-            delattr(self, "rirs")
+            if hasattr(self, "rirs") and self.rirs.numel() > 0:
+                delattr(self, "rirs")
             self.register_buffer("rirs", stacked_rirs)
+
+    def reshuffle_augmentation_data(self) -> None:
+        """
+        Reshuffle augmentation data by loading a new random subset of files.
+
+        Call this at the start of each epoch to maximize variety while
+        keeping memory bounded. Over a full training run, this allows
+        exposure to ALL available RIRs and background noises.
+
+        Example usage in training loop:
+            for epoch in range(num_epochs):
+                augmentation.reshuffle_augmentation_data()
+                for batch in dataloader:
+                    ...
+        """
+        device = (
+            self.rirs.device
+            if self.rirs.numel() > 0
+            else (self.background_noises.device if self.background_noises.numel() > 0 else "cpu")
+        )
+
+        if self._all_background_noise_files:
+            self._load_background_noises_subset()
+            if device != "cpu":
+                self.background_noises = self.background_noises.to(device)
+
+        if self._all_rir_files:
+            self._load_rirs_subset()
+            if device != "cpu":
+                self.rirs = self.rirs.to(device)
+
+        logger.info(
+            f"Reshuffled augmentation data: {len(self.background_noises)} noises, "
+            f"{len(self.rirs)} RIRs now in buffer"
+        )
 
     def time_stretch(self, waveform: torch.Tensor) -> torch.Tensor:
         """
@@ -228,11 +294,23 @@ class AudioAugmentation(nn.Module):
         shift_samples = int(shift_ms * self.sample_rate / 1000)
         return torch.roll(waveform, shifts=shift_samples, dims=-1)
 
-    def set_epoch(self, epoch: int, total_epochs: int) -> None:
-        """Update epoch for SNR scheduling."""
+    def set_epoch(self, epoch: int, total_epochs: int, reshuffle: bool = False) -> None:
+        """
+        Update epoch for SNR scheduling and optionally reshuffle augmentation data.
+
+        Args:
+            epoch: Current epoch number
+            total_epochs: Total number of epochs
+            reshuffle: If True, reload a new random subset of RIRs and background noises
+        """
         self.current_epoch = epoch
         self.total_epochs = max(total_epochs, 1)
         self.use_snr_scheduling = True
+
+        # Reshuffle augmentation data for maximum variety across epochs
+        if reshuffle and (self._all_rir_files or self._all_background_noise_files):
+            self.reshuffle_augmentation_data()
+
         logger.debug(f"Augmentation epoch updated: {epoch}/{total_epochs}")
 
     def add_background_noise(self, waveform: torch.Tensor) -> torch.Tensor:

@@ -479,7 +479,10 @@ class Trainer:
             if hasattr(self.audio_processor, "augmentation") and self.audio_processor.augmentation is not None:
                 from src.data.augmentation import AudioAugmentation
 
-                cast(AudioAugmentation, self.audio_processor.augmentation).set_epoch(epoch, self.config.training.epochs)
+                # NEW: Enable reshuffle=True to pick a new random subset of RIRs/Noises every epoch
+                cast(AudioAugmentation, self.audio_processor.augmentation).set_epoch(
+                    epoch, self.config.training.epochs, reshuffle=True
+                )
 
     def _check_qat_transition(self, epoch: int) -> None:
         """Check and handle transition to QAT fine-tuning"""

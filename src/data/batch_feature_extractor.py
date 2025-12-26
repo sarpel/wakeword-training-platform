@@ -141,8 +141,16 @@ class BatchFeatureExtractor:
 
         # Process in batches
         processed_count = 0
+        batches_since_reshuffle = 0
+
         for i in tqdm(range(0, len(audio_files), batch_size), desc="Extracting features"):
+            # Reshuffle augmentation data periodically for maximum variety
+            if augmenter is not None and batches_since_reshuffle >= 32:
+                augmenter.reshuffle_augmentation_data()
+                batches_since_reshuffle = 0
+
             batch_files = audio_files[i : i + batch_size]
+            batches_since_reshuffle += 1
 
             # Load audio batch
             audio_batch = []
