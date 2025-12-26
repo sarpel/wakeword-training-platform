@@ -1,109 +1,127 @@
-# General Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-training-153epoch-f1-0.83.txt
-# Virtual Environments
-venv/
-env/
-ENV/
+########################################
+# 🔒 CRITICAL SAFETY FIRST
+########################################
+
+# Environment secrets
 .env
-.venv/
-training-2.txt
-# Testing & Coverage
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-.mypy_cache/
-codeql-results.sarif
-conductor/
-# Jupyter Notebooks
-.ipynb_checkpoints
-*/.ipynb_checkpoints/*
-.claude-flow/
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-.claude/
-# Project Specific - Data
-data/
-!src/data/
-unused_datasets/
-unqualified_datasets/
-.hive-mind/
-# Project Specific - Models & Logs
-models/
-!src/models/
-logs/
-wandb/
-.wandb_key
-.genkit/
+.env.*
+!.env.example
 
-# Project Specific - Configs (Run artifacts)
-configs/
-
-# Project Specific - Server
-server/venv/
-
-# AI Agents
-.claude-flow/
-
-
-# OS Generated
+# Accidental OS files
 .DS_Store
 Thumbs.db
-*.7z
-*.zip
-docs/current_dataset_info.json
-docs/best trial-2.txt
-docs/helper_scripts/flagged_files.txt
-docs/helper_scripts/sample_manifest.csv
-docs/helper_scripts
-train_100_epochs.txt
-cache/
-.swarm/
-.serena/
+*.Zone.Identifier
+
+########################################
+# 🐍 PYTHON
+########################################
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 .pytest_cache/
 .mypy_cache/
-.env.zai
-quality_warning_dataset/
-*.ps1
+.pytype/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
 
+########################################
+# 📦 VIRTUAL ENV / BUILD
+########################################
 
-# Removed Windows wrapper files per user request
-hive-mind-prompt-*.txt
+venv/
+.env_venv/
+.venv/
+pip-wheel-metadata/
+build/
+dist/
+*.egg-info/
 
+########################################
+# 🧠 ML / DATA / MODELS  (ABSOLUTELY IGNORE)
+########################################
 
-# Removed Windows wrapper files per user request
-hive-mind-prompt-*.txt
+# Raw & processed datasets
+data/
+!data/.gitkeep
+
+# Model artifacts
+models/
+!models/.gitkeep
+
+# Training outputs
+wandb/
+tensorboard/
+runs/
+checkpoints/
+exports/
+
+########################################
+# 📊 NUMPY / TORCH / AUDIO ARTIFACTS
+########################################
+
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.engine
+*.npy
+*.npz
+*.wav
+*.flac
+
+########################################
+# 🧪 CACHE / TEMP
+########################################
+
+.cache/
+tmp/
+temp/
+*.log
+
+########################################
+# 🤖 CLAUDE / MCP / SWARM / SERENA
+########################################
+
+.claude/
+.claude-flow/
+.swarm/
+.hive-mind/
+.mcp.json
+.serena/
+coordination/
+memory/
+claude-flow
+
+########################################
+# 🧾 DOCS & REPORTS  (EXPLICITLY KEEP)
+########################################
+
+!docs/
+!docs/**
+!reports/
+!reports/**
+!docs/BACKLOG.md
+
+########################################
+# 🛠️ NODE / TOOLING (if any)
+########################################
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+########################################
+# 🔧 MISC
+########################################
+
+*.bak
+*.swp
+*.tmp
 
 # Claude Flow generated files
 .claude/settings.local.json
@@ -131,4 +149,5 @@ coordination/orchestration/*
 claude-flow
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt
-.wandb_key
+*.csv
+!scripts/helper_scripts/sample_manifest.csv

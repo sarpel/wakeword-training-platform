@@ -163,11 +163,6 @@ module = "src.config.dataset_config_validator"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "src.training.hpo"
-ignore_missing_imports = true
-allow_redefinition = true
-
-[[tool.mypy.overrides]]
 module = "src.training.distillation_trainer"
 ignore_missing_imports = true
 
@@ -217,12 +212,6 @@ disable_errors = ["no-any-return"]
 [[tool.mypy.overrides]]
 module = "src.config.dataset_config_validator"
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "src.training.hpo"
-ignore_missing_imports = true
-allow_redefinition = true
-disable_errors = ["assignment", "var-annotated", "return-value", "arg-type", "name-defined"]
 
 [[tool.mypy.overrides]]
 module = "src.training.distillation_trainer"
@@ -280,11 +269,6 @@ disable_errors = ["no-any-return"]
 [[tool.mypy.overrides]]
 module = "src.config.dataset_config_validator"
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "src.training.hpo"
-ignore_missing_imports = true
-allow_redefinition = true
 
 [[tool.mypy.overrides]]
 module = "src.evaluation.dataset_evaluator"
@@ -350,19 +334,22 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["src"]
-branch = true
 omit = [
     "*/tests/*",
+    "*/test_*",
     "*/__pycache__/*",
-    "*/venv/*",
+    "*/site-packages/*",
 ]
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
+    "raise AssertionError",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+fail_under = 80
+precision = 2
 show_missing = true
