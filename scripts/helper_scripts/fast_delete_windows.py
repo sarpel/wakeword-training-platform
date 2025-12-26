@@ -14,8 +14,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+
 def is_windows() -> bool:
     return os.name == "nt"
+
 
 def run(cmd: list[str]) -> int:
     # CREATE_NO_WINDOW: ekstra console penceresi açmasın
@@ -31,6 +33,7 @@ def run(cmd: list[str]) -> int:
     for line in p.stdout:
         print(line.rstrip())
     return p.wait()
+
 
 def robocopy_purge(target: Path) -> bool:
     """
@@ -66,6 +69,7 @@ def robocopy_purge(target: Path) -> bool:
     finally:
         shutil.rmtree(empty_dir, ignore_errors=True)
 
+
 def remove_dir_quick(target: Path) -> bool:
     """
     Klasörü komple kaldır (en hızlısı çoğu senaryoda).
@@ -74,6 +78,7 @@ def remove_dir_quick(target: Path) -> bool:
     print(">> rmdir (tam silme) başlıyor...")
     code = run(cmd)
     return code == 0
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -131,6 +136,7 @@ def main():
 
         print("!! Silme başarısız. Yetki/lock/antivirüs engeli olabilir.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

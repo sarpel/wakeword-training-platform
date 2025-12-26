@@ -1,0 +1,149 @@
+config_name: custom
+description: Custom configuration from UI
+data:
+  data_root: data
+  sample_rate: 16000
+  audio_duration: 1.5
+  n_mfcc: 0
+  n_fft: 512
+  hop_length: 160
+  n_mels: 64
+  feature_type: mel
+  normalize_audio: true
+  use_precomputed_features_for_training: true
+  npy_feature_dir: data/npy
+  npy_feature_type: mel
+  npy_cache_features: true
+  fallback_to_audio: true
+  npy_augmentation_multiplier: 1
+  npy_augment_on_extract: false
+training:
+  batch_size: 64
+  epochs: 200
+  learning_rate: 0.001
+  early_stopping_patience: 25
+  fnr_target: null
+  num_workers: 8
+  pin_memory: true
+  persistent_workers: true
+  use_compile: false
+  use_gradient_checkpointing: false
+  checkpoint_frequency: every_5_epochs
+  save_best_only: true
+  use_ema: true
+  ema_decay: 0.999
+  ema_final_decay: 0.9995
+  ema_final_epochs: 10
+  metric_window_size: 100
+  include_mined_negatives: true
+model:
+  architecture: tiny_conv
+  num_classes: 2
+  pretrained: false
+  dropout: 0.2
+  hidden_size: 128
+  num_layers: 2
+  bidirectional: true
+  tcn_num_channels:
+  - 64
+  - 64
+  - 64
+  - 64
+  tcn_kernel_size: 3
+  tcn_dropout: 0.3
+  cddnn_hidden_layers:
+  - 512
+  - 256
+  - 128
+  cddnn_context_frames: 50
+  cddnn_dropout: 0.3
+  tiny_conv_use_depthwise: false
+augmentation:
+  time_stretch_min: 0.85
+  time_stretch_max: 1.15
+  pitch_shift_min: -3
+  pitch_shift_max: 3
+  time_shift_prob: 0.7
+  time_shift_min_ms: -100
+  time_shift_max_ms: 100
+  background_noise_prob: 0.8
+  noise_snr_min: 3.0
+  noise_snr_max: 15.0
+  max_background_noises: 1000
+  rir_prob: 0.6
+  max_rirs: 2000
+  rir_dry_wet_min: 0.3
+  rir_dry_wet_max: 0.7
+  rir_dry_wet_strategy: random
+  use_spec_augment: true
+  freq_mask_param: 20
+  time_mask_param: 40
+  n_freq_masks: 2
+  n_time_masks: 2
+optimizer:
+  optimizer: adamw
+  weight_decay: 0.01
+  momentum: 0.9
+  betas:
+  - 0.9
+  - 0.999
+  scheduler: cosine
+  warmup_epochs: 5
+  min_lr: 1.0e-06
+  step_size: 10
+  gamma: 0.5
+  patience: 5
+  factor: 0.5
+  gradient_clip: 1.0
+  mixed_precision: true
+loss:
+  loss_function: focal_loss
+  label_smoothing: 0.05
+  focal_alpha: 0.75
+  focal_gamma: 2.0
+  triplet_margin: 1.0
+  class_weights: balanced
+  hard_negative_weight: 5.0
+  class_weight_min: 0.1
+  class_weight_max: 100.0
+  use_dynamic_alpha: true
+  max_focal_alpha: 0.9
+  sampler_strategy: balanced
+qat:
+  enabled: true
+  backend: qnnpack
+  start_epoch: 15
+distillation:
+  enabled: true
+  teacher_model_path: ''
+  teacher_on_cpu: false
+  teacher_mixed_precision: true
+  log_memory_usage: false
+  teacher_architecture: dual
+  secondary_teacher_architecture: whisper
+  secondary_teacher_model_path: ''
+  temperature: 2.0
+  temperature_scheduler: fixed
+  alpha: 0.5
+  feature_alignment_enabled: false
+  feature_alignment_weight: 0.1
+  alignment_layers:
+  - 1
+  - 2
+  - 3
+cmvn:
+  enabled: true
+  stats_path: data/cache/cmvn_stats.json
+  calculate_on_fly: true
+streaming:
+  hysteresis_high: 0.7
+  hysteresis_low: 0.3
+  buffer_length_ms: 1500
+  smoothing_window: 5
+  cooldown_ms: 500
+size_targets:
+  max_flash_kb: 0
+  max_ram_kb: 0
+calibration:
+  num_samples: 100
+  positive_ratio: 0.5
