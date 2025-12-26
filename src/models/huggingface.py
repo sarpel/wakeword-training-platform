@@ -227,62 +227,117 @@ class WhisperWakeword(nn.Module):
         """
         Prepare audio input for Whisper encoder.
         Whisper expects log-mel spectrogram of shape (batch, 80, 3000) for 30s audio.
-        For shorter audio, we pad or generate mel-spectrograms.
+        Uses Whisper's exact preprocessing: log10, max clamp, normalization to ~[-1, 1].
 
         Args:
-            x: Input tensor - can be raw audio (batch, samples) or features (batch, 1, freq, time)
+            x: Input tensor - can be:
+              - Raw audio: (batch, samples) or (batch, 1, samples)
+              - Mel features: (batch, 80, time) or (batch, 1, 80, time)
 
         Returns:
-            Tensor ready for Whisper encoder (batch, 80, time)
+            Tensor ready for Whisper encoder (batch, 80, 3000)
         """
-        # If already 3D with correct feature dim, assume it's ready
-        if x.ndim == 3 and x.size(1) == 80:
-            return x
+        mel = None
 
-        # If 4D (batch, 1, freq, time), squeeze and check
-        if x.ndim == 4:
+        # Helper: Convert raw audio to Whisper-compatible log-mel spectrogram
+        def compute_mel(audio: torch.Tensor) -> torch.Tensor:
+            """
+            Convert raw audio [batch, samples] to Whisper-compatible log-mel [batch, 80, time].
+            Matches OpenAI's Whisper preprocessing exactly.
+            """
+            import torchaudio.transforms as T
+
+            # Check for NaNs in raw audio
+            if torch.isnan(audio).any() or torch.isinf(audio).any():
+                logger.warning("NaN/Inf detected in raw audio input to Whisper, replacing with silence")
+                audio = torch.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+
+            # Whisper mel spectrogram parameters:
+            # - 80 mel bins, 400 sample window (25ms), 160 sample hop (10ms)
+            # - NOT normalized in torchaudio (normalized=False) - we normalize manually
+            mel_transform = T.MelSpectrogram(
+                sample_rate=16000, n_fft=400, hop_length=160, n_mels=80, normalized=False
+            ).to(audio.device)
+            mel_out = mel_transform(audio)  # (batch, 80, time)
+
+            # === WHISPER PREPROCESSING (matching OpenAI's implementation) ===
+            # Step 1: Log10 scale (NOT natural log!)
+            log_spec = torch.log10(torch.clamp(mel_out, min=1e-10))
+
+            # Step 2: Max clamp - prevent extreme negative values
+            # Clamp to max - 8.0 (where max is per-sample for batch processing)
+            max_val = log_spec.amax(dim=(-2, -1), keepdim=True)
+            log_spec = torch.maximum(log_spec, max_val - 8.0)
+
+            # Step 3: Normalize to ~[-1, 1] range
+            # This is the standard Whisper normalization
+            log_spec = (log_spec + 4.0) / 4.0
+
+            # Final safety clamp to valid range (usually -1.5 to 1.5)
+            # This prevents any numerical slips from blowing up later layers
+            return torch.clamp(log_spec, min=-5.0, max=5.0)
+
+        # Case 1: Already correct mel features (batch, 80, time)
+        # Note: If pre-computed mel is already in Whisper format, use directly
+        if x.ndim == 3 and x.size(1) == 80:
+            mel = x
+
+        # Case 2: Mel features with channel dim (batch, 1, 80, time)
+        elif x.ndim == 4 and x.size(1) == 1 and x.size(2) == 80:
+            mel = x.squeeze(1)  # (batch, 80, time)
+
+        # Case 3: Raw audio with channel dim (batch, 1, samples) - COMMON CASE
+        # Detected when: 3D, channel=1, and time dimension is > 1000 (audio samples, not mel frames)
+        elif x.ndim == 3 and x.size(1) == 1 and x.size(2) > 1000:
+            # Squeeze channel and compute mel
+            audio = x.squeeze(1)  # (batch, samples)
+            mel = compute_mel(audio)
+
+        # Case 4: Raw audio without channel dim (batch, samples)
+        elif x.ndim == 2:
+            mel = compute_mel(x)
+
+        # Case 5: Other 4D shapes (batch, 1, freq, time) with freq != 80
+        elif x.ndim == 4:
             x = x.squeeze(1)  # (batch, freq, time)
             if x.size(1) == 80:
-                return x
+                mel = x
+            else:
+                # Unexpected feature dimension - try to adapt
+                logger.warning(f"Whisper received unexpected 4D input shape {x.shape}, attempting adaptation")
+                mel = torch.nn.functional.interpolate(x.unsqueeze(1), size=(80, x.size(2)), mode="bilinear").squeeze(1)
 
-        # If 2D raw audio, we need to compute mel-spectrogram
-        # For simplicity in distillation, we'll use a simple mel computation
-        # In production, you'd use Whisper's feature extractor
-        if x.ndim == 2:
-            # Raw audio input - use torchaudio for mel spectrogram
-            try:
-                import torchaudio.transforms as T
-
-                mel_transform = T.MelSpectrogram(
-                    sample_rate=16000, n_fft=400, hop_length=160, n_mels=80, normalized=True
-                ).to(x.device)
-                mel = mel_transform(x)  # (batch, 80, time)
-                # Log mel spectrogram
-                mel = torch.log(mel.clamp(min=1e-10))
-                return mel
-            except ImportError:
-                # Fallback: simple linear projection (not ideal but functional)
-                logger.warning("torchaudio not available, using simple projection for Whisper input")
-                # Reshape to fake mel features
-                seq_len = x.size(1) // 160  # Approximate time frames
-                x_reshaped = x[:, : seq_len * 160].reshape(x.size(0), seq_len, 160)
-                # Simple linear to 80 dims
-                x_proj = x_reshaped[:, :, :80].transpose(1, 2)  # (batch, 80, time)
-                return x_proj
-
-        # If 3D but wrong feature dim, try to adapt
-        if x.ndim == 3:
-            # Assume (batch, time, features) - transpose to (batch, features, time)
-            if x.size(2) < x.size(1):
+        # Case 6: Other 3D shapes - likely (batch, time, features), transpose to (batch, features, time)
+        elif x.ndim == 3:
+            if x.size(1) > x.size(2):
+                # Looks like (batch, time, features), transpose
                 x = x.transpose(1, 2)
-            # Pad or project to 80 features if needed
-            if x.size(1) != 80:
-                # Simple adaptation via linear layer (created on-the-fly - not ideal but works)
-                x = torch.nn.functional.adaptive_avg_pool1d(x, 80)
-                x = x.transpose(1, 2).transpose(1, 2)  # Ensure (batch, 80, time)
-            return x
+            # Check if it's now 80 features
+            if x.size(1) == 80:
+                mel = x
+            else:
+                # Unexpected - try interpolation
+                logger.warning(f"Whisper received unexpected 3D input shape after transpose {x.shape}")
+                mel = torch.nn.functional.interpolate(x.unsqueeze(1), size=(80, x.size(2)), mode="bilinear").squeeze(1)
 
-        raise ValueError(f"Unexpected input shape for Whisper: {x.shape}")
+        if mel is None:
+            raise ValueError(f"Unexpected input shape for Whisper: {x.shape}")
+
+        # CRITICAL: Whisper encoder requires exactly 3000 time frames
+        # (corresponds to 30 seconds of audio at 100 frames/sec)
+        # Pad or truncate to exactly 3000 frames
+        target_len = 3000
+        current_len = mel.size(2)
+
+        if current_len < target_len:
+            # Pad with normalized silence value (0.0 in normalized scale = near-silence)
+            padding = target_len - current_len
+            mel = torch.nn.functional.pad(mel, (0, padding), mode="constant", value=0.0)
+        elif current_len > target_len:
+            # Truncate to target length
+            mel = mel[:, :, :target_len]
+
+        return mel
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

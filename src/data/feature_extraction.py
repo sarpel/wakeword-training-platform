@@ -145,6 +145,16 @@ class FeatureExtractor(nn.Module):
 
         # Extract features
         if self.feature_type == "mel":
+            # Ensure waveform is on the same device as the module's buffers (window tensor)
+            # MelSpectrogram uses buffers, not parameters, so check buffers
+            # This is critical for DataLoader workers which must use CPU
+            try:
+                mel_device = next(self.mel_spectrogram.buffers()).device
+            except StopIteration:
+                mel_device = torch.device("cpu")  # Fallback to CPU
+            if waveform.device != mel_device:
+                waveform = waveform.to(mel_device)
+
             # Compute mel-spectrogram
             mel_spec = self.mel_spectrogram(waveform)  # (batch, n_mels, time)
 
@@ -159,6 +169,14 @@ class FeatureExtractor(nn.Module):
                 features = features.squeeze(0)  # (1, n_mels, time)
 
         elif self.feature_type == "mfcc" and self.mfcc_transform is not None:
+            # Ensure waveform is on the same device as the module's buffers
+            try:
+                mfcc_device = next(self.mfcc_transform.buffers()).device
+            except StopIteration:
+                mfcc_device = torch.device("cpu")
+            if waveform.device != mfcc_device:
+                waveform = waveform.to(mfcc_device)
+
             # Compute MFCC
             mfcc = self.mfcc_transform(waveform)  # (batch, n_mfcc, time)
 

@@ -230,7 +230,25 @@ class Trainer:
 
         self.checkpoint_manager = checkpoint_manager
         self.checkpoint_dir = checkpoint_manager.checkpoint_dir
-        self.checkpoint_frequency = int(config.training.checkpoint_frequency)
+        # Parse checkpoint_frequency - can be int or string like "every_5_epochs"
+        freq = config.training.checkpoint_frequency
+        if isinstance(freq, int):
+            self.checkpoint_frequency = freq
+        elif isinstance(freq, str):
+            # Extract number from strings like "every_5_epochs", "every_10_epochs"
+            import re
+
+            match = re.search(r"\d+", freq)
+            if match:
+                self.checkpoint_frequency = int(match.group())
+            elif freq == "best_only":
+                self.checkpoint_frequency = 0  # 0 means only save best
+            elif freq == "every_epoch":
+                self.checkpoint_frequency = 1
+            else:
+                self.checkpoint_frequency = 5  # Default fallback
+        else:
+            self.checkpoint_frequency = 5  # Default fallback
 
         # Callbacks
         self.callbacks: List[Any] = []

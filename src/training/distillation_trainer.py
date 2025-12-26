@@ -282,6 +282,11 @@ class DistillationTrainer(Trainer):
                 else:
                     logits = teacher_out
 
+                # Defensive NaN check - skip teacher if output is corrupted
+                if torch.isnan(logits).any() or torch.isinf(logits).any():
+                    logger.warning(f"NaN/Inf detected in teacher {i+1} output, skipping this teacher")
+                    continue
+
                 all_teacher_logits.append(logits.to(self.device))
 
                 # Feature alignment (optional)
@@ -322,8 +327,12 @@ class DistillationTrainer(Trainer):
             mean_teacher_logits = all_teacher_logits[0]
 
         # Distillation Loss (KL)
+        # Clamp logits to prevent numerical instability in softmax
+        mean_teacher_logits = torch.clamp(mean_teacher_logits, min=-100.0, max=100.0)
+        outputs_clamped = torch.clamp(outputs, min=-100.0, max=100.0)
+
         soft_targets = F.log_softmax(mean_teacher_logits / T, dim=1)
-        soft_prob = F.log_softmax(outputs / T, dim=1)
+        soft_prob = F.log_softmax(outputs_clamped / T, dim=1)
         dist_loss = F.kl_div(soft_prob, soft_targets, reduction="batchmean", log_target=True) * (T**2)
 
         # Final Combined Loss

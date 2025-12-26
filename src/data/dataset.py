@@ -159,7 +159,7 @@ class WakewordDataset(Dataset):
                 n_mfcc=n_mfcc,
                 n_fft=n_fft,
                 hop_length=hop_length,
-                device=device,
+                device=self.device,  # Always CPU for DataLoader workers
             )
 
         # Initialize augmentation if enabled (Only if not returning raw audio)

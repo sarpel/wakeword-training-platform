@@ -727,6 +727,15 @@ def start_training(
 
         # NPY feature loading is now controlled by config
 
+        # CRITICAL: When distillation is enabled, we MUST use raw audio mode
+        # because the teacher models (Wav2Vec2, Whisper) expect raw waveforms,
+        # not pre-computed mel-spectrograms. This overrides user preference.
+        force_raw_audio = config.distillation.enabled
+        if force_raw_audio and config.data.use_precomputed_features_for_training:
+            training_state.add_log(
+                "⚠️ Distillation enabled: forcing raw audio mode (NPY features incompatible with teacher models)"
+            )
+
         # NEW: Optimize config for GPU pipeline
         import os
 
@@ -757,7 +766,8 @@ def start_training(
             fallback_to_audio=True,  # IMPORTANT
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
-            return_raw_audio=not config.data.use_precomputed_features_for_training,  # Use GPU pipeline only if not using NPY
+            return_raw_audio=force_raw_audio
+            or not config.data.use_precomputed_features_for_training,  # Force raw audio for distillation
             include_mined_negatives=config.training.include_mined_negatives,
         )
 
@@ -777,7 +787,8 @@ def start_training(
             fallback_to_audio=True,  # FORCE TRUE to handle shape mismatches automatically
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
-            return_raw_audio=not config.data.use_precomputed_features_for_training,  # Use GPU pipeline only if not using NPY
+            return_raw_audio=force_raw_audio
+            or not config.data.use_precomputed_features_for_training,  # Force raw audio for distillation
         )
 
         # test_ds is not used in training, so we don't load it here to save memory

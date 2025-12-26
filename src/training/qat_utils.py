@@ -121,7 +121,16 @@ def prepare_model_for_qat(
         )
 
     if execution_engine != "none":
-        torch.backends.quantized.engine = execution_engine
+        # Suppress PyTorch's verbose "[*] Quantization engine set to:" print
+        import sys
+        import io
+
+        _old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            torch.backends.quantized.engine = execution_engine
+        finally:
+            sys.stdout = _old_stdout
 
     # 2. Fuse modules (Critical for QAT accuracy)
     # We check the class name to avoid circular imports
@@ -370,14 +379,22 @@ def compare_model_accuracy(
         # Move to CPU for quantized models if requested
         model.eval()
 
-        # Set quantized engine for CPU evaluation
+        # Set quantized engine for CPU evaluation (suppress verbose prints)
         if device == "cpu":
             model.to("cpu")
             try:
-                if "fbgemm" in torch.backends.quantized.supported_engines:
-                    torch.backends.quantized.engine = "fbgemm"
-                elif "qnnpack" in torch.backends.quantized.supported_engines:
-                    torch.backends.quantized.engine = "qnnpack"
+                import sys
+                import io
+
+                _old_stdout = sys.stdout
+                sys.stdout = io.StringIO()
+                try:
+                    if "fbgemm" in torch.backends.quantized.supported_engines:
+                        torch.backends.quantized.engine = "fbgemm"
+                    elif "qnnpack" in torch.backends.quantized.supported_engines:
+                        torch.backends.quantized.engine = "qnnpack"
+                finally:
+                    sys.stdout = _old_stdout
             except (RuntimeError, AttributeError) as e:
                 logger.warning("Could not set quantized engine", exc_info=True)
                 if str(e):

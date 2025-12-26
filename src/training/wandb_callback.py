@@ -31,12 +31,16 @@ class WandbCallback:
         if wandb.run is not None:
             wandb.finish()
 
-        # Initialize Weave before wandb.init for full tracing
+        # Initialize Weave before wandb.init for full tracing (optional)
+        # Weave requires "entity/project" format; skip if not configured
         if weave is not None:
             try:
-                weave.init(project_name)
-            except (ImportError, RuntimeError, ValueError) as e:
-                logger.warning(f"Failed to initialize Weave: {e}", exc_info=True)
+                # Only init Weave if project_name contains entity (e.g., "user/project")
+                if "/" in project_name:
+                    weave.init(project_name)
+                # else: silently skip Weave - it's optional
+            except Exception:
+                pass  # Weave is optional, don't log scary tracebacks
 
         wandb.init(project=project_name, config=config, reinit="finish_previous")
 
