@@ -105,6 +105,41 @@ The system will automatically create these directories on first run.
 - **🎯 New**: Knowledge Distillation for 10x faster edge deployment
 - **🔧 New**: Raspberry Pi optimized models and configs
 
+---
+
+## 📚 Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+### Core Documentation
+- **[📘 Technical Guide](docs/TECHNICAL_GUIDE.md)** - Complete user guide covering:
+  - Configuration parameters explained (ELI5 style)
+  - Training metrics and how to interpret them
+  - Advanced features usage (QAT, Distillation, Triplet Loss)
+  - Data processing and feature engineering
+  - Model calibration and deployment
+
+- **[🗺️ Development Roadmap](docs/DEVELOPMENT_ROADMAP.md)** - Project history and development backlog:
+  - Historical development documentation
+  - Feature implementation timeline
+  - Known issues and future improvements
+  - Code analysis reports
+
+### Feature-Specific Guides
+- **[⚙️ Config Presets Guide](docs/CONFIG_PRESETS_GUIDE.md)** - Pre-configured settings for different use cases
+- **[🏗️ Distributed Cascade Guide](docs/DISTRIBUTED_CASCADE_GUIDE.md)** - 3-stage cascade architecture (Sentry → Judge → Teacher)
+- **[🎓 Expert Distillation Guide](docs/EXPERT_DISTILLATION_GUIDE.md)** - Knowledge distillation setup and best practices
+- **[📉 FNR Optimization Changes](docs/FNR_OPTIMIZATION_CHANGES.md)** - False Negative Rate optimization techniques
+
+### Quick Links
+| Topic | Documentation |
+|-------|--------------|
+| Getting Started | [README.md](#-quick-start) |
+| Training Guide | [Technical Guide - Section 2](docs/TECHNICAL_GUIDE.md#2-training-guide--metrics) |
+| GPU Optimization | [Config Presets Guide](docs/CONFIG_PRESETS_GUIDE.md) |
+| Edge Deployment | [Distributed Cascade Guide](docs/DISTRIBUTED_CASCADE_GUIDE.md) |
+| Advanced Features | [Technical Guide - Section 3](docs/TECHNICAL_GUIDE.md#3-feature-usage-guide) |
+
 ## 📄 License
 
 MIT License - See [LICENSE](LICENSE) file for details

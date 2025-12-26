@@ -1,0 +1,82 @@
+repos:
+  # Pre-commit hooks for general file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=10240']  # 10MB limit
+      - id: detect-private-key  # Detect SSH/PEM keys
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      
+      # Prevent cache files from being committed
+      - id: check-added-large-files
+        name: prevent-cache-files
+        entry: prevent cache files
+        language: fail
+        files: '(__pycache__|\.pyc$|\.pyo$|\.mypy_cache)'
+        
+  # Prevent specific patterns from being committed
+  - repo: local
+    hooks:
+      - id: prevent-build-artifacts
+        name: Prevent build artifacts
+        entry: Build artifacts should not be committed
+        language: fail
+        files: '(\.pyc$|\.pyo$|\.pyd$|__pycache__|\.mypy_cache|\.pytest_cache)'
+        
+      - id: prevent-large-model-files
+        name: Prevent large model files
+        entry: Large model files should use Git LFS or be in .gitignore
+        language: fail
+        files: '\.(pt|pth|onnx|tflite|engine|h5|hdf5)$'
+        exclude: '^models/teachers/'  # Allow teacher models
+        
+      - id: prevent-data-files
+        name: Prevent data files
+        entry: Data files should not be committed
+        language: fail
+        files: '\.(npy|npz|wav|flac|mp3|ogg)$'
+
+  # Secret scanning with detect-secrets
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: '\.(git|swarm|hive-mind)|package-lock\.json'
+
+  # Python security scanning with Bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.6
+    hooks:
+      - id: bandit
+        args: ['-ll', '-i']  # Low severity, ignore info
+        files: ^src/.*\.py$
+        additional_dependencies: ['pbr>=5.11.0']
+
+  # Python code formatting with Black
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        language_version: python3.10
+
+  # Import sorting with isort
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  # Type checking with mypy (optional - can be slow)
+  # Uncomment to enable strict type checking on commit
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.7.1
+  #   hooks:
+  #     - id: mypy
+  #       args: [--strict, --ignore-missing-imports]
+  #       additional_dependencies: [types-all]
