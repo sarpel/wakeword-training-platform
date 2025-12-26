@@ -162,7 +162,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                         )
                         extract_duration = gr.Number(
                             label="Audio Duration (s)",
-                            value=1.0,
+                            value=1.5,
                             precision=1,
                             info="Target duration in seconds (must match training config)",
                         )
@@ -182,7 +182,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                             )
                             extract_n_fft = gr.Number(
                                 label="FFT Size",
-                                value=400,
+                                value=512,
                                 precision=0,
                                 info="FFT window size (frequency analysis window)",
                             )
@@ -195,6 +195,24 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                             label="Batch Size (GPU)",
                             info="Higher = faster but uses more GPU memory",
                         )
+
+                        # Multi-augmentation controls (NEW)
+                        gr.Markdown("### 🔁 Multi-Augmentation (Optional)")
+                        with gr.Row():
+                            augmentation_multiplier = gr.Slider(
+                                minimum=1,
+                                maximum=10,
+                                value=3,
+                                step=1,
+                                label="Augmentation Multiplier",
+                                info="Number of augmented versions per file (1 = original only, 3 = recommended)",
+                            )
+                            enable_extraction_augmentation = gr.Checkbox(
+                                label="Enable Augmentation",
+                                value=True,
+                                info="Apply time stretch, pitch shift, noise during extraction",
+                            )
+
                         extract_output_dir = gr.Textbox(
                             label="Output Directory (Source for Splitter)",
                             value="data/npy",
@@ -567,10 +585,12 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
             hop_length: int,
             n_fft: int,
             batch_size: int,
+            augmentation_multiplier: int,  # NEW
+            enable_augmentation: bool,  # NEW
             output_dir: str,
             progress: gr.Progress = gr.Progress(),
         ) -> str:
-            """Batch extract features to NPY files"""
+            """Batch extract features to NPY files with optional multi-augmentation"""
             global _current_dataset_info
 
             try:
@@ -641,10 +661,43 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     progress_value = 0.1 + (current / total) * 0.8
                     progress(progress_value, desc=f"{message}")
 
+                # Determine effective augmentation multiplier
+                effective_multiplier = int(augmentation_multiplier) if enable_augmentation else 1
+
+                # Get augmentation config if enabled
+                aug_config = None
+                background_noise_dir = None
+                rir_dir = None
+
+                if effective_multiplier > 1:
+                    from src.config.defaults import AugmentationConfig
+
+                    aug_config = AugmentationConfig()  # Use defaults
+
+                    # Try to find background noise and RIR directories
+                    root_path_obj = Path(root_path)
+                    potential_bg_dirs = [root_path_obj / "background", root_path_obj.parent / "background"]
+                    potential_rir_dirs = [root_path_obj / "rirs", root_path_obj.parent / "rirs"]
+
+                    for bg_dir in potential_bg_dirs:
+                        if bg_dir.exists():
+                            background_noise_dir = bg_dir
+                            break
+
+                    for rir_dir_candidate in potential_rir_dirs:
+                        if rir_dir_candidate.exists():
+                            rir_dir = rir_dir_candidate
+                            break
+
+                    logger.info(
+                        f"Multi-augmentation enabled: multiplier={effective_multiplier}, "
+                        f"bg_noise={background_noise_dir}, rir={rir_dir}"
+                    )
+
                 # Extract features
                 progress(
                     0.15,
-                    desc=f"Extracting {len(all_files)} files (batch={batch_size})...",
+                    desc=f"Extracting {len(all_files)} files (batch={batch_size}, augx{effective_multiplier})...",
                 )
                 output_path = Path(output_dir)
                 results = extractor.extract_dataset(
@@ -653,6 +706,11 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     batch_size=batch_size,
                     preserve_structure=True,
                     progress_callback=update_progress,
+                    # NEW: Multi-augmentation parameters
+                    augmentation_multiplier=effective_multiplier,
+                    augmentation_config=aug_config,
+                    background_noise_dir=background_noise_dir,
+                    rir_dir=rir_dir,
                 )
 
                 # Generate report
@@ -665,11 +723,15 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 report.append(f"Feature Type: {feature_type}")
                 report.append(f"Device: {device.upper()}")
                 report.append(f"Batch Size: {batch_size}")
+                report.append(f"Augmentation Multiplier: {effective_multiplier}x")
                 report.append(f"Output Directory: {output_path}")
                 report.append("")
+                report.append(f"📥 Original files: {results['total_files']}")
+                report.append(
+                    f"📊 Total versions (incl. augmented): {results.get('total_versions', results['total_files'])}"
+                )
                 report.append(f"✅ Successfully extracted: {results['success_count']}")
                 report.append(f"❌ Failed: {results['failed_count']}")
-                report.append(f"📊 Total processed: {results['total_files']}")
                 report.append("")
 
                 if results["failed_count"] > 0:
@@ -1131,6 +1193,8 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 extract_hop_length,
                 extract_n_fft,
                 extract_batch_size,
+                augmentation_multiplier,  # NEW
+                enable_extraction_augmentation,  # NEW
                 extract_output_dir,
             ],
             outputs=[batch_extraction_log],

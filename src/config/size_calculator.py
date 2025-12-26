@@ -6,11 +6,11 @@ Estimates model size (Flash/RAM) based on configuration.
 from typing import Any, Dict, Optional, Tuple
 
 from src.config.defaults import WakewordConfig
-from src.config.logger import setup_logger
+from src.config.logger import get_logger
 from src.config.platform_constraints import get_platform_constraints
 from src.models.architectures import create_model
 
-logger = setup_logger(__name__)
+logger = get_logger(__name__)
 
 
 class SizeCalculator:

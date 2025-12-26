@@ -725,7 +725,7 @@ def start_training(
                 use_cmvn = False
                 cmvn_path = None
 
-        training_state.add_log("IMPORTANT: Forcing augmentation for training by disabling precomputed features.")
+        # NPY feature loading is now controlled by config
 
         # NEW: Optimize config for GPU pipeline
         import os
@@ -752,12 +752,12 @@ def start_training(
             n_mfcc=config.data.n_mfcc,
             n_fft=config.data.n_fft,
             hop_length=config.data.hop_length,
-            use_precomputed_features_for_training=False,  # Force augmentation
+            use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
             npy_cache_features=config.data.npy_cache_features,
             fallback_to_audio=True,  # IMPORTANT
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
-            return_raw_audio=True,  # NEW: Use GPU pipeline
+            return_raw_audio=not config.data.use_precomputed_features_for_training,  # Use GPU pipeline only if not using NPY
             include_mined_negatives=config.training.include_mined_negatives,
         )
 
@@ -777,7 +777,7 @@ def start_training(
             fallback_to_audio=True,  # FORCE TRUE to handle shape mismatches automatically
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
-            return_raw_audio=True,  # NEW: Use GPU pipeline
+            return_raw_audio=not config.data.use_precomputed_features_for_training,  # Use GPU pipeline only if not using NPY
         )
 
         # test_ds is not used in training, so we don't load it here to save memory
@@ -1900,8 +1900,8 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         # Event handlers
         # Wrapper for start training to handle resume logic
         def start_training_wrapper(*args: Any) -> Any:
-            # Last 5 args are: 
-            # resume_training (bool), checkpoint_dropdown (str), 
+            # Last 5 args are:
+            # resume_training (bool), checkpoint_dropdown (str),
             # use_compile (bool), use_grad_ckpt (bool), use_snr_scheduling (bool)
             resume_checked = args[-5]
             ckpt_path = args[-4]

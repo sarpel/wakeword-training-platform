@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.models.architectures import create_model
-from src.models.huggingface import Wav2VecWakeword
+from src.models.huggingface import Wav2VecWakeword, WhisperWakeword
 from src.training.trainer import Trainer
 
 logger = get_logger(__name__)
@@ -83,6 +83,9 @@ class DistillationTrainer(Trainer):
                 t = Wav2VecWakeword(
                     num_classes=self.config.model.num_classes, pretrained=True, freeze_feature_extractor=True
                 )
+            elif arch == "whisper":
+                # Whisper teacher - uses encoder-only for feature extraction
+                t = WhisperWakeword(num_classes=self.config.model.num_classes, pretrained=True, freeze_encoder=True)
             else:
                 # Use standard factory for other architectures (e.g. conformer)
                 t = create_model(arch, num_classes=self.config.model.num_classes)

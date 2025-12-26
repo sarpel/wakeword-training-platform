@@ -104,7 +104,8 @@ def get_esp32s3_preset() -> WakewordConfig:
         ),
         distillation=DistillationConfig(
             enabled=True,
-            teacher_architecture="wav2vec2",
+            teacher_architecture="dual",  # Wav2Vec2 + Whisper
+            secondary_teacher_architecture="whisper",
             temperature=2.0,
             alpha=0.5,
         ),

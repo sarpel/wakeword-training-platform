@@ -100,10 +100,10 @@ def _params_to_config(params: List[Any]) -> WakewordConfig:
             hidden_size=int(params[18]),
             num_layers=int(params[19]),
             bidirectional=bool(params[20]),
-            tcn_num_channels=[int(x.strip()) for x in params[74].split(',') if x.strip()],
+            tcn_num_channels=[int(x.strip()) for x in params[74].split(",") if x.strip()],
             tcn_kernel_size=int(params[75]),
             tcn_dropout=float(params[76]),
-            cddnn_hidden_layers=[int(x.strip()) for x in params[77].split(',') if x.strip()],
+            cddnn_hidden_layers=[int(x.strip()) for x in params[77].split(",") if x.strip()],
             cddnn_context_frames=int(params[78]),
             cddnn_dropout=float(params[79]),
             tiny_conv_use_depthwise=bool(params[85]),
@@ -354,15 +354,9 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                 with gr.Group():
                     gr.Markdown("### 💾 Feature Storage (NPY)")
                     with gr.Row():
-                        use_precomputed_features_for_training = gr.Checkbox(
-                            label="Use Precomputed NPY", value=True
-                        )
-                        npy_cache_features = gr.Checkbox(
-                            label="Cache in RAM", value=True
-                        )
-                        fallback_to_audio = gr.Checkbox(
-                            label="Fallback to Audio", value=False
-                        )
+                        use_precomputed_features_for_training = gr.Checkbox(label="Use Precomputed NPY", value=True)
+                        npy_cache_features = gr.Checkbox(label="Cache in RAM", value=True)
+                        fallback_to_audio = gr.Checkbox(label="Fallback to Audio", value=False)
                     with gr.Row():
                         npy_feature_dir = gr.Textbox(label="NPY Directory", value="data/npy")
                         npy_feature_type = gr.Dropdown(choices=["mel", "mfcc"], value="mel", label="Feature Type")
@@ -392,8 +386,12 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     with gr.Accordion("Advanced Augmentation (RIR & SpecAugment)", open=False):
                         with gr.Row():
                             rir_prob = gr.Slider(minimum=0.0, maximum=1.0, value=0.25, step=0.05, label="RIR Prob")
-                            rir_dry_wet_min = gr.Slider(minimum=0.0, maximum=1.0, value=0.3, step=0.05, label="Dry/Wet Min")
-                            rir_dry_wet_max = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.05, label="Dry/Wet Max")
+                            rir_dry_wet_min = gr.Slider(
+                                minimum=0.0, maximum=1.0, value=0.3, step=0.05, label="Dry/Wet Min"
+                            )
+                            rir_dry_wet_max = gr.Slider(
+                                minimum=0.0, maximum=1.0, value=0.7, step=0.05, label="Dry/Wet Max"
+                            )
                             rir_dry_wet_strategy = gr.Dropdown(
                                 choices=["random", "fixed", "adaptive"], value="random", label="Mix Strategy"
                             )
@@ -504,7 +502,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         class_weights = gr.Dropdown(
                             choices=["balanced", "none", "custom"], value="balanced", label="Class Weights"
                         )
-                    
+
                     with gr.Accordion("Loss Math & Weights", open=False):
                         with gr.Row():
                             label_smoothing = gr.Slider(0.0, 0.3, 0.05, label="Smoothing")
@@ -526,7 +524,7 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                     with gr.Row():
                         distillation_enabled = gr.Checkbox(label="Enable Distillation", value=False)
                         teacher_arch = gr.Dropdown(
-                            choices=["wav2vec2", "conformer", "dual"], value="wav2vec2", label="Teacher Arch"
+                            choices=["wav2vec2", "whisper", "conformer", "dual"], value="dual", label="Teacher Arch"
                         )
                         dist_temp = gr.Slider(minimum=1.0, maximum=10.0, value=2.0, step=0.5, label="Distillation Temp")
                         dist_alpha = gr.Slider(
@@ -534,11 +532,16 @@ def create_config_panel(state: Optional[gr.State] = None) -> gr.Blocks:
                         )
 
                     with gr.Row():
-                        teacher_model_path = gr.Textbox(label="Teacher Checkpoint", placeholder="models/teachers/wav2vec2.pt")
-                        secondary_teacher_arch = gr.Dropdown(
-                            choices=["wav2vec2", "conformer"], value="conformer", label="Sec. Teacher Arch"
+                        teacher_model_path = gr.Textbox(
+                            label="Teacher Checkpoint", placeholder="(Optional) Auto-downloads for wav2vec2/whisper"
                         )
-                        secondary_teacher_model_path = gr.Textbox(label="Sec. Teacher Checkpoint", placeholder="models/teachers/conformer.pt")
+                        secondary_teacher_arch = gr.Dropdown(
+                            choices=["wav2vec2", "whisper", "conformer"], value="whisper", label="Sec. Teacher Arch"
+                        )
+                        secondary_teacher_model_path = gr.Textbox(
+                            label="Sec. Teacher Checkpoint",
+                            placeholder="(Optional) Auto-downloads for wav2vec2/whisper",
+                        )
 
         gr.Markdown("---")
 

@@ -326,6 +326,70 @@ class AudioAugmentation(nn.Module):
 
         return cast(torch.Tensor, mixed)
 
+    def augment_for_extraction(self, waveform: torch.Tensor, seed: int, apply_all: bool = False) -> torch.Tensor:
+        """
+        Apply augmentation with deterministic seed for reproducible NPY extraction.
+
+        Unlike forward(), this method:
+        1. Uses a fixed seed for reproducibility
+        2. Always applies augmentations (ignores self.training mode)
+        3. Can apply all augmentations or randomly select based on seed
+
+        Args:
+            waveform: Audio tensor (1D, 2D, or 3D)
+            seed: Random seed for reproducibility
+            apply_all: If True, apply all augmentations. If False, probabilistically apply.
+
+        Returns:
+            Augmented audio tensor
+        """
+        import random as py_random
+
+        # Save current random states
+        torch_state = torch.get_rng_state()
+        py_state = py_random.getstate()
+
+        # Set deterministic state
+        torch.manual_seed(seed)
+        py_random.seed(seed)
+
+        try:
+            # Standardize shape
+            original_ndim = waveform.ndim
+            if original_ndim == 1:
+                waveform = waveform.unsqueeze(0).unsqueeze(0)
+            elif original_ndim == 2:
+                waveform = waveform.unsqueeze(1)
+
+            # Apply augmentations (always, regardless of training mode)
+            if apply_all or py_random.random() < 0.5:
+                waveform = self.time_stretch(waveform)
+
+            if apply_all or py_random.random() < 0.5:
+                waveform = self.pitch_shift(waveform)
+
+            if apply_all or py_random.random() < self.time_shift_prob:
+                waveform = self.random_time_shift(waveform)
+
+            if apply_all or py_random.random() < self.background_noise_prob:
+                waveform = self.add_background_noise(waveform)
+
+            if apply_all or py_random.random() < self.rir_prob:
+                waveform = self.apply_rir(waveform)
+
+            # Restore shape
+            if original_ndim == 1:
+                waveform = waveform.squeeze(0).squeeze(0)
+            elif original_ndim == 2:
+                waveform = waveform.squeeze(1)
+
+            return waveform
+
+        finally:
+            # Restore random states
+            torch.set_rng_state(torch_state)
+            py_random.setstate(py_state)
+
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         """
         Apply augmentations

@@ -20,8 +20,7 @@ except Exception:
     from typing import Protocol  # fallback tip
 
     class WakewordConfigProtocol(Protocol):
-        def to_dict(self) -> Dict[str, Any]:
-            ...
+        def to_dict(self) -> Dict[str, Any]: ...
 
     WakewordConfig = WakewordConfigProtocol
 
@@ -210,24 +209,61 @@ class ConfigValidator:
 
         from pathlib import Path
 
+        # HuggingFace models that auto-download (no path required)
+        huggingface_teachers = {"wav2vec2", "whisper"}
+
         # Primary Teacher
+        t1_arch = getattr(config.distillation, "teacher_architecture", "")
         t1_path = getattr(config.distillation, "teacher_model_path", "")
-        if not t1_path:
-            self.errors.append(ValidationError("distillation.teacher_model_path", "Teacher model path is required when distillation is enabled"))
-        elif not Path(t1_path).exists():
-            self.errors.append(ValidationError("distillation.teacher_model_path", f"Teacher checkpoint not found: {t1_path}"))
+
+        # For dual mode, primary is always wav2vec2
+        primary_arch = "wav2vec2" if t1_arch == "dual" else t1_arch
+
+        if primary_arch not in huggingface_teachers:
+            # Non-HuggingFace architectures require a checkpoint path
+            if not t1_path:
+                self.errors.append(
+                    ValidationError(
+                        "distillation.teacher_model_path",
+                        f"Teacher model path is required for {primary_arch} architecture",
+                    )
+                )
+            elif not Path(t1_path).exists():
+                self.errors.append(
+                    ValidationError("distillation.teacher_model_path", f"Teacher checkpoint not found: {t1_path}")
+                )
 
         # Secondary Teacher (if architecture is 'dual')
         if getattr(config.distillation, "teacher_architecture", "") == "dual":
-            t2_path = getattr(config.distillation, "secondary_teacher_model_path", "")
-            if not t2_path:
-                self.errors.append(ValidationError("distillation.secondary_teacher_model_path", "Secondary teacher model path is required for dual distillation"))
-            elif not Path(t2_path).exists():
-                self.errors.append(ValidationError("distillation.secondary_teacher_model_path", f"Secondary teacher checkpoint not found: {t2_path}"))
-            
             t2_arch = getattr(config.distillation, "secondary_teacher_architecture", "")
             if not t2_arch:
-                self.errors.append(ValidationError("distillation.secondary_teacher_architecture", "Secondary teacher architecture must be specified for dual distillation"))
+                self.errors.append(
+                    ValidationError(
+                        "distillation.secondary_teacher_architecture",
+                        "Secondary teacher architecture must be specified for dual distillation",
+                    )
+                )
+
+            # HuggingFace models (wav2vec2, whisper) auto-download, no path required
+            huggingface_teachers = {"wav2vec2", "whisper"}
+            t2_path = getattr(config.distillation, "secondary_teacher_model_path", "")
+
+            if t2_arch not in huggingface_teachers:
+                # Non-HuggingFace architectures require a checkpoint path
+                if not t2_path:
+                    self.errors.append(
+                        ValidationError(
+                            "distillation.secondary_teacher_model_path",
+                            f"Secondary teacher model path is required for {t2_arch} architecture",
+                        )
+                    )
+                elif not Path(t2_path).exists():
+                    self.errors.append(
+                        ValidationError(
+                            "distillation.secondary_teacher_model_path",
+                            f"Secondary teacher checkpoint not found: {t2_path}",
+                        )
+                    )
 
     def _validate_model_size(self, config: WakewordConfig) -> None:
         """Validate model size against platform targets"""

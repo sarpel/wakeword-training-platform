@@ -37,6 +37,10 @@ class DataConfig:
     npy_cache_features: bool = True  # Cache loaded features in RAM
     fallback_to_audio: bool = True  # If NPY missing, load raw audio
 
+    # Multi-augmentation extraction (NEW)
+    npy_augmentation_multiplier: int = 1  # 1 = original only, 5 = 5 augmented versions
+    npy_augment_on_extract: bool = False  # Enable augmentation during NPY extraction
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -247,7 +251,7 @@ class DistillationConfig:
 
     # Distillation parameters
     teacher_architecture: str = "dual"  # wav2vec2, conformer, dual (recommended)
-    secondary_teacher_architecture: str = "conformer"
+    secondary_teacher_architecture: str = "whisper"  # whisper, conformer, wav2vec2
     secondary_teacher_model_path: str = ""
 
     temperature: float = 2.0
@@ -280,7 +284,7 @@ class DistillationConfig:
             )
         self.alpha = float(self.alpha)
 
-        valid_architectures = ["wav2vec2", "conformer", "dual"]
+        valid_architectures = ["wav2vec2", "whisper", "conformer", "dual"]
         if self.teacher_architecture not in valid_architectures:
             raise ValueError(
                 f"teacher_architecture must be one of {valid_architectures}, got '{self.teacher_architecture}'"
