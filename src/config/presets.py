@@ -1,6 +1,6 @@
 """
-Configuration Presets for Different Use Cases
-Provides optimized configurations for various scenarios
+Configuration Presets for Wake Word Training
+Simplified to 3 main target platforms with industry-standard values
 """
 
 from typing import Callable, Dict
@@ -22,213 +22,80 @@ from src.config.defaults import (
 )
 
 
-def get_default_preset() -> WakewordConfig:
+def get_esp32s3_preset() -> WakewordConfig:
     """
-    Default balanced configuration
+    ESP32-S3 Production configuration
+
+    Target Hardware:
+    - ESP32-S3 (with or without PSRAM)
+    - TinyConv architecture (optimized for S3 memory)
+    - Int8 Quantized deployment
+
+    Features:
+    - 64 Mel bands for high resolution
+    - Knowledge Distillation from Wav2Vec2
+    - Aggressive augmentation for robustness
+    - QAT enabled for INT8 deployment
+
+    Industry-aligned: focal_alpha=0.75, focal_gamma=2.0, weight_decay=0.01
     """
     return WakewordConfig(
-        config_name="default",
-        description="Default balanced configuration for general use",
-        data=DataConfig(),
-        training=TrainingConfig(),
-        model=ModelConfig(),
-        augmentation=AugmentationConfig(
-            time_shift_prob=0.3,
-            time_shift_min_ms=-30,
-            time_shift_max_ms=30,
-        ),
-        optimizer=OptimizerConfig(
-            optimizer="adamw",
-            weight_decay=0.01,
-        ),
-        loss=LossConfig(),
-        cmvn=CMVNConfig(enabled=True),
-        streaming=StreamingConfig(),
-        size_targets=SizeTargetConfig(),
-        calibration=CalibrationConfig(),
-    )
-
-
-def get_ha_wyoming_preset() -> WakewordConfig:
-    """
-    Home Assistant / Wyoming Standard configuration
-
-    Optimized for:
-    - Official Home Assistant Wyoming protocol
-    - MobileNetV3-Small architecture
-    - 40 Mel bands (Industry standard)
-    - 1.5s window
-    """
-    return WakewordConfig(
-        config_name="ha_wyoming",
-        description="Production: Home Assistant / Wyoming Standard (MobileNetV3, 40 Mel)",
+        config_name="esp32s3",
+        description="ESP32-S3 Production (TinyConv, 64 Mel, INT8 Quantized)",
         data=DataConfig(
             sample_rate=16000,
             audio_duration=1.5,
-            n_mels=40,
+            n_mels=64,
+            n_fft=512,
             hop_length=160,
-        ),
-        training=TrainingConfig(
-            batch_size=64,
-            epochs=100,
-            learning_rate=0.001,
-            early_stopping_patience=15,
-        ),
-        model=ModelConfig(
-            architecture="mobilenetv3",
-            num_classes=2,
-            dropout=0.2,
-        ),
-        augmentation=AugmentationConfig(
-            background_noise_prob=0.5,
-            rir_prob=0.3,
-            time_shift_prob=0.4,
-        ),
-        optimizer=OptimizerConfig(
-            optimizer="adamw",
-            weight_decay=0.01,
-            mixed_precision=True,
-        ),
-        loss=LossConfig(
-            loss_function="cross_entropy",
-            label_smoothing=0.05,
-            class_weights="balanced",
-            hard_negative_weight=2.5,
-        ),
-        qat=QATConfig(
-            enabled=True,
-            backend="qnnpack",
-            start_epoch=10,
-        ),
-        cmvn=CMVNConfig(enabled=True),
-        streaming=StreamingConfig(
-            hysteresis_high=0.7,
-            hysteresis_low=0.3,
-            buffer_length_ms=1500,
-            smoothing_window=5,
-        ),
-        size_targets=SizeTargetConfig(
-            max_flash_kb=512,
-            max_ram_kb=256,
-        ),
-        calibration=CalibrationConfig(num_samples=200, positive_ratio=0.5),
-    )
-
-
-def get_esp32s3_production_preset() -> WakewordConfig:
-    """
-    ESP32-S3 Production configuration (PSRAM Required)
-
-    Optimized for:
-    - ESP32-S3 with PSRAM
-    - MobileNetV3-Small (Int8 Quantized)
-    - High accuracy edge detection
-    """
-    return WakewordConfig(
-        config_name="esp32s3_production",
-        description="Production: ESP32-S3 (PSRAM) - MobileNetV3",
-        data=DataConfig(
-            sample_rate=16000,
-            audio_duration=1.0,
-            n_mels=40,
-            hop_length=160,
-        ),
-        training=TrainingConfig(
-            batch_size=64,
-            epochs=150,
-            learning_rate=0.0008,
-            early_stopping_patience=20,
-        ),
-        model=ModelConfig(
-            architecture="mobilenetv3",
-            num_classes=2,
-            dropout=0.25,
-        ),
-        augmentation=AugmentationConfig(
-            background_noise_prob=0.6,
-            rir_prob=0.4,
-            time_shift_prob=0.5,
-        ),
-        optimizer=OptimizerConfig(
-            optimizer="adamw",
-            weight_decay=0.01,
-            mixed_precision=True,
-        ),
-        loss=LossConfig(
-            loss_function="focal_loss",
-            class_weights="balanced",
-            hard_negative_weight=3.0,
-        ),
-        qat=QATConfig(
-            enabled=True,
-            backend="qnnpack",
-            start_epoch=5,
-        ),
-        cmvn=CMVNConfig(enabled=True),
-        streaming=StreamingConfig(
-            hysteresis_high=0.75,
-            hysteresis_low=0.35,
-            buffer_length_ms=1000,
-            smoothing_window=4,
-        ),
-        size_targets=SizeTargetConfig(
-            max_flash_kb=1024,
-            max_ram_kb=512,
-        ),
-        calibration=CalibrationConfig(num_samples=250, positive_ratio=0.4),
-    )
-
-
-def get_mcu_tiny_production_preset() -> WakewordConfig:
-    """
-    MCU Production configuration (No-PSRAM)
-
-    Optimized for:
-    - ESP32-S3 (Atom Echo) without PSRAM
-    - TinyConv [64, 64, 64, 64] (Optimized for S3 Memory)
-    - 64 Mel bands for higher resolution
-    - Knowledge Distillation enabled by default
-    - <250KB Peak RAM
-    """
-    return WakewordConfig(
-        config_name="mcu_tiny_production",
-        description="Production: ESP32-S3 (Atom Echo) - TinyConv High-Quality",
-        data=DataConfig(
-            sample_rate=16000,
-            audio_duration=1.5,
-            n_mels=64,  # ⬆️ Increased resolution (40 -> 64)
-            hop_length=160,
+            feature_type="mel",
         ),
         training=TrainingConfig(
             batch_size=64,
             epochs=200,
-            learning_rate=0.0005,
+            learning_rate=0.001,  # Industry standard
             early_stopping_patience=25,
-            use_ema=True,  # ⬆️ Enabled EMA for better stability
+            use_ema=True,
+            ema_decay=0.999,
         ),
         model=ModelConfig(
             architecture="tiny_conv",
             num_classes=2,
-            dropout=0.2,  # ⬆️ Slightly increased dropout for larger model
-            tcn_num_channels=[64, 64, 64, 64],  # ⬆️ Optimized for ESP32S3
+            dropout=0.2,
+            tcn_num_channels=[64, 64, 64, 64],
         ),
         augmentation=AugmentationConfig(
+            time_stretch_min=0.85,
+            time_stretch_max=1.15,
+            pitch_shift_min=-3,
+            pitch_shift_max=3,
             background_noise_prob=0.8,
-            rir_prob=0.6,  # ⬆️ Increased RIR for better robustness
+            noise_snr_min=3.0,  # Industry: harder conditions
+            noise_snr_max=15.0,
+            rir_prob=0.6,
             time_shift_prob=0.7,
-            noise_snr_min=3,  # ⬆️ Tougher noise cases
-            noise_snr_max=15,
+            use_spec_augment=True,
+            freq_mask_param=20,
+            time_mask_param=40,
+            n_freq_masks=2,
+            n_time_masks=2,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=0.01,  # ⬆️ Standard weight decay
+            weight_decay=0.01,  # Industry standard
+            scheduler="cosine",
+            warmup_epochs=5,  # Warmup for stable training
+            gradient_clip=1.0,
             mixed_precision=True,
         ),
         loss=LossConfig(
-            loss_function="focal_loss",  # ⬆️ Switch to focal loss for better hard-negative handling
+            loss_function="focal_loss",
             label_smoothing=0.05,
+            focal_alpha=0.75,  # Industry standard (Google RetinaNet)
+            focal_gamma=2.0,  # Industry standard
             class_weights="balanced",
             hard_negative_weight=5.0,
+            sampler_strategy="balanced",  # Uses (1,2,1) ratio
         ),
         qat=QATConfig(
             enabled=True,
@@ -236,7 +103,7 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             start_epoch=15,
         ),
         distillation=DistillationConfig(
-            enabled=True,  # ⬆️ Enabled Knowledge Distillation
+            enabled=True,
             teacher_architecture="wav2vec2",
             temperature=2.0,
             alpha=0.5,
@@ -247,94 +114,51 @@ def get_mcu_tiny_production_preset() -> WakewordConfig:
             hysteresis_low=0.35,
             buffer_length_ms=1000,
             smoothing_window=3,
+            cooldown_ms=500,
         ),
         size_targets=SizeTargetConfig(
-            max_flash_kb=256,  # ⬆️ Updated for ESP32-S3
-            max_ram_kb=192,  # ⬆️ Updated for ESP32-S3 internal RAM limits
+            max_flash_kb=256,
+            max_ram_kb=192,
         ),
         calibration=CalibrationConfig(num_samples=300, positive_ratio=0.3),
     )
 
 
-def get_server_judge_preset() -> WakewordConfig:
-    """
-    Server-side 'Judge' configuration
-    """
-    return WakewordConfig(
-        config_name="server_judge",
-        description="Production: Server Judge (ResNet18, 64 Mel, High Accuracy)",
-        data=DataConfig(
-            sample_rate=16000,
-            audio_duration=2.0,
-            n_mels=64,
-            hop_length=160,
-        ),
-        training=TrainingConfig(
-            batch_size=128,
-            epochs=50,
-            learning_rate=0.002,
-            early_stopping_patience=10,
-        ),
-        model=ModelConfig(
-            architecture="resnet18",
-            num_classes=2,
-            dropout=0.3,
-        ),
-        augmentation=AugmentationConfig(
-            background_noise_prob=0.4,
-            rir_prob=0.2,
-            time_shift_prob=0.3,
-        ),
-        optimizer=OptimizerConfig(
-            optimizer="adamw",
-            weight_decay=0.01,
-            mixed_precision=True,
-        ),
-        loss=LossConfig(
-            loss_function="cross_entropy",
-            label_smoothing=0.1,
-            class_weights="balanced",
-            hard_negative_weight=2.0,
-        ),
-        cmvn=CMVNConfig(enabled=True),
-        streaming=StreamingConfig(
-            hysteresis_high=0.6,
-            hysteresis_low=0.2,
-            buffer_length_ms=2000,
-            smoothing_window=8,
-        ),
-        size_targets=SizeTargetConfig(
-            max_flash_kb=0,
-            max_ram_kb=0,
-        ),
-        calibration=CalibrationConfig(num_samples=500, positive_ratio=0.5),
-    )
-
-
 def get_rpi_zero2w_preset() -> WakewordConfig:
     """
-    Raspberry Pi Zero 2W Satellite configuration
+    Raspberry Pi Zero 2W Production configuration
 
-    Optimized for:
-    - RPi Zero 2W (Cortex-A53)
-    - Wyoming Satellite protocol
-    - MobileNetV3 (Standard Small)
-    - TFLite Float16 or Int8 deployment
+    Target Hardware:
+    - Raspberry Pi Zero 2W (Cortex-A53)
+    - Wyoming Satellite protocol compatible
+    - MobileNetV3-Small architecture
+
+    Features:
+    - 40 Mel bands (industry standard for edge)
+    - 1.5s context window
+    - Home Assistant / Wyoming compatible
+    - TFLite deployment ready
+
+    Industry-aligned: focal_alpha=0.75, focal_gamma=2.0, weight_decay=0.01
     """
     return WakewordConfig(
         config_name="rpi_zero2w",
-        description="Production: RPi Zero 2W Satellite (MobileNetV3, 40 Mel, Wyoming)",
+        description="Raspberry Pi Zero 2W (MobileNetV3, 40 Mel, Wyoming Compatible)",
         data=DataConfig(
             sample_rate=16000,
             audio_duration=1.5,
-            n_mels=40,
+            n_mels=40,  # Industry standard for edge
+            n_fft=512,
             hop_length=160,
+            feature_type="mel",
         ),
         training=TrainingConfig(
             batch_size=64,
             epochs=100,
-            learning_rate=0.001,
+            learning_rate=0.001,  # Industry standard
             early_stopping_patience=15,
+            use_ema=True,
+            ema_decay=0.999,
         ),
         model=ModelConfig(
             architecture="mobilenetv3",
@@ -342,24 +166,41 @@ def get_rpi_zero2w_preset() -> WakewordConfig:
             dropout=0.2,
         ),
         augmentation=AugmentationConfig(
-            background_noise_prob=0.5,
-            rir_prob=0.3,
+            time_stretch_min=0.85,
+            time_stretch_max=1.15,
+            pitch_shift_min=-3,
+            pitch_shift_max=3,
+            background_noise_prob=0.6,
+            noise_snr_min=3.0,  # Industry: harder conditions
+            noise_snr_max=20.0,
+            rir_prob=0.4,
             time_shift_prob=0.4,
+            use_spec_augment=True,
+            freq_mask_param=15,
+            time_mask_param=30,
+            n_freq_masks=2,
+            n_time_masks=2,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=0.01,
+            weight_decay=0.01,  # Industry standard
+            scheduler="cosine",
+            warmup_epochs=5,  # Warmup for stable training
+            gradient_clip=1.0,
             mixed_precision=True,
         ),
         loss=LossConfig(
-            loss_function="cross_entropy",
+            loss_function="focal_loss",
             label_smoothing=0.05,
+            focal_alpha=0.75,  # Industry standard (Google RetinaNet)
+            focal_gamma=2.0,  # Industry standard
             class_weights="balanced",
-            hard_negative_weight=2.5,
+            hard_negative_weight=3.0,
+            sampler_strategy="balanced",  # Uses (1,2,1) ratio
         ),
         qat=QATConfig(
             enabled=True,
-            backend="fbgemm",  # x86 for training, but convertible to arm-optimized TFLite
+            backend="fbgemm",  # x86 training, converts to ARM TFLite
             start_epoch=10,
         ),
         cmvn=CMVNConfig(enabled=True),
@@ -368,6 +209,7 @@ def get_rpi_zero2w_preset() -> WakewordConfig:
             hysteresis_low=0.3,
             buffer_length_ms=1500,
             smoothing_window=5,
+            cooldown_ms=500,
         ),
         size_targets=SizeTargetConfig(
             max_flash_kb=2048,
@@ -377,31 +219,43 @@ def get_rpi_zero2w_preset() -> WakewordConfig:
     )
 
 
-def get_ultimate_accuracy_preset() -> WakewordConfig:
+def get_x86_64_preset() -> WakewordConfig:
     """
-    Ultimate Accuracy configuration for high-end x86_64 machines
+    x86_64 Desktop/Server Production configuration
 
-    Optimized for:
-    - High-end PCs/Laptops (RTX 3060+, 16GB+ RAM)
-    - Maximum detection robustness
-    - Large context window
-    - High resolution features
+    Target Hardware:
+    - Desktop PCs / Laptops (RTX 3060+, 16GB+ RAM)
+    - Servers / Home Assistant hosts
+    - Maximum accuracy priority
+
+    Features:
+    - 80 Mel bands for highest resolution
+    - 2.0s context window
+    - ResNet18 architecture
+    - FP32 inference (no quantization)
+    - Aggressive SpecAugment
+
+    Industry-aligned: focal_alpha=0.75, focal_gamma=2.0, weight_decay=0.02
     """
     return WakewordConfig(
-        config_name="ultimate_accuracy",
-        description="Production: x86_64 Ultimate (ResNet18, 80 Mel, 2.0s Context)",
+        config_name="x86_64",
+        description="x86_64 Desktop/Server (ResNet18, 80 Mel, Maximum Accuracy)",
         data=DataConfig(
             sample_rate=16000,
             audio_duration=2.0,
             n_mels=80,  # High resolution
+            n_fft=512,
             hop_length=160,
+            feature_type="mel",
         ),
         training=TrainingConfig(
             batch_size=128,
             epochs=100,
-            learning_rate=0.001,
+            learning_rate=0.001,  # Industry standard
             early_stopping_patience=20,
             num_workers=16,  # Leverage high CPU count
+            use_ema=True,
+            ema_decay=0.999,
         ),
         model=ModelConfig(
             architecture="resnet18",
@@ -409,26 +263,41 @@ def get_ultimate_accuracy_preset() -> WakewordConfig:
             dropout=0.4,
         ),
         augmentation=AugmentationConfig(
+            time_stretch_min=0.85,
+            time_stretch_max=1.15,
+            pitch_shift_min=-3,
+            pitch_shift_max=3,
             background_noise_prob=0.6,
+            noise_snr_min=3.0,  # Industry: harder conditions
+            noise_snr_max=20.0,
             rir_prob=0.5,
             time_shift_prob=0.5,
+            use_spec_augment=True,
+            freq_mask_param=20,
+            time_mask_param=40,
             # Aggressive SpecAugment
             n_freq_masks=3,
             n_time_masks=3,
         ),
         optimizer=OptimizerConfig(
             optimizer="adamw",
-            weight_decay=0.02,  # Higher regularization
+            weight_decay=0.02,  # Higher regularization for large models
+            scheduler="cosine",
+            warmup_epochs=5,  # ✅ Correct location for warmup
+            gradient_clip=1.0,
             mixed_precision=True,
         ),
         loss=LossConfig(
             loss_function="focal_loss",
-            focal_gamma=2.5,
+            label_smoothing=0.1,
+            focal_alpha=0.75,  # Industry standard (Google RetinaNet)
+            focal_gamma=2.0,  # Industry standard
             class_weights="balanced",
-            hard_negative_weight=5.0,  # Extremely strict on false positives
+            hard_negative_weight=5.0,
+            sampler_strategy="balanced",  # Uses (1,2,1) ratio
         ),
         qat=QATConfig(
-            enabled=False,  # Priorities FP32 accuracy for desktop/server
+            enabled=False,  # FP32 for maximum accuracy
         ),
         cmvn=CMVNConfig(enabled=True),
         streaming=StreamingConfig(
@@ -436,177 +305,23 @@ def get_ultimate_accuracy_preset() -> WakewordConfig:
             hysteresis_low=0.2,
             buffer_length_ms=2000,
             smoothing_window=10,
+            cooldown_ms=500,
         ),
         size_targets=SizeTargetConfig(
-            max_flash_kb=0,
+            max_flash_kb=0,  # No limit
             max_ram_kb=0,
         ),
         calibration=CalibrationConfig(num_samples=500, positive_ratio=0.5),
     )
 
 
-def get_small_dataset_preset() -> WakewordConfig:
-    """
-    Utility: Small dataset configuration (<10k samples)
-    """
-    return WakewordConfig(
-        config_name="small_dataset",
-        description="Utility: Optimized for small datasets (<10k samples)",
-        data=DataConfig(sample_rate=16000, audio_duration=1.5, n_mels=64),
-        training=TrainingConfig(
-            batch_size=16,
-            epochs=100,
-            learning_rate=0.0005,
-            early_stopping_patience=15,
-        ),
-        model=ModelConfig(
-            architecture="mobilenetv3",
-            dropout=0.5,
-        ),
-        augmentation=AugmentationConfig(
-            background_noise_prob=0.7,
-            rir_prob=0.5,
-            time_shift_prob=0.6,
-        ),
-        optimizer=OptimizerConfig(
-            optimizer="adamw",
-            weight_decay=1e-2,
-        ),
-        loss=LossConfig(
-            loss_function="focal_loss",
-            class_weights="balanced",
-            hard_negative_weight=3.0,
-        ),
-    )
-
-
-def get_fast_training_preset() -> WakewordConfig:
-    """
-    Utility: Fast training configuration
-    """
-    return WakewordConfig(
-        config_name="fast_training",
-        description="Utility: Fast training for quick iteration",
-        data=DataConfig(
-            sample_rate=16000,
-            audio_duration=1.0,
-            n_mels=40,
-        ),
-        training=TrainingConfig(
-            batch_size=64,
-            epochs=20,
-            learning_rate=0.003,
-            early_stopping_patience=5,
-            use_ema=False,
-        ),
-        model=ModelConfig(
-            architecture="mobilenetv3",
-        ),
-        augmentation=AugmentationConfig(
-            background_noise_prob=0.3,
-            rir_prob=0.1,
-            time_shift_prob=0.1,
-        ),
-        optimizer=OptimizerConfig(
-            optimizer="adamw",
-            weight_decay=1e-4,
-        ),
-        loss=LossConfig(
-            loss_function="cross_entropy",
-            class_weights="balanced",
-        ),
-    )
-
-
-def get_hard_negative_refinement_preset() -> WakewordConfig:
-    """
-    Strategy A: Hard Negative Refinement
-    Optimized for re-training after mining false positives.
-    Adapted for: ESP32-S3 TinyConv (Match MCU Production)
-    """
-    return WakewordConfig(
-        config_name="hard_negative_refinement",
-        description="Strategy A: Refine model using mined hard negatives (High Loss Weight)",
-        # ⬇️ MATCHING MCU PRODUCTION DATA CONFIG
-        data=DataConfig(
-            sample_rate=16000,
-            audio_duration=1.5,
-            n_mels=64,
-            hop_length=160,
-        ),
-        # ⬇️ MATCHING MCU PRODUCTION MODEL ARCHITECTURE
-        model=ModelConfig(
-            architecture="tiny_conv",
-            num_classes=2,
-            dropout=0.2,
-            tcn_num_channels=[64, 64, 64, 64],
-        ),
-        training=TrainingConfig(
-            epochs=50,
-            learning_rate=0.0001,  # Lower LR for refinement
-            early_stopping_patience=10,
-            include_mined_negatives=True,
-        ),
-        optimizer=OptimizerConfig(
-            optimizer="adamw",
-            weight_decay=0.05,  # Higher regularization
-            warmup_epochs=2,
-        ),
-        loss=LossConfig(
-            loss_function="focal_loss",
-            focal_gamma=3.0,  # Focus more on hard samples
-            hard_negative_weight=10.0,  # Extremely high weight for mined samples
-        ),
-        augmentation=AugmentationConfig(
-            background_noise_prob=0.8,  # More noise to challenge the model
-            time_shift_prob=0.5,
-        ),
-        qat=QATConfig(
-            enabled=True,
-            backend="qnnpack",
-            start_epoch=0,
-        ),
-        # Distillation disabled intentionally to focus on Hard Negatives
-    )
-
-
-def get_low_lr_finetune_preset() -> WakewordConfig:
-    """
-    Strategy B: Low-LR Fine Tuning
-    Squeeze out the last % of performance with a very low learning rate.
-    """
-    return WakewordConfig(
-        config_name="low_lr_finetune",
-        description="Strategy B: Fine-tune with ultra-low LR (1e-6) for maximum stability",
-        training=TrainingConfig(
-            epochs=30,
-            learning_rate=0.000001,  # Ultra-low LR
-            early_stopping_patience=30,  # Don't stop early, let it converge slowly
-            use_ema=True,
-        ),
-        optimizer=OptimizerConfig(
-            optimizer="adamw",
-            weight_decay=0.01,
-            scheduler="none",  # Constant low LR
-        ),
-        loss=LossConfig(
-            label_smoothing=0.02,  # Minimal smoothing for final polish
-        ),
-    )
-
-
-# Preset registry - Simplified to 3 main target platforms
+# ============================================================================
+# PRESET REGISTRY - 3 Target Platforms Only
+# ============================================================================
 PRESETS: Dict[str, Callable[[], WakewordConfig]] = {
-    # === MAIN PRODUCTION PROFILES ===
-    "MCU (ESP32-S3 No-PSRAM)": get_mcu_tiny_production_preset,
-    "RPI (Raspberry Pi / Wyoming Satellite)": get_rpi_zero2w_preset,
-    "x86_64 (Desktop / Server)": get_ultimate_accuracy_preset,
-    # === STRATEGY PROFILES ===
-    "Strategy A: Hard Negative Refinement": get_hard_negative_refinement_preset,
-    "Strategy B: Low-LR Fine-Tuning": get_low_lr_finetune_preset,
-    # === UTILITY PROFILES ===
-    "Utility: Small Dataset (<10k)": get_small_dataset_preset,
-    "Utility: Fast Training (Prototyping)": get_fast_training_preset,
+    "ESP32-S3": get_esp32s3_preset,
+    "Raspberry Pi Zero 2W": get_rpi_zero2w_preset,
+    "x86_64 (Desktop/Server)": get_x86_64_preset,
 }
 
 
