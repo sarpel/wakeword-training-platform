@@ -81,7 +81,7 @@ In the real world, accuracy doesn't matter as much as: **"How many times will th
 ## 💎 5. The Master Strokes: Optimization
 
 ### 🎓 Knowledge Distillation (Master/Apprentice)
-We take a giant, genius model (The **Teacher**, like Wav2Vec2) and have it "tutor" a tiny model (The **Student**, like MobileNet). 
+We take a giant, genius model (The **Teacher**, like Wav2Vec2) and have it "tutor" a tiny model (The **Student**, like MobileNet).
 *   **The Secret**: Instead of the student just seeing "Right/Wrong," the teacher shows its "Soft Probabilities"—meaning it shows the student *why* it thought a sound was almost a word. This "transfers the brain" of the giant model into the tiny one.
 
 ### 💎 QAT (Quantization Aware Training)
@@ -124,9 +124,9 @@ We use a two-stage defense:
 Once the model is trained, it needs to live on a device and listen 24/7.
 
 ### 📡 Streaming Settings (`StreamingConfig`)
-*   **Hysteresis (High: 0.7, Low: 0.3)**: This is the "Decision Buffer." 
-    *   To trigger the word, the model must be **70% sure**. 
-    *   To "reset" and start listening again, the score must drop below **30%**. 
+*   **Hysteresis (High: 0.7, Low: 0.3)**: This is the "Decision Buffer."
+    *   To trigger the word, the model must be **70% sure**.
+    *   To "reset" and start listening again, the score must drop below **30%**.
     *   This prevents the model from "stuttering" (triggering 5 times for one word).
 *   **Smoothing Window (5)**: The model doesn't just look at one split-second; it averages its last 5 guesses. This filters out random "blips" of noise.
 *   **Cooldown (500ms)**: After hearing the word, the model takes a 0.5-second "nap" so it doesn't hear itself echo.
@@ -141,7 +141,7 @@ Once the model is trained, it needs to live on a device and listen 24/7.
 This final section explains our default values and how you should evolve them as your project grows.
 
 ### 🧠 Our "Default" Philosophy
-Our default values (e.g., **Learning Rate 5e-4**, **Batch Size 64**) are chosen as the "Safe Middle Ground." They are designed to work on a 30-series NVIDIA GPU with a dataset of about 5,000–20,000 samples. 
+Our default values (e.g., **Learning Rate 5e-4**, **Batch Size 64**) are chosen as the "Safe Middle Ground." They are designed to work on a 30-series NVIDIA GPU with a dataset of about 5,000–20,000 samples.
 
 ### 📈 Scaling Up: When to change what?
 

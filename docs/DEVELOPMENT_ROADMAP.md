@@ -4311,7 +4311,7 @@ Strictly enforce `fallback_to_audio` flag.
         features = self._load_from_npy(file_info, idx)
         if features is not None:
              # ... return NPY features ...
-        
+
         # NPY missing or failed
         if not self.fallback_to_audio:
             raise FileNotFoundError(f"NPY features missing for {file_path} and fallback_to_audio=False")
@@ -7384,10 +7384,10 @@ FILE: wakeword_project_analysis_report.md
 
 # Wakeword Training Platform - Kod Analizi Raporu (Düzeltilmiş)
 
-**Proje:** Wake Word / Audio ML Training Platform  
-**Analiz Tarihi:** 27 Kasım 2025  
-**Toplam Kod Satırı:** 17,636 satır Python  
-**Dosya Sayısı:** 47 Python dosyası  
+**Proje:** Wake Word / Audio ML Training Platform
+**Analiz Tarihi:** 27 Kasım 2025
+**Toplam Kod Satırı:** 17,636 satır Python
+**Dosya Sayısı:** 47 Python dosyası
 
 ---
 
@@ -7412,7 +7412,7 @@ Bu hatalar `pyflakes` ile doğrulanmıştır ve çalışma zamanında `NameError
 Lazy import pattern kullanılmış ama global scope'ta referans var:
 ```
 Satır 47, 331, 343, 344, 488, 492: 'onnx' undefined
-Satır 47, 331, 363, 424, 455, 488, 493, 497: 'ort' undefined  
+Satır 47, 331, 363, 424, 455, 488, 493, 497: 'ort' undefined
 Satır 384, 385: 'np' undefined
 ```
 
@@ -7485,7 +7485,7 @@ Satır 549: 'splits_dir' - __main__ bloğunda scope dışı
 ## 🔴 GÜVENLİK AÇIKLARI
 
 ### 1. Güvensiz PyTorch Model Yükleme (CWE-502)
-**Risk:** Pickle deserialization saldırısı  
+**Risk:** Pickle deserialization saldırısı
 **Etkilenen Dosyalar:**
 
 | Dosya | Satır |
@@ -7823,5 +7823,5 @@ Toplam tahmini düzeltme süresi: **5-7 iş günü** (temel düzeltmeler için)
 
 ---
 
-*Rapor oluşturulma tarihi: 27 Kasım 2025*  
+*Rapor oluşturulma tarihi: 27 Kasım 2025*
 *Analiz araçları: pylint, pyflakes, bandit, radon*

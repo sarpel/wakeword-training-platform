@@ -139,9 +139,11 @@ class AugmentationConfig:
     background_noise_prob: float = 0.5
     noise_snr_min: float = 5.0  # dB
     noise_snr_max: float = 20.0  # dB
+    max_background_noises: int = 1000  # Increased for 8GB RAM
 
     # RIR augmentation (CPU-based)
     rir_prob: float = 0.25
+    max_rirs: int = 2000  # Increased for 8GB RAM
 
     # NEW: RIR dry/wet mixing parameters
     rir_dry_wet_min: float = 0.3  # Minimum dry ratio (30% dry, 70% wet)
