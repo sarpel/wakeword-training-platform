@@ -18,7 +18,7 @@ logger = structlog.get_logger(__name__)
 class HardNegativeMiner:
     """
     Identifies and manages 'hard negative' samples (false positives) from evaluation results.
-    
+
     A 'hard negative' is a sound clip that the model incorrectly predicted as a wakeword
     (False Positive), but which is actually NOT a wakeword (Negative label). These samples
     help train the model to distinguish the wakeword from similar-sounding words or sounds.
@@ -46,7 +46,7 @@ class HardNegativeMiner:
 
         Args:
             results: List of EvaluationResult objects.
-            confidence_threshold: Only find FP with confidence above this. 
+            confidence_threshold: Only find FP with confidence above this.
                                   Default to 0.0 to catch everything via logic below.
 
         Returns:
@@ -77,7 +77,9 @@ class HardNegativeMiner:
 
         if mined_count > 0:
             self._save_queue()
-            logger.info(f"Found {mined_count} false positives (model detected as wakeword but are NOT). Saved to {self.queue_path}")
+            logger.info(
+                f"Found {mined_count} false positives (model detected as wakeword but are NOT). Saved to {self.queue_path}"
+            )
 
         return mined_count
 
@@ -90,7 +92,7 @@ class HardNegativeMiner:
     def update_status(self, full_path: str, status: str) -> None:
         """
         Update verification status of a sample.
-        
+
         Status values:
             - "pending": Awaiting user review
             - "confirmed": Verified as NOT wakeword (will be added to training)

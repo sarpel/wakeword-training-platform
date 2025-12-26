@@ -218,41 +218,41 @@ class MetricsCalculator:
             neg_scores = probs_np[targets_np == 0]
 
             hist_lines = ["\n    Confidence Distribution (Neg [-] vs Pos [+]):"]
-            
+
             # Create bins
             bin_edges = np.linspace(0, 1, bins + 1)
-            
+
             # Calculate counts
             pos_hist, _ = np.histogram(pos_scores, bins=bin_edges)
             neg_hist, _ = np.histogram(neg_scores, bins=bin_edges)
-            
+
             # Normalize for visualization (max width 40 chars)
             max_count = max(pos_hist.max(), neg_hist.max()) if (len(pos_hist) > 0 and len(neg_hist) > 0) else 1
             max_width = 40
-            
+
             for i in range(bins):
-                low, high = bin_edges[i], bin_edges[i+1]
-                
+                low, high = bin_edges[i], bin_edges[i + 1]
+
                 # Normalize lengths
                 neg_len = int((neg_hist[i] / max_count) * max_width) if max_count > 0 else 0
                 pos_len = int((pos_hist[i] / max_count) * max_width) if max_count > 0 else 0
-                
+
                 neg_bar = "-" * neg_len
                 pos_bar = "+" * pos_len
-                
+
                 # Format: [0.0-0.1] --- (120) | + (5)
                 # Using specific markers for clarity
                 if neg_len > 0 and pos_len > 0:
-                    bar = f"\033[94m{neg_bar}\033[0m|\033[92m{pos_bar}\033[0m" # Blue | Green
+                    bar = f"\033[94m{neg_bar}\033[0m|\033[92m{pos_bar}\033[0m"  # Blue | Green
                 elif neg_len > 0:
                     bar = f"\033[94m{neg_bar}\033[0m"
                 elif pos_len > 0:
                     bar = f"|\033[92m{pos_bar}\033[0m"
                 else:
                     bar = ""
-                    
+
                 hist_lines.append(f"    [{low:.1f}-{high:.1f}] {bar}")
-                
+
             return "\n".join(hist_lines)
         except Exception as e:
             return f"Histogram error: {e}"

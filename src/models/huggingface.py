@@ -8,7 +8,7 @@ Default cache location: models/teachers/
 import logging
 import os
 from pathlib import Path
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 import torch
 import torch.nn as nn
@@ -24,17 +24,17 @@ os.environ.setdefault("TRANSFORMERS_CACHE", str(TEACHER_CACHE_DIR))
 os.environ.setdefault("HF_HOME", str(TEACHER_CACHE_DIR))
 
 try:
-    from transformers import Wav2Vec2Config, Wav2Vec2Model, WhisperModel, WhisperConfig, utils
+    from transformers import Wav2Vec2Config, Wav2Vec2Model, WhisperConfig, WhisperModel, utils
 
     utils.logging.set_verbosity_warning()
     TRANSFORMERS_IMPORT_ERROR = None
 except ImportError as e:
     logging.getLogger(__name__).warning(f"Failed to import transformers: {e}")
     TRANSFORMERS_IMPORT_ERROR = str(e)
-    Wav2Vec2Model = None
-    Wav2Vec2Config = None
-    WhisperModel = None
-    WhisperConfig = None
+    Wav2Vec2Model: Any = None  # type: ignore[no-redef]
+    Wav2Vec2Config: Any = None  # type: ignore[no-redef]
+    WhisperModel: Any = None  # type: ignore[no-redef]
+    WhisperConfig: Any = None  # type: ignore[no-redef]
 
 logger = get_logger(__name__)
 

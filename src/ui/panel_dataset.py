@@ -17,13 +17,13 @@ import torch
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-import structlog
+import structlog  # noqa: E402
 
-from src.data.health_checker import DatasetHealthChecker
-from src.data.npy_extractor import NpyExtractor
-from src.data.preprocessing import VADFilter  # Import VADFilter
-from src.data.splitter import DatasetScanner, DatasetSplitter
-from src.exceptions import WakewordException
+from src.data.health_checker import DatasetHealthChecker  # noqa: E402
+from src.data.npy_extractor import NpyExtractor  # noqa: E402
+from src.data.preprocessing import VADFilter  # noqa: E402
+from src.data.splitter import DatasetScanner, DatasetSplitter  # noqa: E402
+from src.exceptions import WakewordException  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 

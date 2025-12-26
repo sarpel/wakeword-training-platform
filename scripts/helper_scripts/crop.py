@@ -3,9 +3,9 @@
 import argparse
 import csv
 import os
-from pathlib import Path
 import random
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import soundfile as sf
@@ -13,8 +13,10 @@ import soundfile as sf
 try:
     from tqdm import tqdm
 except Exception:
-    def tqdm(x, **kwargs):
+
+    def tqdm(x: Any, **kwargs: Any) -> Any:
         return x
+
 
 AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg", ".m4a", ".wma", ".aac", ".opus"}
 TARGET_SR = 16000
@@ -73,7 +75,7 @@ def read_random_crop(path: Path, crop_s: float, seed: int) -> Tuple[np.ndarray, 
     return audio, sr
 
 
-def write_wav(path: Path, audio: np.ndarray, sr: int):
+def write_wav(path: Path, audio: np.ndarray, sr: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(str(path), audio, sr, subtype="PCM_16")
 
@@ -86,7 +88,7 @@ def sample_dataset(
     crop_min: float,
     crop_max: float,
     max_per_file: int,
-    seed: int
+    seed: int,
 ) -> List[Tuple[str, float, str]]:
     files = []
     for r in roots:
@@ -97,7 +99,7 @@ def sample_dataset(
 
     rng = random.Random(seed)
     rng.shuffle(files)
-    per_file_counter = {}
+    per_file_counter: Dict[str, int] = {}
     selected: List[Tuple[str, float, str]] = []
 
     i = 0
@@ -110,13 +112,13 @@ def sample_dataset(
             continue
         crop_s = rng.uniform(crop_min, crop_max)
         try:
-            audio, sr = read_random_crop(p, crop_s, seed=rng.randint(0, 2**31-1))
+            audio, sr = read_random_crop(p, crop_s, seed=rng.randint(0, 2**31 - 1))
         except Exception:
             continue
         idx = len(selected)
         out_path = out_dir / name / f"{idx:06d}.wav"
         write_wav(out_path, audio, sr)
-        selected.append((str(out_path), len(audio)/sr, name))
+        selected.append((str(out_path), len(audio) / sr, name))
         per_file_counter[key] = count_for_file + 1
 
     print(f"[{name}] wrote {len(selected)} crops to {out_dir/name}")
@@ -132,7 +134,7 @@ def write_manifest(manifest_path: Path, rows: List[Tuple[str, float, str]]):
             w.writerow([p, f"{d:.3f}", src])
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description="Crop 1–2 s negatives from AudioSet/FSD50K/FMA.")
     ap.add_argument("--audioset_root", type=Path, default=None)
     ap.add_argument("--fsd50k_root", type=Path, default=None)
@@ -161,7 +163,7 @@ def main():
             crop_min=args.crop_min,
             crop_max=args.crop_max,
             max_per_file=args.max_per_file,
-            seed=args.seed
+            seed=args.seed,
         )
     if args.fsd50k_root:
         rows += sample_dataset(
@@ -172,7 +174,7 @@ def main():
             crop_min=args.crop_min,
             crop_max=args.crop_max,
             max_per_file=args.max_per_file,
-            seed=args.seed
+            seed=args.seed,
         )
     if args.fma_root:
         rows += sample_dataset(
@@ -183,7 +185,7 @@ def main():
             crop_min=args.crop_min,
             crop_max=args.crop_max,
             max_per_file=args.max_per_file,
-            seed=args.seed
+            seed=args.seed,
         )
 
     if not rows:

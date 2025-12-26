@@ -50,16 +50,12 @@ def _params_to_config(params: List[Any]) -> WakewordConfig:
     """Convert UI parameters to WakewordConfig"""
     from src.config.defaults import (
         AugmentationConfig,
-        CalibrationConfig,
-        CMVNConfig,
         DataConfig,
         DistillationConfig,
         LossConfig,
         ModelConfig,
         OptimizerConfig,
         QATConfig,
-        SizeTargetConfig,
-        StreamingConfig,
         TrainingConfig,
         WakewordConfig,
     )

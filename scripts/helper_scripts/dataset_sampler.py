@@ -60,7 +60,7 @@ import random
 import shutil
 import sys
 from pathlib import Path
-from typing import Iterable, List, Tuple, Optional
+from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 
@@ -72,6 +72,7 @@ except Exception as e:
 try:
     from tqdm import tqdm
 except Exception:
+
     def tqdm(x, **kwargs):
         return x
 
@@ -125,6 +126,7 @@ def human_hours(seconds: float) -> str:
 # Features sampler
 # -----------------------------
 
+
 def sample_features_memmap(
     input_npy: Path,
     output_npy: Path,
@@ -154,11 +156,15 @@ def sample_features_memmap(
     # Read shape without loading all into RAM
     arr_in = np.load(str(input_npy), mmap_mode="r")
     shape = arr_in.shape
+    frame_shape: Tuple[int, ...]
     if len(shape) == 2:
-        num_frames, feat_dim = shape
+        num_frames = shape[0]
+        feat_dim = shape[1]
         frame_shape = (feat_dim,)
     elif len(shape) == 3:
-        num_frames, time_dim, feat_dim = shape
+        num_frames = shape[0]
+        time_dim = shape[1]
+        feat_dim = shape[2]
         frame_shape = (time_dim, feat_dim)
     else:
         raise ValueError(f"Unsupported input shape: {shape}. Expect 2D or 3D.")
@@ -173,6 +179,7 @@ def sample_features_memmap(
         target_seconds = target_hours * 3600.0
         fraction = min(1.0, max(0.0, target_seconds / total_seconds))
     else:
+        assert fraction is not None, "Fraction must be provided if target_hours is None"
         fraction = float(fraction)
         fraction = min(1.0, max(0.0, fraction))
 
@@ -197,12 +204,12 @@ def sample_features_memmap(
         end = start + segment_frames
         # Slice and write
         chunk = arr_in[start:end]
-        arr_out[filled:filled + len(chunk)] = chunk
+        arr_out[filled : filled + len(chunk)] = chunk
         filled += len(chunk)
         if filled >= target_frames:
             break
 
-    # sample_features_memmap fonksiyonunun sonunda
+        # sample_features_memmap fonksiyonunun sonunda
         final_frames = min(filled, target_frames)
 
         # memmap bağlantısını kapat
@@ -246,6 +253,7 @@ def sample_features_memmap(
 # Audio sampler
 # -----------------------------
 
+
 def sample_audio_files(
     roots: List[Path],
     target_hours: Optional[float],
@@ -276,8 +284,8 @@ def sample_audio_files(
     total_sec = 0.0
 
     def meets_goal() -> bool:
-        goal_count = (target_count is not None and len(selected) >= target_count)
-        goal_hours = (target_hours is not None and total_sec >= target_hours * 3600.0)
+        goal_count = target_count is not None and len(selected) >= target_count
+        goal_hours = target_hours is not None and total_sec >= target_hours * 3600.0
         # If both given, stop when either satisfied
         return goal_count or goal_hours
 
@@ -320,6 +328,7 @@ def sample_audio_files(
 # CLI
 # -----------------------------
 
+
 def build_parser():
     p = argparse.ArgumentParser(description="Dataset sampling utilities for wakeword training.")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -336,8 +345,12 @@ def build_parser():
 
     # sample_audio
     pa = sub.add_parser("sample_audio", help="Randomly sample audio files by hours or count.")
-    pa.add_argument("--roots", nargs="+", required=True, type=Path, help="Dataset root directories to search recursively.")
-    pa.add_argument("--output_manifest", required=True, type=Path, help="CSV path to write selected files and durations.")
+    pa.add_argument(
+        "--roots", nargs="+", required=True, type=Path, help="Dataset root directories to search recursively."
+    )
+    pa.add_argument(
+        "--output_manifest", required=True, type=Path, help="CSV path to write selected files and durations."
+    )
     pa.add_argument("--target_hours", type=float, default=None, help="Target total hours across all selected files.")
     pa.add_argument("--target_count", type=int, default=None, help="Target number of files.")
     pa.add_argument("--copy_to", type=Path, default=None, help="Optional directory to copy selected files into.")

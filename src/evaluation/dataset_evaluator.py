@@ -21,7 +21,7 @@ def evaluate_dataset(
     evaluator: Any,  # type: ignore[arg-type]
     dataset: Any,  # type: ignore[arg-type]
     threshold: float = 0.5,
-    batch_size: int = 32
+    batch_size: int = 32,
 ) -> Tuple[MetricResults, List[EvaluationResult]]:
     """
     Evaluate entire dataset with ground truth labels
@@ -37,7 +37,7 @@ def evaluate_dataset(
     from torch.utils.data import DataLoader
 
     def collate_fn(
-        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]],
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
@@ -124,7 +124,7 @@ def evaluate_dataset(
                 )
 
     # Calculate overall metrics - accumulate in lists first
-    all_preds_raw = torch.stack([torch.tensor(r.logits) for r in results]) 
+    all_preds_raw = torch.stack([torch.tensor(r.logits) for r in results])
     all_targs_raw = torch.tensor([r.label for r in results])
 
     # Log label distribution for verification
@@ -155,7 +155,7 @@ def get_roc_curve_data(
     from torch.utils.data import DataLoader
 
     def collate_fn(
-        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]],
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
@@ -177,7 +177,7 @@ def get_roc_curve_data(
         collate_fn=collate_fn,
     )
 
-    all_confidences = []
+    all_confidences: List[float] = []
     all_targets = []
 
     # Collect predictions

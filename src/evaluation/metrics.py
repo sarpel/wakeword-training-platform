@@ -2,12 +2,10 @@
 Evaluation Metrics for Wakeword Detection
 """
 
-from typing import List, Union
-
 import numpy as np
 import torch
 
-from src.training.advanced_metrics import _probs_from_logits, calculate_eer as _calculate_eer_advanced
+from src.training.advanced_metrics import _probs_from_logits
 
 try:
     from sklearn.metrics import auc, roc_curve
@@ -18,11 +16,11 @@ except ImportError:
 
 
 def calculate_pauc(
-    logits: Union[torch.Tensor, np.ndarray],
-    labels: Union[torch.Tensor, np.ndarray],
+    logits,
+    labels,
     fpr_max: float = 0.1,
     positive_index: int = 1,
-) -> float:  
+) -> float:
     """
     Calculate the Partial Area Under the ROC Curve (pAUC) up to a max FPR.
 
@@ -98,8 +96,8 @@ def calculate_pauc(
 
 
 def calculate_eer(
-    logits: Union[torch.Tensor, np.ndarray],
-    labels: Union[torch.Tensor, np.ndarray],
+    logits,
+    labels,
     positive_index: int = 1,
 ) -> float:
     """

@@ -5,7 +5,7 @@ Implements global normalization statistics with persistence
 
 import json
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Sized, Tuple, cast
 
 import structlog
 import torch
@@ -20,6 +20,13 @@ class CMVN(nn.Module):
     Corpus-level Cepstral Mean Variance Normalization
     Inherits from nn.Module for seamless integration with models.
     """
+
+    mean: torch.Tensor
+    std: torch.Tensor
+    count: torch.Tensor
+    _initialized: bool
+    stats_path: Optional[Path]
+    eps: float
 
     def __init__(self, stats_path: Optional[Path] = None, eps: float = 1e-8) -> None:
         """
@@ -88,6 +95,7 @@ class CMVN(nn.Module):
                 sum_features = features.sum(dim=1)
                 sum_squared = (features**2).sum(dim=1)
             else:
+                assert sum_features is not None and sum_squared is not None
                 sum_features += features.sum(dim=1)
                 sum_squared += (features**2).sum(dim=1)
 
@@ -258,15 +266,21 @@ def compute_cmvn_from_dataset(dataset: Dataset, stats_path: Path, max_samples: O
     Returns:
         CMVN object with computed statistics
     """
-    logger.info(f"Computing CMVN stats from dataset (size={len(dataset)})")  # type: ignore[arg-type]
+    dataset_sized = cast(Sized, dataset)
+    logger.info(f"Computing CMVN stats from dataset (size={len(dataset_sized)})")
 
     # Collect features
     features_list = []
-    num_samples = min(len(dataset), max_samples) if max_samples else len(dataset)  # type: ignore[arg-type]
+    num_samples = min(len(dataset_sized), max_samples) if max_samples else len(dataset_sized)
 
     for i in range(num_samples):
-        features, _, _ = dataset[i]
-        features_list.append(features)
+        # WakewordDataset returns (features, label, metadata)
+        item = dataset[i]
+        if isinstance(item, tuple) and len(item) >= 1:
+            features = item[0]
+            features_list.append(features)
+        else:
+            logger.warning(f"Unexpected item format at index {i}")
 
         if (i + 1) % 1000 == 0:
             logger.info(f"Collected {i+1}/{num_samples} samples")

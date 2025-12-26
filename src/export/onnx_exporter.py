@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 import numpy as np
 import structlog
@@ -102,7 +102,7 @@ class ONNXExporter:
         try:
             torch.onnx.export(
                 self.model,
-                dummy_input,
+                (dummy_input,),
                 str(config.output_path),
                 export_params=True,
                 opset_version=config.opset_version,
@@ -358,20 +358,20 @@ def export_model_to_onnx(
         # Use expected_base exports directory as defined earlier
         expected_base = Path("exports").resolve()
         resolved_fixed_path = Path(fixed_export_path).resolve()
-        
+
         # Check for empty or None paths
         if not fixed_export_path or str(fixed_export_path).strip() == "":
             raise ValueError("fixed_export_path cannot be empty")
-        
+
         # Validate path doesn't escape exports directory
         if not str(resolved_fixed_path).startswith(str(expected_base)):
             raise ValueError(
                 f'fixed_export_path security violation: "{fixed_export_path}" resolves to "{resolved_fixed_path}" which is outside allowed exports directory "{expected_base}"'
             )
-        
+
         # Additional check: ensure the path is absolute after resolution
         logger.info(f"Security validated fixed_export_path: {fixed_export_path} -> {resolved_fixed_path}")
-    
+
     logger.info(f"Loading checkpoint: {checkpoint_path}")
 
     # Validate checkpoint path to prevent traversal attacks

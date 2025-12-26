@@ -1,6 +1,8 @@
 import os
-import soundfile as sf
+
 import librosa
+import soundfile as sf
+
 
 def convert_22050_to_16000(root_dir="."):
     for subdir, _, files in os.walk(root_dir):
@@ -18,6 +20,7 @@ def convert_22050_to_16000(root_dir="."):
                     print(f"Converted: {file_path} -> {new_path}")
             except Exception as e:
                 print(f"Error on {file_path}: {e}")
+
 
 if __name__ == "__main__":
     convert_22050_to_16000(".")

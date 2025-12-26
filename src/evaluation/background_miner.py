@@ -1,12 +1,9 @@
 import json
-import os
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
-import numpy as np
 import structlog
-import torch
 
 from src.evaluation.evaluator import ModelEvaluator
 from src.evaluation.mining import HardNegativeMiner
@@ -118,19 +115,17 @@ class BackgroundMiner:
 
             # Update session frequently
             processed_sec = current_sample / sr
+            found_this_time = 1 if confidence >= threshold else 0
             self.sessions[file_id] = {
                 "last_processed_sec": processed_sec,
                 "total_duration": duration,
-                "found_count": self.sessions.get(file_id, {}).get("found_count", 0)
-                + (1 if confidence >= threshold else 0),
+                "found_count": self.sessions.get(file_id, {}).get("found_count", 0) + found_this_time,
             }
             if found_count % 10 == 0:
                 self._save_sessions()
 
             if progress_callback:
-                progress_callback(
-                    processed_sec / duration, f"Processing {file_path.name}: {processed_sec:.1f}s / {duration:.1f}s"
-                )
+                progress_callback(processed_sec / duration)
 
         # Finalize
         if results:

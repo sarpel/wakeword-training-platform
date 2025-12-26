@@ -1,6 +1,7 @@
 """
 Tests for loading HPO profiles
 """
+
 import json
 from pathlib import Path
 

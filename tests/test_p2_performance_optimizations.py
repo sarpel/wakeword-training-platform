@@ -8,6 +8,7 @@ Tests the performance optimizations added:
 4. Persistent DataLoader Workers (multiple files)
 5. N+1 Query Pattern Fix (splitter.py)
 """
+
 import sys
 import tempfile
 from pathlib import Path

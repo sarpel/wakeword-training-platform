@@ -23,6 +23,21 @@ class AudioAugmentation(nn.Module):
     Inherits from nn.Module for seamless integration with training pipelines.
     """
 
+    background_noises: torch.Tensor
+    rirs: torch.Tensor
+    current_epoch: int
+    total_epochs: int
+    sample_rate: int
+    time_stretch_range: Tuple[float, float]
+    pitch_shift_range: Tuple[int, int]
+    time_shift_prob: float
+    time_shift_range_ms: Tuple[int, int]
+    background_noise_prob: float
+    noise_snr_range: Tuple[float, float]
+    rir_prob: float
+    rir_dry_wet_min: float
+    rir_dry_wet_max: float
+
     def __init__(
         self,
         sample_rate: int = 16000,
@@ -434,6 +449,11 @@ class SpecAugment(nn.Module):
     Refined SpecAugment for spectrograms.
     Adjusts masking parameters based on input shape.
     """
+
+    freq_mask_param: int
+    time_mask_param: int
+    n_freq_masks: int
+    n_time_masks: int
 
     def __init__(
         self,

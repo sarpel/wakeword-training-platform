@@ -231,7 +231,8 @@ if __name__ == "__main__":
     print(f"Created test model with {sum(p.numel() for p in model.parameters())} parameters")
 
     # Get initial weights
-    initial_weight = model[0].weight.data.clone()
+    # Mypy: cast to nn.Linear to access .weight
+    initial_weight = cast(nn.Linear, model[0]).weight.data.clone()
 
     # Create EMA
     ema = EMA(model, decay=0.999)
@@ -249,7 +250,7 @@ if __name__ == "__main__":
         # Update EMA
         ema.update()
 
-    final_weight = model[0].weight.data.clone()
+    final_weight = cast(nn.Linear, model[0]).weight.data.clone()
     shadow_weight = ema.shadow_params["0.weight"]
 
     print("Weight changes:")
@@ -261,13 +262,13 @@ if __name__ == "__main__":
     print("\nTesting apply_shadow and restore...")
 
     original_params = ema.apply_shadow()
-    applied_weight = model[0].weight.data.clone()
+    applied_weight = cast(nn.Linear, model[0]).weight.data.clone()
 
     assert torch.allclose(applied_weight, shadow_weight), "Shadow not applied correctly"
     print("  ✅ Shadow applied correctly")
 
     ema.restore(original_params)
-    restored_weight = model[0].weight.data.clone()
+    restored_weight = cast(nn.Linear, model[0]).weight.data.clone()
 
     assert torch.allclose(restored_weight, final_weight), "Parameters not restored correctly"
     print("  ✅ Parameters restored correctly")

@@ -1,5 +1,6 @@
 import csv
 from pathlib import Path
+
 import librosa
 
 ROOT = Path("data/raw")
@@ -9,7 +10,7 @@ LABEL_MAP = {
     "negative": "non_wakeword",
     "hard_negative": "non_wakeword",
     "background": "background",
-    "rirs": "rir"
+    "rirs": "rir",
 }
 
 with open("wakeword_dataset.csv", "w", newline="", encoding="utf-8") as f:
@@ -27,9 +28,4 @@ with open("wakeword_dataset.csv", "w", newline="", encoding="utf-8") as f:
             except Exception:
                 continue
 
-            writer.writerow([
-                wav.as_posix(),
-                label,
-                round(duration, 3),
-                folder
-            ])
+            writer.writerow([wav.as_posix(), label, round(duration, 3), folder])

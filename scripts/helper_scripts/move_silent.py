@@ -5,12 +5,12 @@ import argparse
 import shutil
 from pathlib import Path
 
-from src.config.logger import setup_logger  # Kullanılmıyor ama ileride gerekebilir
-logger = setup_logger(__name__)  
+from src.config.logger import get_logger
+
+logger = get_logger(__name__)
 
 import numpy as np
 import soundfile as sf
-
 
 AUDIO_EXTS = {".wav", ".flac", ".ogg", ".aiff", ".aif", ".aifc", ".caf"}  # mp3 garanti değil
 
@@ -132,21 +132,26 @@ def main():
     ap.add_argument("input_dir", type=str, help="Taranacak kök klasör")
     ap.add_argument("output_dir", type=str, help="Sessiz bulunanların gideceği klasör")
 
-    ap.add_argument("--rms-th", type=float, default=-50.0,
-                    help="RMS dBFS eşiği. Daha küçük/negatif = daha katı. Örn: -55, -60 (varsayılan: -50)")
-    ap.add_argument("--peak-th", type=float, default=None,
-                    help="Opsiyonel peak dBFS eşiği. Verirsen her ikisini de sağlamalı. Örn: -35")
-    ap.add_argument("--min-dur", type=float, default=0.25,
-                    help="Bu süreden kısa dosyaları silent sayma (varsayılan: 0.25s)")
+    ap.add_argument(
+        "--rms-th",
+        type=float,
+        default=-50.0,
+        help="RMS dBFS eşiği. Daha küçük/negatif = daha katı. Örn: -55, -60 (varsayılan: -50)",
+    )
+    ap.add_argument(
+        "--peak-th",
+        type=float,
+        default=None,
+        help="Opsiyonel peak dBFS eşiği. Verirsen her ikisini de sağlamalı. Örn: -35",
+    )
+    ap.add_argument(
+        "--min-dur", type=float, default=0.25, help="Bu süreden kısa dosyaları silent sayma (varsayılan: 0.25s)"
+    )
 
-    ap.add_argument("--copy", action="store_true",
-                    help="Taşımak yerine kopyala (default: move)")
-    ap.add_argument("--keep-structure", action="store_true",
-                    help="Alt klasör yapısını output içinde koru")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Hiçbir şey taşımadan sadece raporla")
-    ap.add_argument("--log", type=str, default="silent_report.tsv",
-                    help="Rapor dosyası adı (output_dir içine yazılır)")
+    ap.add_argument("--copy", action="store_true", help="Taşımak yerine kopyala (default: move)")
+    ap.add_argument("--keep-structure", action="store_true", help="Alt klasör yapısını output içinde koru")
+    ap.add_argument("--dry-run", action="store_true", help="Hiçbir şey taşımadan sadece raporla")
+    ap.add_argument("--log", type=str, default="silent_report.tsv", help="Rapor dosyası adı (output_dir içine yazılır)")
 
     args = ap.parse_args()
 

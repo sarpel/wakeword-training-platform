@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import sys
-import shutil
 import json
+import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 DESIRED_SR = 16000
@@ -14,10 +14,8 @@ DESIRED_BIT_DEPTH = 16  # PCM s16le
 OUTPUT_EXT = ".wav"
 SUFFIX = "_converted"
 
-AUDIO_EXTS = {
-    ".wav", ".mp3", ".flac", ".ogg", ".oga", ".opus",
-    ".m4a", ".aac", ".wma", ".aiff", ".aif", ".aifc"
-}
+AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wma", ".aiff", ".aif", ".aifc"}
+
 
 def which(cmd: str) -> bool:
     try:
@@ -26,6 +24,7 @@ def which(cmd: str) -> bool:
     except FileNotFoundError:
         return False
 
+
 def ffprobe_info(path: Path):
     """
     Return tuple (sample_rate:int|None, channels:int|None, bit_depth:int|None, codec:str|None)
@@ -33,9 +32,16 @@ def ffprobe_info(path: Path):
     """
     try:
         cmd = [
-            "ffprobe", "-v", "error", "-select_streams", "a:0",
-            "-show_entries", "stream=sample_rate,channels,bit_depth,codec_name",
-            "-of", "json", str(path)
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=sample_rate,channels,bit_depth,codec_name",
+            "-of",
+            "json",
+            str(path),
         ]
         p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, text=True)
         if p.returncode != 0:
@@ -53,6 +59,7 @@ def ffprobe_info(path: Path):
     except Exception:
         return (None, None, None, None)
 
+
 def needs_conversion(path: Path) -> bool:
     """
     Decide if a file needs conversion to target format.
@@ -68,9 +75,10 @@ def needs_conversion(path: Path) -> bool:
     if bd is None:
         bd_ok = False
     else:
-        bd_ok = (bd == DESIRED_BIT_DEPTH)
+        bd_ok = bd == DESIRED_BIT_DEPTH
     codec_ok = (codec in ("pcm_s16le", "pcm_s16be")) or bd_ok  # tolerate endian ambiguity via bd check
     return not (sr == DESIRED_SR and ch == DESIRED_CHANNELS and codec_ok)
+
 
 def safe_output_path(in_path: Path) -> Path:
     base = in_path.stem
@@ -83,21 +91,31 @@ def safe_output_path(in_path: Path) -> Path:
         i += 1
     return out
 
+
 def convert_with_ffmpeg(in_path: Path, out_path: Path) -> bool:
     """
     Convert to 16kHz, mono, 16-bit PCM WAV using ffmpeg.
     Returns True on success.
     """
     cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-i", str(in_path),
-        "-ar", str(DESIRED_SR),    # sample rate
-        "-ac", str(DESIRED_CHANNELS),  # channels
-        "-c:a", "pcm_s16le",       # 16-bit PCM
-        str(out_path)
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(in_path),
+        "-ar",
+        str(DESIRED_SR),  # sample rate
+        "-ac",
+        str(DESIRED_CHANNELS),  # channels
+        "-c:a",
+        "pcm_s16le",  # 16-bit PCM
+        str(out_path),
     ]
     p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return p.returncode == 0
+
 
 def move_original(root: Path, in_path: Path):
     """
@@ -108,6 +126,7 @@ def move_original(root: Path, in_path: Path):
     dest = quarantine_root / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(in_path), str(dest))
+
 
 def process_root(root_dir: Path):
     have_ffmpeg = which("ffmpeg") and which("ffprobe")
@@ -149,6 +168,7 @@ def process_root(root_dir: Path):
 
     print(f"\nÖzet: converted={converted}, skipped={skipped}, failed={failed}")
 
+
 def main():
     if len(sys.argv) < 2:
         print("Kullanım: python audio_convert_16k16bit_mono.py <root_folder>", file=sys.stderr)
@@ -158,6 +178,7 @@ def main():
         print(f"Hata: Klasör yok: {root}", file=sys.stderr)
         sys.exit(2)
     process_root(root)
+
 
 if __name__ == "__main__":
     main()

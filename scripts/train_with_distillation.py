@@ -42,26 +42,26 @@ import torch
 def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu") -> dict:
     """
     Safely load a checkpoint with validation to prevent arbitrary code execution.
-    
+
     This function implements defense-in-depth:
     1. Validates the checkpoint path (prevents path traversal)
     2. Loads tensors only when possible (weights_only=True) for PyTorch 2.4+
     3. Validates checkpoint structure before returning
     4. Provides clear error messages for debugging
-    
+
     Args:
         checkpoint_path: Path to the checkpoint file
         device: Device to map tensors to
-        
+
     Returns:
         dict: Validated checkpoint dictionary
-        
+
     Raises:
         ValueError: If checkpoint path or content is invalid
         FileNotFoundError: If checkpoint file does not exist
     """
     checkpoint_path = Path(checkpoint_path)
-    
+
     # SECURITY: Validate checkpoint path (prevent path traversal)
     # Checkpoints should be in models/ or checkpoints/ directories
     allowed_dirs = ["models", "checkpoints", "cache", "exports"]
@@ -70,12 +70,9 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
         # Check if parent directory is in allowed list
         parent_name = resolved_path.parent.name
         grandparent_name = resolved_path.parent.parent.name if resolved_path.parent.parent else ""
-        
-        is_allowed = (
-            parent_name in allowed_dirs or
-            grandparent_name in allowed_dirs
-        )
-        
+
+        is_allowed = parent_name in allowed_dirs or grandparent_name in allowed_dirs
+
         if not is_allowed:
             raise ValueError(
                 f"Security violation: Checkpoint path '{checkpoint_path}' resolves to '{resolved_path}' "
@@ -83,13 +80,13 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
             )
     except Exception as e:
         raise ValueError(f"Invalid checkpoint path: {e}") from e
-    
+
     # SECURITY: Check file exists and is a regular file
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
     if not checkpoint_path.is_file():
         raise ValueError(f"Checkpoint path is not a file: {checkpoint_path}")
-    
+
     # SECURITY: Load checkpoint safely
     try:
         # Try weights_only=True (PyTorch 2.4+ recommended)
@@ -99,7 +96,7 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
         # Fallback: Load with pickle but validate structure afterward
         checkpoint = torch.load(checkpoint_path, map_location=device)
         logger.warning("Loaded checkpoint with pickle (less safe - validate structure)")
-        
+
         # SECURITY: Validate checkpoint structure
         required_keys = ["model_state_dict", "optimizer_state_dict", "epoch"]
         for key in required_keys:
@@ -108,7 +105,7 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
                     f"Invalid checkpoint format: missing required key '{key}'. "
                     f"This may be a corrupted or malicious checkpoint file."
                 )
-        
+
         # SECURITY: Check for suspicious keys (arbitrary code)
         suspicious_keys = ["__builtins__", "__code__", "__func__", "eval", "exec", "compile"]
         for key in checkpoint.keys():
@@ -119,8 +116,11 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
                         f"Security violation: Suspicious key '{key}' found in checkpoint. "
                         f"This checkpoint may contain arbitrary code."
                     )
-    
+
     return checkpoint
+
+
+from torch.utils.data import DataLoader
 
 # ============================================================================
 # IMPORTS: Bring in all the necessary components
@@ -131,7 +131,6 @@ from src.data.dataset import WakewordDataset
 from src.models.architectures import create_model
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.distillation_trainer import DistillationTrainer
-from torch.utils.data import DataLoader
 
 # ============================================================================
 # LOGGING SETUP: So we can see what's happening during training
@@ -151,9 +150,7 @@ def parse_args():
     modifying the script. For example:
         python train_with_distillation.py --alpha 0.7 --epochs 100
     """
-    parser = argparse.ArgumentParser(
-        description="Train wakeword model with knowledge distillation"
-    )
+    parser = argparse.ArgumentParser(description="Train wakeword model with knowledge distillation")
 
     # Configuration file
     parser.add_argument(
@@ -186,9 +183,7 @@ def parse_args():
     # Training parameters
     parser.add_argument("--epochs", type=int, default=80, help="Number of training epochs")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size for training")
-    parser.add_argument(
-        "--learning-rate", type=float, default=0.001, help="Learning rate"
-    )
+    parser.add_argument("--learning-rate", type=float, default=0.001, help="Learning rate")
 
     # Model selection
     parser.add_argument(
@@ -200,9 +195,7 @@ def parse_args():
     )
 
     # Paths
-    parser.add_argument(
-        "--data-root", type=str, default="data", help="Root directory for data"
-    )
+    parser.add_argument("--data-root", type=str, default="data", help="Root directory for data")
     parser.add_argument(
         "--checkpoint-dir",
         type=str,
@@ -441,11 +434,7 @@ def create_student_model(config):
 
     # Calculate input dimensions
     # This depends on audio duration and hop length
-    time_steps = (
-        int(config.data.sample_rate * config.data.audio_duration)
-        // config.data.hop_length
-        + 1
-    )
+    time_steps = int(config.data.sample_rate * config.data.audio_duration) // config.data.hop_length + 1
 
     # For spectrogram-based models, input_size is frequency dimension
     input_size = config.data.n_mels
@@ -484,9 +473,9 @@ def main():
     # ========================================================================
     # STEP 1: SETUP
     # ========================================================================
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info("KNOWLEDGE DISTILLATION TRAINING")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     args = parse_args()
 
@@ -509,9 +498,7 @@ def main():
     # STEP 3: DATA LOADING
     # ========================================================================
     train_dataset, val_dataset = create_datasets(config, args.data_root)
-    train_loader, val_loader = create_data_loaders(
-        train_dataset, val_dataset, config.training.batch_size
-    )
+    train_loader, val_loader = create_data_loaders(train_dataset, val_dataset, config.training.batch_size)
 
     # ========================================================================
     # STEP 4: MODEL CREATION
@@ -548,9 +535,9 @@ def main():
     # ========================================================================
     # STEP 6: TRAINING
     # ========================================================================
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info("STARTING TRAINING")
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info(f"Student: {config.model.architecture}")
     logger.info(f"Teacher: Wav2Vec2 (frozen)")
     logger.info(f"Epochs: {config.training.epochs}")
@@ -558,7 +545,7 @@ def main():
     logger.info(f"Learning rate: {config.training.learning_rate}")
     logger.info(f"Alpha (teacher weight): {config.distillation.alpha}")
     logger.info(f"Temperature: {config.distillation.temperature}")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     # Train the model
     # The trainer will:
@@ -574,9 +561,9 @@ def main():
     # ========================================================================
     # STEP 7: RESULTS
     # ========================================================================
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info("TRAINING COMPLETE!")
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info(f"Best Epoch: {results.get('best_epoch', 'N/A')}")
     logger.info(f"Best Validation Loss: {results.get('best_val_loss', float('inf')):.4f}")
     logger.info(f"Best Validation F1: {results.get('best_val_f1', 0.0):.4f}")
@@ -589,20 +576,16 @@ def main():
     logger.info("\nExporting student model to ONNX...")
 
     # Load best checkpoint
-    best_checkpoint_path = results.get('best_checkpoint')
+    best_checkpoint_path = results.get("best_checkpoint")
     if best_checkpoint_path and Path(best_checkpoint_path).exists():
         # SECURITY: Use safe loading to prevent arbitrary code execution
         checkpoint = safe_load_checkpoint(best_checkpoint_path, args.device)
-        student_model.load_state_dict(checkpoint['model_state_dict'])
+        student_model.load_state_dict(checkpoint["model_state_dict"])
         logger.info(f"  ✓ Loaded best checkpoint")
 
     # Export to ONNX
     student_model.eval()
-    time_steps = (
-        int(config.data.sample_rate * config.data.audio_duration)
-        // config.data.hop_length
-        + 1
-    )
+    time_steps = int(config.data.sample_rate * config.data.audio_duration) // config.data.hop_length + 1
     dummy_input = torch.randn(1, 1, config.data.n_mels, time_steps).to(args.device)
 
     onnx_path = checkpoint_dir / f"{config.model.architecture}_distilled.onnx"
@@ -621,9 +604,9 @@ def main():
     # ========================================================================
     # DONE!
     # ========================================================================
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("ALL DONE! 🎉")
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info(f"Student model trained with teacher guidance")
     logger.info(f"Ready for deployment: {onnx_path}")
 

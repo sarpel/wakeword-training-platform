@@ -4,7 +4,7 @@ Handles model preparation and configuration for QAT.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import torch
 import torch.nn as nn
@@ -269,7 +269,8 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
                 # we might need to expand it. We'll try to find a sibling "weight"
                 # if this is being called on a module that HAS a weight.
                 if scale.numel() == 1 and hasattr(model, "weight"):
-                    out_ch = model.weight.shape[0]
+                    weight = cast(torch.Tensor, model.weight)
+                    out_ch = weight.shape[0]
                     if out_ch > 1:
                         logger.info(f"Expanding per-channel scale from 1 to {out_ch}")
                         scale = scale.expand(out_ch).clone()

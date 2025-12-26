@@ -840,7 +840,7 @@ class TinyConvWakeword(nn.Module):
     def embed(self, x: torch.Tensor, layer_index: Optional[int] = None) -> torch.Tensor:
         """
         Extract embeddings for distillation.
-        
+
         Args:
             x: Input tensor
             layer_index: Ignored for now as TinyConv is very shallow,
@@ -849,7 +849,7 @@ class TinyConvWakeword(nn.Module):
         if x.dim() == 2:
             # Handle flattened input if necessary, but TinyConv expects 4D
             pass
-            
+
         x = self.quant(x)
         x = self.features(x)
         x = self.pool(x)
@@ -1034,7 +1034,7 @@ class ConformerWakeword(nn.Module):
     def embed(self, x: torch.Tensor, layer_index: Optional[int] = None) -> torch.Tensor:
         """
         Get embeddings for distillation.
-        
+
         Args:
             x: Input tensor
             layer_index: Optional index of the transformer layer to extract from.

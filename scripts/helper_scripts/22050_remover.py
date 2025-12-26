@@ -1,6 +1,8 @@
 import os
 import shutil
+
 import soundfile as sf
+
 
 def move_22050_files(root_dir="."):
     dest_dir = os.path.join(root_dir, "22050")
@@ -20,6 +22,7 @@ def move_22050_files(root_dir="."):
                     print(f"Moved: {file_path} -> {target_path}")
             except RuntimeError:
                 print(f"Skipped (unreadable): {file_path}")
+
 
 if __name__ == "__main__":
     move_22050_files(".")

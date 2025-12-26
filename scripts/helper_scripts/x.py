@@ -36,9 +36,9 @@ python speech_commands_cvs_sampler.py \
 import argparse
 import csv
 import os
+import random
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
-import random
 
 import numpy as np
 import soundfile as sf
@@ -46,8 +46,10 @@ import soundfile as sf
 try:
     from tqdm import tqdm
 except Exception:
+
     def tqdm(x, **kwargs):
         return x
+
 
 AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg", ".m4a", ".wma", ".aac", ".opus"}
 TARGET_SR = 16000
@@ -174,7 +176,9 @@ def main():
     ap.add_argument("--target_gsc", type=int, default=10000)
     ap.add_argument("--target_cvsw", type=int, default=5000)
     ap.add_argument("--per_class_cap", type=int, default=200, help="Max clips per word to keep for balance")
-    ap.add_argument("--deny_words", type=str, default="", help="Comma-separated list to exclude (e.g., wakeword variants)")
+    ap.add_argument(
+        "--deny_words", type=str, default="", help="Comma-separated list to exclude (e.g., wakeword variants)"
+    )
     ap.add_argument("--min_sec", type=float, default=0.4)
     ap.add_argument("--max_sec", type=float, default=1.5)
     ap.add_argument("--seed", type=int, default=42)

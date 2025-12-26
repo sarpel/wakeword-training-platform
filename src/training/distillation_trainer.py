@@ -4,14 +4,13 @@ Distillation Trainer.
 Implements Knowledge Distillation from a Teacher (Wav2Vec2) to a Student (MobileNet/ResNet).
 """
 
-from typing import Any, List, Optional
-
-from src.config.logger import get_logger
+from typing import Any, List, Optional, cast
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.config.logger import get_logger
 from src.models.architectures import create_model
 from src.models.huggingface import Wav2VecWakeword, WhisperWakeword
 from src.training.trainer import Trainer
@@ -37,6 +36,13 @@ class Projector(nn.Module):
 
 class DistillationTrainer(Trainer):
     """Trainer that adds Knowledge Distillation support."""
+
+    teacher: Optional[nn.Module]
+    teachers: nn.ModuleList
+    teacher_devices: List[torch.device]
+    projectors: nn.ModuleDict
+    distillation_enabled: bool
+    teacher_device: torch.device
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the DistillationTrainer."""
@@ -174,17 +180,17 @@ class DistillationTrainer(Trainer):
                 # Try feature-like input first
                 dummy = torch.zeros(1, 1, 64, 50).to(device)
                 if layer_index is not None:
-                    out = model.embed(dummy, layer_index=layer_index)
+                    out = cast(Any, model).embed(dummy, layer_index=layer_index)
                 else:
-                    out = model.embed(dummy)
+                    out = cast(Any, model).embed(dummy)
             except Exception:
                 try:
                     # Try audio-like input
                     dummy = torch.zeros(1, 16000).to(device)
                     if layer_index is not None:
-                        out = model.embed(dummy, layer_index=layer_index)
+                        out = cast(Any, model).embed(dummy, layer_index=layer_index)
                     else:
-                        out = model.embed(dummy)
+                        out = cast(Any, model).embed(dummy)
                 except Exception:
                     logger.warning(f"Could not automatically determine embed dim for {model.__class__.__name__}")
                     return 128
@@ -285,13 +291,13 @@ class DistillationTrainer(Trainer):
                             enabled=dist_config.teacher_mixed_precision and teacher_device.type == "cuda"
                         ):
                             teacher_features = (
-                                teacher.embed(inputs_teacher, layer_index=layer_idx)
+                                cast(Any, teacher).embed(inputs_teacher, layer_index=layer_idx)
                                 if hasattr(teacher, "embed")
                                 else None
                             )
 
                         if teacher_features is not None:
-                            student_features = self.model.embed(processed_inputs)
+                            student_features = cast(Any, self.model).embed(processed_inputs)
                             teacher_features = teacher_features.to(self.device)
 
                             # Use projector for this teacher and layer

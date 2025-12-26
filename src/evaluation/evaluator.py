@@ -150,8 +150,8 @@ class ModelEvaluator:
         Returns:
             Tuple of (confidence, is_positive)
         """
-        import torch
         import numpy as np
+        import torch
 
         # Ensure audio is the correct format (B, S)
         if audio.ndim == 1:

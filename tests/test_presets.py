@@ -1,6 +1,7 @@
 """
 Tests for Configuration Presets
 """
+
 import pytest
 
 from src.config.presets import get_preset

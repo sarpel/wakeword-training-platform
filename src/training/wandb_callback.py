@@ -35,7 +35,7 @@ class WandbCallback:
         if weave is not None:
             try:
                 weave.init(project_name)
-            except (ImportError, RuntimeError, ValueError) as e:  
+            except (ImportError, RuntimeError, ValueError) as e:
                 logger.warning(f"Failed to initialize Weave: {e}", exc_info=True)
 
         wandb.init(project=project_name, config=config, reinit="finish_previous")

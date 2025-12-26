@@ -3,7 +3,9 @@ Real-Time Microphone Inference
 Streaming audio capture and wakeword detection
 """
 
+import asyncio
 import queue
+import sys
 import threading
 from pathlib import Path
 from typing import Any, Callable, Optional, Tuple
@@ -12,12 +14,10 @@ import numpy as np
 import structlog
 import torch
 import torch.nn as nn
-import asyncio
-import sys
 
-if sys.platform == 'win32':
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
+
 from src.config.cuda_utils import enforce_cuda
 from src.data.processor import AudioProcessor as GpuAudioProcessor
 
@@ -88,7 +88,7 @@ class MicrophoneInference:
         # Audio processor (GPU with CMVN)
         cmvn_path = Path("data/cmvn_stats.json")
         from src.config.defaults import WakewordConfig
-        
+
         # Use provided config or create one from arguments to ensure consistency
         if config is None:
             config = WakewordConfig()
@@ -98,7 +98,7 @@ class MicrophoneInference:
             config.data.n_mfcc = n_mfcc
             config.data.n_fft = n_fft
             config.data.hop_length = hop_length
-        
+
         self.audio_processor = GpuAudioProcessor(
             config=config, cmvn_path=cmvn_path if cmvn_path.exists() else None, device=device
         )
@@ -197,7 +197,7 @@ class MicrophoneInference:
             peak = np.max(np.abs(audio_chunk))
             # Debug noise floor - PRINT TO CONSOLE TO VERIFY CODE IS RUNNING
             # print(f"DEBUG: Audio Peak: {peak:.6f} | Code Version: PEAK_NORM_V3")
-            
+
             if peak < 0.02:  # Silence threshold
                 return 0.0, False
 

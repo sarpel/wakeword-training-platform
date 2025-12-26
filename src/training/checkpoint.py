@@ -19,26 +19,26 @@ logger = structlog.get_logger(__name__)
 def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu") -> dict:
     """
     Safely load a checkpoint with validation to prevent arbitrary code execution.
-    
+
     This function implements defense-in-depth:
     1. Validates checkpoint path (prevents path traversal)
     2. Loads tensors only when possible (weights_only=True) for PyTorch 2.4+
     3. Validates checkpoint structure before returning
     4. Provides clear error messages for debugging
-    
+
     Args:
         checkpoint_path: Path to the checkpoint file
         device: Device to map tensors to
-        
+
     Returns:
         dict: Validated checkpoint dictionary
-        
+
     Raises:
         ValueError: If checkpoint path or content is invalid
         FileNotFoundError: If checkpoint file does not exist
     """
     checkpoint_path = Path(checkpoint_path)
-    
+
     # SECURITY: Validate checkpoint path (prevent path traversal)
     # Checkpoints should be in models/ or checkpoints/ directories
     allowed_dirs = ["models", "checkpoints", "cache", "exports"]
@@ -47,12 +47,9 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
         # Check if parent directory is in allowed list
         parent_name = resolved_path.parent.name
         grandparent_name = resolved_path.parent.parent.name if resolved_path.parent.parent else ""
-        
-        is_allowed = (
-            parent_name in allowed_dirs or
-            grandparent_name in allowed_dirs
-        )
-        
+
+        is_allowed = parent_name in allowed_dirs or grandparent_name in allowed_dirs
+
         if not is_allowed:
             allowed_dirs_str = ", ".join(allowed_dirs)
             raise ValueError(
@@ -63,13 +60,13 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
         raise
     except Exception as e:
         raise ValueError(f"Invalid checkpoint path: {e}") from e
-    
+
     # SECURITY: Check file exists and is a regular file
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
     if not checkpoint_path.is_file():
         raise ValueError(f"Checkpoint path is not a file: {checkpoint_path}")
-    
+
     # SECURITY: Load checkpoint safely
     try:
         # Try weights_only=True (PyTorch 2.4+ recommended)
@@ -79,7 +76,7 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
         # Fallback: Load with pickle but validate structure afterward
         checkpoint = torch.load(checkpoint_path, map_location=device)
         logger.warning("Loaded checkpoint with pickle (less safe - validate structure)")
-        
+
         # SECURITY: Validate checkpoint structure
         required_keys = ["model_state_dict", "optimizer_state_dict", "epoch"]
         for key in required_keys:
@@ -88,7 +85,7 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
                     f"Invalid checkpoint format: missing required key '{key}'. "
                     f"This may be a corrupted or malicious checkpoint file."
                 )
-        
+
         # SECURITY: Check for suspicious keys (arbitrary code)
         suspicious_keys = ["__builtins__", "__code__", "__func__", "eval", "exec", "compile"]
         for key in checkpoint.keys():
@@ -99,7 +96,7 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
                         f"Security violation: Suspicious key '{key}' found in checkpoint. "
                         f"This checkpoint may contain arbitrary code."
                     )
-    
+
     return checkpoint
 
 

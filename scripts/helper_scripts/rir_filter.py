@@ -37,7 +37,6 @@ from typing import List, Tuple
 import numpy as np
 import soundfile as sf
 
-
 AUDIO_EXTS = {".wav", ".flac", ".ogg", ".aiff", ".aif", ".mp3", ".m4a"}  # mp3/m4a may depend on your libsndfile build
 
 
@@ -72,8 +71,7 @@ def load_audio_mono(path: Path) -> Tuple[np.ndarray, int]:
 def compute_metrics(x: np.ndarray, sr: int) -> Metrics:
     if x.size == 0:
         return Metrics(
-            peak_dbfs=-120.0, rms_dbfs=-120.0, crest_db=0.0,
-            active_ms=0.0, dc_ratio=1.0, duration_s=0.0, sr=sr
+            peak_dbfs=-120.0, rms_dbfs=-120.0, crest_db=0.0, active_ms=0.0, dc_ratio=1.0, duration_s=0.0, sr=sr
         )
 
     peak = float(np.max(np.abs(x)))
@@ -111,9 +109,16 @@ def compute_metrics(x: np.ndarray, sr: int) -> Metrics:
     )
 
 
-def decide_reject(m: Metrics, *, min_peak_dbfs: float, min_rms_dbfs: float,
-                  min_crest_db: float, min_active_ms: float, max_dc_ratio: float,
-                  min_duration_s: float) -> Tuple[bool, List[str]]:
+def decide_reject(
+    m: Metrics,
+    *,
+    min_peak_dbfs: float,
+    min_rms_dbfs: float,
+    min_crest_db: float,
+    min_active_ms: float,
+    max_dc_ratio: float,
+    min_duration_s: float,
+) -> Tuple[bool, List[str]]:
     reasons: List[str] = []
 
     # Rule 0: extremely short files are rarely meaningful RIRs
@@ -175,18 +180,20 @@ def main() -> None:
     ap.add_argument("--move", action="store_true", help="Move rejected files (default: copy)")
 
     # Thresholds (safe-ish defaults: reject only obvious garbage)
-    ap.add_argument("--min-peak-dbfs", type=float, default=-70.0,
-                    help="Reject if peak is below this (default: -70 dBFS)")
-    ap.add_argument("--min-rms-dbfs", type=float, default=-85.0,
-                    help="Reject if RMS is below this (default: -85 dBFS)")
-    ap.add_argument("--min-crest-db", type=float, default=6.0,
-                    help="Reject if peak-RMS is below this (default: 6 dB)")
-    ap.add_argument("--min-active-ms", type=float, default=3.0,
-                    help="Reject if active duration is below this (default: 3 ms)")
-    ap.add_argument("--max-dc-ratio", type=float, default=0.25,
-                    help="Reject if |mean|/RMS is above this (default: 0.25)")
-    ap.add_argument("--min-duration-s", type=float, default=0.005,
-                    help="Reject if file is shorter than this (default: 0.005 s)")
+    ap.add_argument(
+        "--min-peak-dbfs", type=float, default=-70.0, help="Reject if peak is below this (default: -70 dBFS)"
+    )
+    ap.add_argument("--min-rms-dbfs", type=float, default=-85.0, help="Reject if RMS is below this (default: -85 dBFS)")
+    ap.add_argument("--min-crest-db", type=float, default=6.0, help="Reject if peak-RMS is below this (default: 6 dB)")
+    ap.add_argument(
+        "--min-active-ms", type=float, default=3.0, help="Reject if active duration is below this (default: 3 ms)"
+    )
+    ap.add_argument(
+        "--max-dc-ratio", type=float, default=0.25, help="Reject if |mean|/RMS is above this (default: 0.25)"
+    )
+    ap.add_argument(
+        "--min-duration-s", type=float, default=0.005, help="Reject if file is shorter than this (default: 0.005 s)"
+    )
 
     args = ap.parse_args()
 
@@ -208,11 +215,20 @@ def main() -> None:
     ensure_parent(report_csv)
     with report_csv.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow([
-            "path", "status", "reasons",
-            "sr", "duration_s",
-            "peak_dbfs", "rms_dbfs", "crest_db", "active_ms", "dc_ratio"
-        ])
+        w.writerow(
+            [
+                "path",
+                "status",
+                "reasons",
+                "sr",
+                "duration_s",
+                "peak_dbfs",
+                "rms_dbfs",
+                "crest_db",
+                "active_ms",
+                "dc_ratio",
+            ]
+        )
 
         for p in files:
             total += 1
@@ -240,12 +256,20 @@ def main() -> None:
                     status = "KEEP"
                     kept += 1
 
-                w.writerow([
-                    str(rel), status, ";".join(reasons),
-                    m.sr, f"{m.duration_s:.6f}",
-                    f"{m.peak_dbfs:.2f}", f"{m.rms_dbfs:.2f}", f"{m.crest_db:.2f}",
-                    f"{m.active_ms:.3f}", f"{m.dc_ratio:.6f}",
-                ])
+                w.writerow(
+                    [
+                        str(rel),
+                        status,
+                        ";".join(reasons),
+                        m.sr,
+                        f"{m.duration_s:.6f}",
+                        f"{m.peak_dbfs:.2f}",
+                        f"{m.rms_dbfs:.2f}",
+                        f"{m.crest_db:.2f}",
+                        f"{m.active_ms:.3f}",
+                        f"{m.dc_ratio:.6f}",
+                    ]
+                )
 
             except Exception as e:
                 errors += 1

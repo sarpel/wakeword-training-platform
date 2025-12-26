@@ -1,9 +1,10 @@
 import os
 
+
 def toplu_yeniden_adlandir(klasor_yolu, yeni_ad):
     # Klasördeki tüm dosyaları listele
     dosyalar = os.listdir(klasor_yolu)
-    
+
     # Dosyaları alfabetik sıraya diz (düzenli olması için)
     dosyalar.sort()
 
@@ -18,12 +19,12 @@ def toplu_yeniden_adlandir(klasor_yolu, yeni_ad):
 
         # Dosya uzantısını al (örn: .jpg, .png)
         dosya_adi, uzantı = os.path.splitext(eski_dosya_adi)
-        
+
         # Yeni ismi formatla:
         # {yeni_ad} : senin belirlediğin isim
         # {index + 1:06d} : 1'den başla, 6 haneye tamamla (000001)
         yeni_dosya_adi = f"{yeni_ad}_{index + 1:06d}{uzantı}"
-        
+
         # Yeni tam yolu oluştur
         yeni_yol = os.path.join(klasor_yolu, yeni_dosya_adi)
 
@@ -31,9 +32,10 @@ def toplu_yeniden_adlandir(klasor_yolu, yeni_ad):
         os.rename(eski_yol, yeni_yol)
         print(f"Değiştirildi: {eski_dosya_adi} -> {yeni_dosya_adi}")
 
+
 # --- KULLANIM ---
 # Buradaki yolu kendi klasör yolunla değiştir
-hedef_klasor = "./rirs" 
+hedef_klasor = "./rirs"
 # Vermek istediğin temel ad
 belirlenen_ad = "rirs"
 
