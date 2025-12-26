@@ -42,7 +42,7 @@ class DistillationTrainer(Trainer):
         """Initialize the DistillationTrainer."""
         super().__init__(*args, **kwargs)
         self.teacher: Optional[torch.nn.Module] = None
-        self.projectors = nn.ModuleList()
+        self.projectors = nn.ModuleDict()
 
         self.distillation_enabled = self.config.distillation.enabled
         if self.distillation_enabled:
@@ -166,7 +166,7 @@ class DistillationTrainer(Trainer):
         else:
             self.projectors[key] = nn.Identity()
 
-    def _get_embed_dim(self, model: nn.Module, device: torch.device, layer_index: Optional[int] = None) -> int:
+    def _get_embed_dim(self, model: nn.Module, device: Any, layer_index: Optional[int] = None) -> int:
         """Helper to find the output dimension of model.embed()"""
         model.eval()
         with torch.no_grad():

@@ -23,7 +23,7 @@ def fuse_tiny_conv(model: nn.Module) -> None:
     # Find the features Sequential module and its name in the parent
     features_name = None
     features = None
-    
+
     # Strategy 1: Check if model HAS features directly
     if hasattr(model, "features") and isinstance(model.features, nn.Sequential):
         features_name = "features"
@@ -128,8 +128,8 @@ def prepare_model_for_qat(
     model_type = model.__class__.__name__
     if "TinyConv" in model_type:
         fuse_tiny_conv(model)
-    elif hasattr(model, "fuse_model"):
-        model.fuse_model()
+    elif hasattr(model, "fuse_model") and callable(getattr(model, "fuse_model")):
+        model.fuse_model()  # type: ignore
     else:
         # Check submodules
         found_tiny = False
@@ -138,7 +138,7 @@ def prepare_model_for_qat(
                 fuse_tiny_conv(m)
                 found_tiny = True
                 break
-        
+
         if not found_tiny:
             # Recursive check for deeper wrapping (e.g. distributed)
             for m in model.modules():
@@ -151,10 +151,9 @@ def prepare_model_for_qat(
     # Use the default qconfig for the specified backend
     model.qconfig = torch.quantization.get_default_qat_qconfig(config.backend)
 
-    # 4. Prepare
     # prepare_qat inserts observers and fake quantization modules
     # Mypy: Explicitly annotate return type to avoid Any
-    prepared_model: nn.Module = torch.quantization.prepare_qat(model, inplace=False)
+    prepared_model: nn.Module = torch.quantization.prepare_qat(model, inplace=False)  # type: ignore
 
     logger.info("Model prepared for QAT")
     return prepared_model

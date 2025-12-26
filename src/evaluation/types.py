@@ -42,7 +42,7 @@ class EvaluationResult:
     prediction: str  # "Positive" or "Negative"
     confidence: float
     latency_ms: float
-    logits: np.ndarray
+    logits: Optional[np.ndarray] = None
     label: Optional[int] = None
     raw_audio: Optional[np.ndarray] = None
     full_path: Optional[str] = None

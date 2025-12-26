@@ -1014,10 +1014,6 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
 
         def auto_start_handler(
             root_path: str,
-            skip_val: bool,
-            move_unqualified: bool,
-            # Feature extraction params
-            # Feature extraction params
             feature_type: str,
             sample_rate: int,
             audio_duration: float,
@@ -1025,24 +1021,26 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
             hop_length: int,
             n_fft: int,
             batch_size: int,
+            augmentation_multiplier: int,
+            enable_augmentation: bool,
             output_dir: str,
-            # Split params
-            train: float,
-            val: float,
-            test: float,
-            # Training params
-            use_cmvn: bool,
-            use_ema: bool,
-            ema_decay: float,
-            use_balanced_sampler: bool,
-            sampler_ratio_pos: int,
-            sampler_ratio_neg: int,
-            sampler_ratio_hard: int,
-            run_lr_finder: bool,
-            use_wandb: bool,
-            wandb_project: str,
-            wandb_api_key: str,  # Added API key
-            state: gr.State,
+            skip_val: bool,  # Kept for scan_datasets_handler
+            move_unqualified: bool,  # Kept for scan_datasets_handler
+            train: float,  # Kept for split_datasets_handler
+            val: float,  # Kept for split_datasets_handler
+            test: float,  # Kept for split_datasets_handler
+            use_cmvn: bool,  # Kept for start_training
+            use_ema: bool,  # Kept for start_training
+            ema_decay: float,  # Kept for start_training
+            use_balanced_sampler: bool,  # Kept for start_training
+            sampler_ratio_pos: int,  # Kept for start_training
+            sampler_ratio_neg: int,  # Kept for start_training
+            sampler_ratio_hard: int,  # Kept for start_training
+            run_lr_finder: bool,  # Kept for start_training
+            use_wandb: bool,  # Kept for start_training
+            wandb_project: str,  # Kept for start_training
+            wandb_api_key: str,  # Added API key, Kept for start_training
+            state: gr.State,  # Kept for start_training
             progress: gr.Progress = gr.Progress(),
         ) -> str:
             """Orchestrates the full pipeline: Scan -> Extract -> Split -> Config -> Train"""
@@ -1076,6 +1074,8 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     hop_length,
                     n_fft,
                     batch_size,
+                    augmentation_multiplier,
+                    enable_augmentation,
                     output_dir,
                 )
                 if "❌ Error" in extract_report:
@@ -1091,7 +1091,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 log(split_msg)
 
                 # 4. Load Config
-                progress(0.7, desc="Step 4/5: Loading Configuration...")
+                progress(0.7, desc="Step 4/5: Preparing Configuration...")
                 log("\n--- STEP 4: PREPARING CONFIGURATION ---")
 
                 from src.config.defaults import DataConfig, WakewordConfig

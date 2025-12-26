@@ -139,8 +139,44 @@ class ModelEvaluator:
     ) -> Tuple[MetricResults, List[EvaluationResult]]:
         return evaluate_dataset(self, dataset, threshold, batch_size)
 
-    def get_roc_curve_data(self, dataset: Any, batch_size: int = 32) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        return get_roc_curve_data(self, dataset, batch_size)
+    def evaluate_audio(self, audio: np.ndarray, threshold: float = 0.5) -> Tuple[float, bool]:
+        """
+        Evaluate a single raw audio window
+
+        Args:
+            audio: Raw audio window (numpy array)
+            threshold: Classification threshold
+
+        Returns:
+            Tuple of (confidence, is_positive)
+        """
+        import torch
+        import numpy as np
+
+        # Ensure audio is the correct format (B, S)
+        if audio.ndim == 1:
+            audio = audio[np.newaxis, :]
+
+        # Convert to tensor and add channel dim (B, 1, S)
+        input_tensor = torch.from_numpy(audio).float().to(self.device).unsqueeze(1)
+
+        # Process (apply mel spectrogram)
+        if hasattr(self, "audio_processor") and self.audio_processor is not None:
+            features = self.audio_processor(input_tensor)
+        else:
+            features = input_tensor
+
+        # Inference
+        self.model.eval()
+        with torch.no_grad():
+            with torch.cuda.amp.autocast():
+                logits = self.model(features)
+
+            probs = torch.softmax(logits, dim=1)
+            confidence = float(probs[0, 1].item())
+            is_positive = confidence >= threshold
+
+        return confidence, is_positive
 
     def evaluate_with_advanced_metrics(
         self,
