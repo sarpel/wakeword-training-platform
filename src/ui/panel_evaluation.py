@@ -27,7 +27,7 @@ from src.evaluation.advanced_evaluator import ThresholdAnalyzer
 from src.evaluation.background_miner import BackgroundMiner
 from src.evaluation.benchmarking import BenchmarkRunner
 from src.evaluation.data_collector import FalsePositiveCollector
-from src.evaluation.dataset_evaluator import evaluate_dataset, get_roc_curve_data
+from src.evaluation.dataset_evaluator import get_roc_curve_data
 from src.evaluation.evaluator import ModelEvaluator, load_model_for_evaluation
 from src.evaluation.inference import MicrophoneInference, SimulatedMicrophoneInference
 from src.evaluation.judge_client import JudgeClient

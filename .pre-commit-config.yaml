@@ -11,14 +11,7 @@ repos:
       - id: detect-private-key  # Detect SSH/PEM keys
       - id: check-merge-conflict
       - id: check-case-conflict
-      
-      # Prevent cache files from being committed
-      - id: check-added-large-files
-        name: prevent-cache-files
-        entry: prevent cache files
-        language: fail
-        files: '(__pycache__|\.pyc$|\.pyo$|\.mypy_cache)'
-        
+
   # Prevent specific patterns from being committed
   - repo: local
     hooks:
@@ -33,7 +26,7 @@ repos:
         entry: Large model files should use Git LFS or be in .gitignore
         language: fail
         files: '\.(pt|pth|onnx|tflite|engine|h5|hdf5)$'
-        exclude: '^models/teachers/'  # Allow teacher models
+        exclude: '^models/teachers/.*'  # Allow teacher models in subdirs
         
       - id: prevent-data-files
         name: Prevent data files

@@ -197,7 +197,8 @@ class BatchFeatureExtractor:
             # Extract features for AUGMENTED versions (if multiplier > 1)
             if augmentation_multiplier > 1 and augmenter is not None:
                 for aug_idx in range(1, augmentation_multiplier):
-                    augmented_batch = []
+                    # Keep augmented tensors on GPU for efficiency
+                    augmented_tensors: List[torch.Tensor] = []
 
                     for idx, valid_idx in enumerate(valid_indices):
                         audio_file = batch_files[valid_idx]
@@ -206,15 +207,15 @@ class BatchFeatureExtractor:
                         # Create deterministic seed from file path + aug index using stable hashing
                         # Using SHA-256 ensures reproducibility across Python versions and runs
                         seed_str = str(audio_file) + str(aug_idx)
-                        seed = int(hashlib.sha256(seed_str.encode('utf-8')).hexdigest(), 16) % (2**31)
+                        seed = int(hashlib.sha256(seed_str.encode("utf-8")).hexdigest(), 16) % (2**31)
 
                         # Apply augmentation with deterministic seed
                         audio_tensor_single = torch.from_numpy(raw_audio).float().to(self.device)
                         augmented = augmenter.augment_for_extraction(audio_tensor_single, seed=seed)
-                        augmented_batch.append(augmented.cpu().numpy())
+                        augmented_tensors.append(augmented)  # Keep on GPU
 
-                    # Stack and extract features for augmented batch
-                    aug_tensor = torch.from_numpy(np.stack(augmented_batch)).float().to(self.device)
+                    # Stack directly on GPU (avoid CPU round-trip)
+                    aug_tensor = torch.stack(augmented_tensors, dim=0)
 
                     with torch.no_grad():
                         aug_features_batch = self.feature_extractor(aug_tensor)
