@@ -432,10 +432,6 @@ def create_student_model(config):
     """
     logger.info(f"Creating student model: {config.model.architecture}")
 
-    # Calculate input dimensions
-    # This depends on audio duration and hop length
-    time_steps = int(config.data.sample_rate * config.data.audio_duration) // config.data.hop_length + 1
-
     # For spectrogram-based models, input_size is frequency dimension
     input_size = config.data.n_mels
 
