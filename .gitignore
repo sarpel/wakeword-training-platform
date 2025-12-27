@@ -129,3 +129,6 @@ hive-mind-prompt-*.txt
 *.csv
 !scripts/helper_scripts/sample_manifest.csv
 *.ps1
+scripts/helper_scripts
+scripts/helper_scripts/*
+helper_scripts/
