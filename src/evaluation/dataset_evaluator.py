@@ -83,7 +83,16 @@ def evaluate_dataset(
             # Inference
             start_time = time.time()
 
-            with torch.cuda.amp.autocast():
+            # Check if model has QAT layers (FakeQuantize)
+            # If so, we MUST run in FP32, as fake_quant operations don't support Half
+            has_qat = any("FakeQuantize" in m.__class__.__name__ for m in evaluator.model.modules())
+            use_autocast = not has_qat
+
+            # Ensure inputs are Float32 for QAT
+            if has_qat:
+                inputs = inputs.float()
+
+            with torch.cuda.amp.autocast(enabled=use_autocast):
                 logits = evaluator.model(inputs)
             # Convert to float32 immediately after inference to ensure compatibility
             logits = logits.float()
@@ -180,6 +189,10 @@ def get_roc_curve_data(
     all_confidences: List[float] = []
     all_targets = []
 
+    # Check if model has QAT layers (FakeQuantize)
+    has_qat = any("FakeQuantize" in m.__class__.__name__ for m in evaluator.model.modules())
+    use_autocast = not has_qat
+
     # Collect predictions
     with torch.no_grad():
         for inputs, targets, _ in loader:
@@ -192,7 +205,11 @@ def get_roc_curve_data(
             # Apply memory format optimization
             inputs = inputs.to(memory_format=torch.channels_last)
 
-            with torch.cuda.amp.autocast():
+            # Ensure inputs are Float32 for QAT
+            if has_qat:
+                inputs = inputs.float()
+
+            with torch.cuda.amp.autocast(enabled=use_autocast):
                 logits = evaluator.model(inputs)
             # Convert to float32 immediately after inference to ensure compatibility
             logits = logits.float()

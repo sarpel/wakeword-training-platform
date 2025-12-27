@@ -981,6 +981,52 @@ def start_training(
             training_state.current_epoch = start_epoch
             training_state.add_log(f"✅ Resumed training from epoch {start_epoch}")
 
+            # SAFETY CHECK: Compare checkpoint config with current config
+            # This prevents silent failures when settings don't match (e.g. n_mels=80 vs 64)
+            ckpt_config_dict = checkpoint.get("config", {})
+            if ckpt_config_dict:
+                from src.config.defaults import WakewordConfig
+
+                # Helper to recursive get from dict or object
+                def get_val(obj, path):
+                    parts = path.split(".")
+                    curr = obj
+                    for p in parts:
+                        if isinstance(curr, dict):
+                            curr = curr.get(p)
+                        else:
+                            curr = getattr(curr, p, None)
+                        if curr is None:
+                            return None
+                    return curr
+
+                mismatches = []
+                checks = [
+                    ("model.architecture", "Architecture"),
+                    ("data.sample_rate", "Sample Rate"),
+                    ("data.n_mels", "n_mels"),
+                    ("data.feature_type", "Feature Type"),
+                    ("data.audio_duration", "Audio Duration"),
+                ]
+
+                for field, label in checks:
+                    # Get from checkpoint (dict)
+                    ckpt_val = get_val(ckpt_config_dict, field)
+                    # Get from current config (object)
+                    curr_val = get_val(config, field)
+
+                    if ckpt_val is not None and curr_val is not None and ckpt_val != curr_val:
+                        mismatches.append(f"  - {label}: Checkpoint={ckpt_val}, Current={curr_val}")
+
+                if mismatches:
+                    warning_msg = (
+                        "⚠️ CONFIGURATION MISMATCH DETECTED!\n"
+                        "You are resuming a model with different settings than currently selected.\n"
+                        "This may cause crashes or poor performance:\n" + "\n".join(mismatches)
+                    )
+                    training_state.add_log(warning_msg)
+                    logger.warning(warning_msg)
+
         if use_ema:
             training_state.add_log(f"✅ EMA enabled (decay: {ema_decay:.4f} → 0.9995)")
 

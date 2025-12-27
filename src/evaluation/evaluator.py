@@ -292,6 +292,22 @@ def load_model_for_evaluation(checkpoint_path: Path, device: str = "cuda") -> Tu
         cddnn_dropout=getattr(config.model, "cddnn_dropout", config.model.dropout),
     )
 
+    # --- QAT Handling: Fuse Layers if Checkpoint is QAT-Trained ---
+    # The checkpoint will have fused layers (Conv+BN+ReLU) which don't match
+    # a fresh, unfused model. We must apply the same fusion before loading.
+    if hasattr(config, "qat") and getattr(config.qat, "enabled", False):
+        try:
+            logger.info(f"Detected QAT training (backend: {config.qat.backend}). Fusing model layers...")
+            from src.training.qat_utils import prepare_model_for_qat
+
+            # Prepare/Fuse model to match checkpoint structure
+            # This inserts fake_quants and fuses Conv+BN+ReLU
+            model = prepare_model_for_qat(model, config.qat)
+        except ImportError:
+            logger.warning("Could not import prepare_model_for_qat. Model loading might fail.")
+        except Exception as e:
+            logger.warning(f"Failed to prepare model for QAT: {e}")
+
     # Load weights
     state_dict = checkpoint["model_state_dict"]
 
