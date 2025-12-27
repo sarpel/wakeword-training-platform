@@ -223,6 +223,9 @@ class WhisperWakeword(nn.Module):
             nn.Linear(self.hidden_size, 256), nn.ReLU(), nn.Dropout(0.1), nn.Linear(256, num_classes)
         )
 
+        # Cache MelSpectrogram transform (lazy initialization on first use)
+        self._mel_transform = None
+
     def _prepare_input(self, x: torch.Tensor) -> torch.Tensor:
         """
         Prepare audio input for Whisper encoder.
@@ -255,9 +258,12 @@ class WhisperWakeword(nn.Module):
             # Whisper mel spectrogram parameters:
             # - 80 mel bins, 400 sample window (25ms), 160 sample hop (10ms)
             # - NOT normalized in torchaudio (normalized=False) - we normalize manually
-            mel_transform = T.MelSpectrogram(
-                sample_rate=16000, n_fft=400, hop_length=160, n_mels=80, normalized=False
-            ).to(audio.device)
+            # Cache the transform to avoid repeated instantiation
+            if self._mel_transform is None:
+                self._mel_transform = T.MelSpectrogram(
+                    sample_rate=16000, n_fft=400, hop_length=160, n_mels=80, normalized=False
+                )
+            mel_transform = self._mel_transform.to(audio.device)
             mel_out = mel_transform(audio)  # (batch, 80, time)
 
             # === WHISPER PREPROCESSING (matching OpenAI's implementation) ===

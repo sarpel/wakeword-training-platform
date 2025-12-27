@@ -3,6 +3,7 @@ Batch Feature Extraction for NPY Generation
 Extracts features from entire datasets and saves as .npy files
 """
 
+import hashlib
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -202,8 +203,10 @@ class BatchFeatureExtractor:
                         audio_file = batch_files[valid_idx]
                         raw_audio = raw_audios[idx]
 
-                        # Create deterministic seed from file path + aug index
-                        seed = hash(str(audio_file) + str(aug_idx)) % (2**31)
+                        # Create deterministic seed from file path + aug index using stable hashing
+                        # Using SHA-256 ensures reproducibility across Python versions and runs
+                        seed_str = str(audio_file) + str(aug_idx)
+                        seed = int(hashlib.sha256(seed_str.encode('utf-8')).hexdigest(), 16) % (2**31)
 
                         # Apply augmentation with deterministic seed
                         audio_tensor_single = torch.from_numpy(raw_audio).float().to(self.device)

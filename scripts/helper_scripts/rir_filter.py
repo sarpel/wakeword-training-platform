@@ -172,7 +172,7 @@ def copy_or_move(src: Path, dst: Path, move: bool) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Filter silent / useless RIR audio files.")
-    ap.add_argument("--in", dest="in_dir", required=True, help="Input directory containing RIR audio files")
+    ap.add_argument("--input-dir", dest="in_dir", required=True, help="Input directory containing RIR audio files")
     ap.add_argument("--reject", dest="reject_dir", required=True, help="Directory to copy/move rejected files into")
     ap.add_argument("--report", dest="report_csv", default="rir_filter_report.csv", help="CSV report path")
 

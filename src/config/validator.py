@@ -245,8 +245,7 @@ class ConfigValidator:
                     )
                 )
 
-            # HuggingFace models (wav2vec2, whisper) auto-download, no path required
-            huggingface_teachers = {"wav2vec2", "whisper"}
+            # Use the huggingface_teachers set defined above (line 214)
             t2_path = getattr(config.distillation, "secondary_teacher_model_path", "")
 
             if t2_arch not in huggingface_teachers:
