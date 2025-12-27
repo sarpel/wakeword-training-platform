@@ -124,7 +124,6 @@ def convert_to_tflite(onnx_path: Path, output_dir: Path, calib_data_path: Path) 
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         logger.info(result.stdout)
 
-        _tflite_path = output_dir / f"{onnx_path.stem}_dynamic_range_quant.tflite"
         logger.info("\n" + "=" * 40)
         logger.info("🎉 RPi Model Ready!")
         logger.info(f"📂 Output: {output_dir}")

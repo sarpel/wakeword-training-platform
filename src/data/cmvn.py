@@ -5,7 +5,7 @@ Implements global normalization statistics with persistence
 
 import json
 from pathlib import Path
-from typing import Any, List, Optional, Sized, Tuple, cast
+from typing import List, Optional, Sized, Tuple, cast
 
 import structlog
 import torch

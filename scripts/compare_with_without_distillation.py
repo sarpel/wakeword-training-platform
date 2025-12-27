@@ -132,7 +132,6 @@ def load_datasets(config, data_root="data"):
 
 def create_student_model(config):
     """Create fresh student model."""
-    time_steps = int(config.data.sample_rate * config.data.audio_duration) // config.data.hop_length + 1
     input_size = config.data.n_mels
 
     model = create_model(

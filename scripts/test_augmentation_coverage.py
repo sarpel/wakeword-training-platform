@@ -1,4 +1,3 @@
-import random
 import sys
 import unittest
 from pathlib import Path
@@ -18,8 +17,6 @@ class TestExhaustiveCoverage(unittest.TestCase):
 
         # Initialize with small buffer size
         aug = AudioAugmentation(background_noise_files=mock_files, max_background_noises=3)
-
-        seen_files = set()
 
         # Cycle 1: Should get 3 unique files
         # (Already loaded in __init__)
