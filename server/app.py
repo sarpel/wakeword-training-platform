@@ -1,11 +1,12 @@
-import os
-import sys
 import asyncio
 import logging
+import os
+import sys
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from fastapi import Depends, FastAPI, File, HTTPException, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Ensure src is in path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -26,20 +27,17 @@ DEVICE = os.getenv("DEVICE", "cpu")
 API_KEY = os.getenv("API_KEY")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",")
 if not ALLOWED_ORIGINS or ALLOWED_ORIGINS == [""]:
-    ALLOWED_ORIGINS = ["http://localhost"] # Default to safe local origin
+    ALLOWED_ORIGINS = ["http://localhost"]  # Default to safe local origin
 
 # Logging
 logger = setup_logger("wakeword_server")
 
 # Initialize App
-app = FastAPI(
-    title="Hey Katya - The Judge",
-    description="False Positive Rejection Server (Stage 2)",
-    version="1.0.0"
-)
+app = FastAPI(title="Hey Katya - The Judge", description="False Positive Rejection Server (Stage 2)", version="1.0.0")
 
 # Security Scheme
 security = HTTPBearer(auto_error=False)
+
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
     if not API_KEY:
@@ -50,6 +48,7 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(se
     if credentials is None or credentials.credentials != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API Key")
     return credentials
+
 
 # CORS
 app.add_middleware(
@@ -63,21 +62,24 @@ app.add_middleware(
 # Global Engine
 engine = None
 
+
 @app.on_event("startup")
 async def startup_event():
     global engine
-    
+
     # Suppress harmless Windows asyncio errors
     if sys.platform == "win32":
         loop = asyncio.get_running_loop()
+
         def handle_exception(loop, context):
             exception = context.get("exception")
             if isinstance(exception, ConnectionResetError):
-                if getattr(exception, 'winerror', 0) == 10054:
+                if getattr(exception, "winerror", 0) == 10054:
                     return
             if "_ProactorBasePipeTransport" in context.get("message", ""):
                 return
             loop.default_exception_handler(context)
+
         loop.set_exception_handler(handle_exception)
 
     logger.info(f"Starting server. Loading model from {MODEL_PATH} on {DEVICE}...")
@@ -86,14 +88,16 @@ async def startup_event():
         logger.info("Model loaded successfully.")
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
-        # We don't raise error here to allow server to start, 
+        # We don't raise error here to allow server to start,
         # but /verify will fail if engine is not loaded
-        
+
+
 @app.get("/health")
 async def health_check():
     if engine is None:
         return {"status": "unhealthy", "reason": "Model not loaded"}
     return {"status": "healthy", "device": DEVICE}
+
 
 @app.post("/verify", dependencies=[Depends(verify_api_key)])
 async def verify_audio(file: UploadFile = File(...)):
@@ -103,16 +107,16 @@ async def verify_audio(file: UploadFile = File(...)):
     """
     if engine is None:
         raise HTTPException(status_code=503, detail="Inference engine not initialized")
-        
+
     try:
         audio_bytes = await file.read()
-        
+
         if len(audio_bytes) == 0:
-             raise HTTPException(status_code=400, detail="Empty file received")
-             
+            raise HTTPException(status_code=400, detail="Empty file received")
+
         result = engine.predict(audio_bytes)
         return result
-        
+
     except Exception as e:
         logger.error(f"Prediction error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")

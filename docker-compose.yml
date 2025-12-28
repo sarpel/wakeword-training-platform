@@ -1,39 +1,78 @@
 # ==============================================================================
 # Wakeword Training Platform - Docker Compose (Multi-Service)
+# Production-ready container orchestration configuration
+# ==============================================================================
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose up dashboard       # Start only dashboard
+#   docker-compose logs -f dashboard  # View dashboard logs
+#   docker-compose down               # Stop all services
 # ==============================================================================
 
 services:
-  # Main Training Dashboard (Gradio)
+  # ============================================================================
+  # Main Training Dashboard (Gradio UI)
+  # ============================================================================
   dashboard:
     build:
       context: .
       target: production
+      # Enable BuildKit for faster builds with cache mounts
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     image: wakeword-platform:latest
     container_name: wakeword-dashboard
     command: dashboard
     ports:
       - "7860:7860"
     volumes:
+      # Mount data directories for persistence
       - ./data:/app/data
       - ./models:/app/models
       - ./exports:/app/exports
       - ./configs:/app/configs
       - ./logs:/app/logs
+      # Read-only env file mount
       - ./.env:/app/.env:ro
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      # Gradio configuration
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+    # Shared memory size for PyTorch DataLoader workers
+    # Default 64MB is too small, causing "Bus error" with num_workers > 0
+    shm_size: '2gb'
+    # GPU configuration for NVIDIA Container Toolkit
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
+    # Health check to ensure service is running
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7860/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Logging configuration with rotation
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    # Restart policy for production stability
     restart: unless-stopped
     env_file:
       - .env
+    networks:
+      - wakeword-network
 
-  # Inference Server (The Judge)
+  # ============================================================================
+  # Inference Server (The Judge - FastAPI)
+  # ============================================================================
   inference-server:
     build:
       context: .
@@ -44,19 +83,37 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      # Read-only mounts for inference (no write access needed)
       - ./models:/app/models:ro
       - ./configs:/app/configs:ro
       - ./.env:/app/.env:ro
     environment:
       - MODEL_PATH=/app/models/checkpoints/best_model.pt
       - DEVICE=cpu
+      - PYTHONPATH=/app
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     restart: unless-stopped
     depends_on:
-      - dashboard
+      dashboard:
+        condition: service_healthy
     env_file:
       - .env
+    networks:
+      - wakeword-network
 
+  # ============================================================================
   # Interactive Development (Jupyter Lab)
+  # ============================================================================
   jupyter-lab:
     build:
       context: .
@@ -67,21 +124,43 @@ services:
     ports:
       - "8888:8888"
     volumes:
+      # Full mount for development (read-write)
       - .:/app
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - JUPYTER_TOKEN=
+      - JUPYTER_ENABLE_LAB=yes
+    shm_size: '2gb'
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8888/api" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     restart: unless-stopped
     env_file:
       - .env
+    networks:
+      - wakeword-network
+    # Development profile - not started by default
+    profiles:
+      - dev
 
-  # TensorBoard for training visualization
+  # ============================================================================
+  # TensorBoard for Training Visualization
+  # ============================================================================
   tensorboard:
     image: tensorflow/tensorflow:latest
     container_name: wakeword-tensorboard
@@ -89,9 +168,38 @@ services:
       - "6006:6006"
     volumes:
       - ./logs:/logs:ro
-    command: tensorboard --logdir=/logs --host=0.0.0.0
+    command: tensorboard --logdir=/logs --host=0.0.0.0 --bind_all
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:6006/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
     restart: unless-stopped
+    networks:
+      - wakeword-network
+    # Monitoring profile - not started by default
+    profiles:
+      - monitoring
 
+# ==============================================================================
+# Networks Configuration
+# ==============================================================================
 networks:
-  default:
+  wakeword-network:
     name: wakeword-network
+    driver: bridge
+
+# ==============================================================================
+# Named Volumes (Optional - for additional persistence)
+# ==============================================================================
+# Uncomment if you want Docker-managed volumes instead of bind mounts
+# volumes:
+#   wakeword-data:
+#   wakeword-models:
+#   wakeword-logs:

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Any, Tuple, cast
 
 if TYPE_CHECKING:
     from src.training.trainer import Trainer
@@ -96,7 +96,7 @@ def _run_epoch(
                     use_amp = False
 
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    outputs = trainer.model(inputs)
+                    outputs = cast(Any, trainer.model)(inputs)
                     # Ensure inference is finished before measuring time
                     if not is_training and trainer.device == "cuda":
                         torch.cuda.synchronize()

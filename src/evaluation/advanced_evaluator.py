@@ -99,7 +99,7 @@ def evaluate_with_advanced_metrics(
     from torch.utils.data import DataLoader
 
     def collate_fn(
-        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]],
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)

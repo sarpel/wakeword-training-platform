@@ -1,6 +1,7 @@
 """
 Tests for CMVN normalization and feature scaling in FeatureExtractor.
 """
+
 import numpy as np
 import pytest
 import torch

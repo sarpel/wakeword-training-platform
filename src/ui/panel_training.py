@@ -725,7 +725,16 @@ def start_training(
                 use_cmvn = False
                 cmvn_path = None
 
-        training_state.add_log("IMPORTANT: Forcing augmentation for training by disabling precomputed features.")
+        # NPY feature loading is now controlled by config
+
+        # CRITICAL: When distillation is enabled, we MUST use raw audio mode
+        # because the teacher models (Wav2Vec2, Whisper) expect raw waveforms,
+        # not pre-computed mel-spectrograms. This overrides user preference.
+        force_raw_audio = config.distillation.enabled
+        if force_raw_audio and config.data.use_precomputed_features_for_training:
+            training_state.add_log(
+                "⚠️ Distillation enabled: forcing raw audio mode (NPY features incompatible with teacher models)"
+            )
 
         # NEW: Optimize config for GPU pipeline
         import os
@@ -752,12 +761,13 @@ def start_training(
             n_mfcc=config.data.n_mfcc,
             n_fft=config.data.n_fft,
             hop_length=config.data.hop_length,
-            use_precomputed_features_for_training=False,  # Force augmentation
+            use_precomputed_features_for_training=config.data.use_precomputed_features_for_training,
             npy_cache_features=config.data.npy_cache_features,
             fallback_to_audio=True,  # IMPORTANT
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
-            return_raw_audio=True,  # NEW: Use GPU pipeline
+            return_raw_audio=force_raw_audio
+            or not config.data.use_precomputed_features_for_training,  # Force raw audio for distillation
             include_mined_negatives=config.training.include_mined_negatives,
         )
 
@@ -777,7 +787,8 @@ def start_training(
             fallback_to_audio=True,  # FORCE TRUE to handle shape mismatches automatically
             cmvn_path=cmvn_path,
             apply_cmvn=use_cmvn,
-            return_raw_audio=True,  # NEW: Use GPU pipeline
+            return_raw_audio=force_raw_audio
+            or not config.data.use_precomputed_features_for_training,  # Force raw audio for distillation
         )
 
         # test_ds is not used in training, so we don't load it here to save memory
@@ -969,6 +980,52 @@ def start_training(
             start_epoch = checkpoint.get("epoch", 0) + 1
             training_state.current_epoch = start_epoch
             training_state.add_log(f"✅ Resumed training from epoch {start_epoch}")
+
+            # SAFETY CHECK: Compare checkpoint config with current config
+            # This prevents silent failures when settings don't match (e.g. n_mels=80 vs 64)
+            ckpt_config_dict = checkpoint.get("config", {})
+            if ckpt_config_dict:
+                from src.config.defaults import WakewordConfig
+
+                # Helper to recursive get from dict or object
+                def get_val(obj, path):
+                    parts = path.split(".")
+                    curr = obj
+                    for p in parts:
+                        if isinstance(curr, dict):
+                            curr = curr.get(p)
+                        else:
+                            curr = getattr(curr, p, None)
+                        if curr is None:
+                            return None
+                    return curr
+
+                mismatches = []
+                checks = [
+                    ("model.architecture", "Architecture"),
+                    ("data.sample_rate", "Sample Rate"),
+                    ("data.n_mels", "n_mels"),
+                    ("data.feature_type", "Feature Type"),
+                    ("data.audio_duration", "Audio Duration"),
+                ]
+
+                for field, label in checks:
+                    # Get from checkpoint (dict)
+                    ckpt_val = get_val(ckpt_config_dict, field)
+                    # Get from current config (object)
+                    curr_val = get_val(config, field)
+
+                    if ckpt_val is not None and curr_val is not None and ckpt_val != curr_val:
+                        mismatches.append(f"  - {label}: Checkpoint={ckpt_val}, Current={curr_val}")
+
+                if mismatches:
+                    warning_msg = (
+                        "⚠️ CONFIGURATION MISMATCH DETECTED!\n"
+                        "You are resuming a model with different settings than currently selected.\n"
+                        "This may cause crashes or poor performance:\n" + "\n".join(mismatches)
+                    )
+                    training_state.add_log(warning_msg)
+                    logger.warning(warning_msg)
 
         if use_ema:
             training_state.add_log(f"✅ EMA enabled (decay: {ema_decay:.4f} → 0.9995)")
@@ -1900,8 +1957,8 @@ def create_training_panel(state: gr.State) -> gr.Blocks:
         # Event handlers
         # Wrapper for start training to handle resume logic
         def start_training_wrapper(*args: Any) -> Any:
-            # Last 5 args are: 
-            # resume_training (bool), checkpoint_dropdown (str), 
+            # Last 5 args are:
+            # resume_training (bool), checkpoint_dropdown (str),
             # use_compile (bool), use_grad_ckpt (bool), use_snr_scheduling (bool)
             resume_checked = args[-5]
             ckpt_path = args[-4]

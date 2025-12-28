@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
 from src.config.env_config import env_config
 
 
@@ -36,6 +37,10 @@ class DataConfig:
     npy_feature_type: str = "mel"  # mel, mfcc (must match extraction)
     npy_cache_features: bool = True  # Cache loaded features in RAM
     fallback_to_audio: bool = True  # If NPY missing, load raw audio
+
+    # Multi-augmentation extraction (NEW)
+    npy_augmentation_multiplier: int = 1  # 1 = original only, 5 = 5 augmented versions
+    npy_augment_on_extract: bool = False  # Enable augmentation during NPY extraction
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -134,9 +139,11 @@ class AugmentationConfig:
     background_noise_prob: float = 0.5
     noise_snr_min: float = 5.0  # dB
     noise_snr_max: float = 20.0  # dB
+    max_background_noises: int = 1000  # Increased for 8GB RAM
 
     # RIR augmentation (CPU-based)
     rir_prob: float = 0.25
+    max_rirs: int = 2000  # Increased for 8GB RAM
 
     # NEW: RIR dry/wet mixing parameters
     rir_dry_wet_min: float = 0.3  # Minimum dry ratio (30% dry, 70% wet)
@@ -247,7 +254,7 @@ class DistillationConfig:
 
     # Distillation parameters
     teacher_architecture: str = "dual"  # wav2vec2, conformer, dual (recommended)
-    secondary_teacher_architecture: str = "conformer"
+    secondary_teacher_architecture: str = "whisper"  # whisper, conformer, wav2vec2
     secondary_teacher_model_path: str = ""
 
     temperature: float = 2.0
@@ -280,7 +287,7 @@ class DistillationConfig:
             )
         self.alpha = float(self.alpha)
 
-        valid_architectures = ["wav2vec2", "conformer", "dual"]
+        valid_architectures = ["wav2vec2", "whisper", "conformer", "dual"]
         if self.teacher_architecture not in valid_architectures:
             raise ValueError(
                 f"teacher_architecture must be one of {valid_architectures}, got '{self.teacher_architecture}'"

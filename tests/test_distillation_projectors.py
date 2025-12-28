@@ -1,6 +1,7 @@
 """
 Tests for Learnable Projectors in Distillation
 """
+
 from unittest.mock import MagicMock
 
 import pytest

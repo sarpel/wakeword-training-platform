@@ -2,6 +2,7 @@
 Unit Tests for Configuration Module
 Tests configuration loading, validation, and serialization
 """
+
 from pathlib import Path
 
 import pytest

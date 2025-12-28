@@ -4,7 +4,7 @@ Handles model preparation and configuration for QAT.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import torch
 import torch.nn as nn
@@ -23,7 +23,7 @@ def fuse_tiny_conv(model: nn.Module) -> None:
     # Find the features Sequential module and its name in the parent
     features_name = None
     features = None
-    
+
     # Strategy 1: Check if model HAS features directly
     if hasattr(model, "features") and isinstance(model.features, nn.Sequential):
         features_name = "features"
@@ -121,15 +121,24 @@ def prepare_model_for_qat(
         )
 
     if execution_engine != "none":
-        torch.backends.quantized.engine = execution_engine
+        # Suppress PyTorch's verbose "[*] Quantization engine set to:" print
+        import sys
+        import io
+
+        _old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            torch.backends.quantized.engine = execution_engine
+        finally:
+            sys.stdout = _old_stdout
 
     # 2. Fuse modules (Critical for QAT accuracy)
     # We check the class name to avoid circular imports
     model_type = model.__class__.__name__
     if "TinyConv" in model_type:
         fuse_tiny_conv(model)
-    elif hasattr(model, "fuse_model"):
-        model.fuse_model()
+    elif hasattr(model, "fuse_model") and callable(getattr(model, "fuse_model")):
+        model.fuse_model()  # type: ignore
     else:
         # Check submodules
         found_tiny = False
@@ -138,7 +147,7 @@ def prepare_model_for_qat(
                 fuse_tiny_conv(m)
                 found_tiny = True
                 break
-        
+
         if not found_tiny:
             # Recursive check for deeper wrapping (e.g. distributed)
             for m in model.modules():
@@ -151,10 +160,9 @@ def prepare_model_for_qat(
     # Use the default qconfig for the specified backend
     model.qconfig = torch.quantization.get_default_qat_qconfig(config.backend)
 
-    # 4. Prepare
     # prepare_qat inserts observers and fake quantization modules
     # Mypy: Explicitly annotate return type to avoid Any
-    prepared_model: nn.Module = torch.quantization.prepare_qat(model, inplace=False)
+    prepared_model: nn.Module = torch.quantization.prepare_qat(model, inplace=False)  # type: ignore
 
     logger.info("Model prepared for QAT")
     return prepared_model
@@ -270,7 +278,8 @@ def cleanup_qat_for_export(model: nn.Module) -> nn.Module:
                 # we might need to expand it. We'll try to find a sibling "weight"
                 # if this is being called on a module that HAS a weight.
                 if scale.numel() == 1 and hasattr(model, "weight"):
-                    out_ch = model.weight.shape[0]
+                    weight = cast(torch.Tensor, model.weight)
+                    out_ch = weight.shape[0]
                     if out_ch > 1:
                         logger.info(f"Expanding per-channel scale from 1 to {out_ch}")
                         scale = scale.expand(out_ch).clone()
@@ -370,14 +379,22 @@ def compare_model_accuracy(
         # Move to CPU for quantized models if requested
         model.eval()
 
-        # Set quantized engine for CPU evaluation
+        # Set quantized engine for CPU evaluation (suppress verbose prints)
         if device == "cpu":
             model.to("cpu")
             try:
-                if "fbgemm" in torch.backends.quantized.supported_engines:
-                    torch.backends.quantized.engine = "fbgemm"
-                elif "qnnpack" in torch.backends.quantized.supported_engines:
-                    torch.backends.quantized.engine = "qnnpack"
+                import sys
+                import io
+
+                _old_stdout = sys.stdout
+                sys.stdout = io.StringIO()
+                try:
+                    if "fbgemm" in torch.backends.quantized.supported_engines:
+                        torch.backends.quantized.engine = "fbgemm"
+                    elif "qnnpack" in torch.backends.quantized.supported_engines:
+                        torch.backends.quantized.engine = "qnnpack"
+                finally:
+                    sys.stdout = _old_stdout
             except (RuntimeError, AttributeError) as e:
                 logger.warning("Could not set quantized engine", exc_info=True)
                 if str(e):

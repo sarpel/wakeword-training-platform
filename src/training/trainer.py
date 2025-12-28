@@ -6,10 +6,10 @@ GPU-accelerated training with checkpointing, early stopping, and metrics trackin
 import asyncio  # Mevcutsa, yoksa ekle
 import sys  # Mevcutsa, yoksa ekle
 
-if sys.platform == 'win32':
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-    
+
 import threading
 import time
 from dataclasses import dataclass
@@ -62,6 +62,37 @@ class Trainer:
     GPU-accelerated with comprehensive metrics tracking
     """
 
+    model: nn.Module
+    train_loader: DataLoader
+    val_loader: DataLoader
+    config: "WakewordConfig"
+    checkpoint_manager: CheckpointManager
+    device: str
+    use_ema: bool
+    audio_processor: AudioProcessor
+    criterion: nn.Module
+    optimizer: torch.optim.Optimizer
+    scheduler: Any
+    use_mixed_precision: bool
+    scaler: torch.cuda.amp.GradScaler
+    gradient_clip: float
+    train_metrics_tracker: MetricsTracker
+    val_metrics_tracker: MetricsTracker
+    metric_monitor: MetricMonitor
+    state: TrainingState
+    early_stopping_patience: int
+    checkpoint_dir: Path
+    checkpoint_frequency: int
+    callbacks: List[Any]
+    use_spec_augment: bool
+    spec_augment: Optional[SpecAugment]
+    ema: Optional[EMA]
+    ema_scheduler: Optional[EMAScheduler]
+    stop_event: threading.Event
+    use_dynamic_alpha: bool
+    base_alpha: float
+    max_alpha: float
+
     def __init__(
         self,
         model: nn.Module,
@@ -112,11 +143,11 @@ class Trainer:
 
         # Move model to GPU
         self.model = model.to(device)
-        
+
         # Performance: Gradient Checkpointing
         if getattr(config.training, "use_gradient_checkpointing", False):
             if hasattr(self.model, "gradient_checkpointing_enable"):
-                self.model.gradient_checkpointing_enable()
+                cast(Any, self.model).gradient_checkpointing_enable()
                 logger.info("Gradient checkpointing enabled")
 
         # channels_last bellek düzeni (Ampere+ için throughput ↑) - Only on CUDA
@@ -127,7 +158,7 @@ class Trainer:
             # Torch.compile optimization for PyTorch 2.0+
             if getattr(config.training, "use_compile", True) and hasattr(torch, "compile"):
                 try:
-                    self.model = torch.compile(self.model, mode="max-autotune")  # type: ignore[assignment]
+                    self.model = cast(nn.Module, torch.compile(self.model, mode="max-autotune"))
                     logger.info("Torch.compile enabled with max-autotune mode")
                 except Exception as e:
                     logger.warning(f"Torch.compile failed: {e}, continuing without compilation")
@@ -199,7 +230,25 @@ class Trainer:
 
         self.checkpoint_manager = checkpoint_manager
         self.checkpoint_dir = checkpoint_manager.checkpoint_dir
-        self.checkpoint_frequency = config.training.checkpoint_frequency
+        # Parse checkpoint_frequency - can be int or string like "every_5_epochs"
+        freq = config.training.checkpoint_frequency
+        if isinstance(freq, int):
+            self.checkpoint_frequency = freq
+        elif isinstance(freq, str):
+            # Extract number from strings like "every_5_epochs", "every_10_epochs"
+            import re
+
+            match = re.search(r"\d+", freq)
+            if match:
+                self.checkpoint_frequency = int(match.group())
+            elif freq == "best_only":
+                self.checkpoint_frequency = 0  # 0 means only save best
+            elif freq == "every_epoch":
+                self.checkpoint_frequency = 1
+            else:
+                self.checkpoint_frequency = 5  # Default fallback
+        else:
+            self.checkpoint_frequency = 5  # Default fallback
 
         # Callbacks
         self.callbacks: List[Any] = []
@@ -301,7 +350,7 @@ class Trainer:
                 # Apply dynamic alpha for FNR optimization
                 if self.use_dynamic_alpha and hasattr(self.criterion, "set_alpha"):
                     current_alpha = self._compute_dynamic_alpha(epoch)
-                    self.criterion.set_alpha(current_alpha)
+                    cast(Any, self.criterion).set_alpha(current_alpha)
                     logger.info(f"Epoch {epoch+1}: Dynamic focal alpha = {current_alpha:.4f}")
 
                 try:
@@ -362,9 +411,13 @@ class Trainer:
 
                 # Visual Confusion Matrix
                 logger.info(f"    Confusion Matrix:")
-                logger.info(f"      [ TN={val_metrics.true_negatives:<5} | FP={val_metrics.false_positives:<5} ] (Actual Neg)")
-                logger.info(f"      [ FN={val_metrics.false_negatives:<5} | TP={val_metrics.true_positives:<5} ] (Actual Pos)")
-                
+                logger.info(
+                    f"      [ TN={val_metrics.true_negatives:<5} | FP={val_metrics.false_positives:<5} ] (Actual Neg)"
+                )
+                logger.info(
+                    f"      [ FN={val_metrics.false_negatives:<5} | TP={val_metrics.true_positives:<5} ] (Actual Pos)"
+                )
+
                 # Confidence Histogram
                 if val_metrics.confidence_histogram:
                     logger.info(val_metrics.confidence_histogram)
@@ -425,7 +478,7 @@ class Trainer:
                 # To get true INT8 performance, we convert
                 # Moving to CPU first is safer for quantization conversion in some PyTorch versions
                 self.model.to("cpu")
-                quantized_model = convert_model_to_quantized(self.model)
+                quantized_model = convert_model_to_quantized(cast(nn.Module, self.model))
 
                 qat_report = compare_model_accuracy(
                     fp32_model, quantized_model, self.val_loader, device="cpu", audio_processor=self.audio_processor
@@ -442,7 +495,12 @@ class Trainer:
         """Update epoch in augmentation module for SNR scheduling."""
         if hasattr(self, "audio_processor") and self.audio_processor is not None:
             if hasattr(self.audio_processor, "augmentation") and self.audio_processor.augmentation is not None:
-                self.audio_processor.augmentation.set_epoch(epoch, self.config.training.epochs)
+                from src.data.augmentation import AudioAugmentation
+
+                # NEW: Enable reshuffle=True to pick a new random subset of RIRs/Noises every epoch
+                cast(AudioAugmentation, self.audio_processor.augmentation).set_epoch(
+                    epoch, self.config.training.epochs, reshuffle=True
+                )
 
     def _check_qat_transition(self, epoch: int) -> None:
         """Check and handle transition to QAT fine-tuning"""
@@ -600,7 +658,7 @@ class Trainer:
             # For TripletLoss, we need embeddings, not logits.
             # Re-compute embeddings using processed_inputs if available.
             if processed_inputs is not None and hasattr(self.model, "embed"):
-                embeddings = self.model.embed(processed_inputs)
+                embeddings = cast(Any, self.model).embed(processed_inputs)
                 return cast(torch.Tensor, self.criterion(embeddings, targets))
             else:
                 # Fallback: assume outputs are embeddings or model doesn't support embed()
@@ -609,7 +667,7 @@ class Trainer:
 
         # Standard loss (CrossEntropy, FocalLoss)
         # Criterion is initialized with reduction='none', so it returns (B,)
-        loss = self.criterion(outputs, targets)
+        loss = cast(Any, self.criterion)(outputs, targets)
 
         # Apply hard negative weighting
         if is_hard_negative is not None:

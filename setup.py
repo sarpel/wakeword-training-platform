@@ -2,8 +2,10 @@
 Wakeword Training Platform Setup
 Production-Ready Wakeword Detection Training System
 """
-from setuptools import setup, find_packages
+
 from pathlib import Path
+
+from setuptools import find_packages, setup
 
 # Read README for long description
 readme_file = Path(__file__).parent / "README.md"
@@ -65,32 +67,26 @@ setup(
         "torch>=2.1.0",
         "torchaudio>=2.1.0",
         "torchvision>=0.16.0",
-
         # UI Framework
         "gradio>=4.20.0",
         "websockets>=10.0",
-
         # Audio Processing
         "librosa>=0.10.0",
         "soundfile>=0.12.0",
         "sounddevice>=0.4.0",
         "resampy>=0.4.0",
         "audioread>=3.0.0",
-
         # Data Processing & ML
         "numpy>=1.24.0",
         "pandas>=2.0.0",
         "scikit-learn>=1.3.0",
-
         # Visualization
         "matplotlib>=3.7.0",
         "plotly>=5.17.0",
         "seaborn>=0.12.0",
-
         # Model Export
         "onnx>=1.14.0",
         "onnxruntime>=1.15.0",
-
         # Utilities
         "tqdm>=4.65.0",
         "pyyaml>=6.0.0",
@@ -132,7 +128,8 @@ setup(
 )
 
 # Post-installation message
-print("""
+print(
+    """
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
 ║   Wakeword Training Platform v2.0.0 Installed Successfully! ║
@@ -160,4 +157,5 @@ print("""
 ║   For help: https://github.com/sarpel/wakeword-training-platform║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
-""")
+"""
+)

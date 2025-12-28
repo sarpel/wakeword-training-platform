@@ -17,13 +17,13 @@ import torch
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-import structlog
+import structlog  # noqa: E402
 
-from src.data.health_checker import DatasetHealthChecker
-from src.data.npy_extractor import NpyExtractor
-from src.data.preprocessing import VADFilter  # Import VADFilter
-from src.data.splitter import DatasetScanner, DatasetSplitter
-from src.exceptions import WakewordException
+from src.data.health_checker import DatasetHealthChecker  # noqa: E402
+from src.data.npy_extractor import NpyExtractor  # noqa: E402
+from src.data.preprocessing import VADFilter  # noqa: E402
+from src.data.splitter import DatasetScanner, DatasetSplitter  # noqa: E402
+from src.exceptions import WakewordException  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -162,7 +162,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                         )
                         extract_duration = gr.Number(
                             label="Audio Duration (s)",
-                            value=1.0,
+                            value=1.5,
                             precision=1,
                             info="Target duration in seconds (must match training config)",
                         )
@@ -182,7 +182,7 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                             )
                             extract_n_fft = gr.Number(
                                 label="FFT Size",
-                                value=400,
+                                value=512,
                                 precision=0,
                                 info="FFT window size (frequency analysis window)",
                             )
@@ -195,6 +195,24 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                             label="Batch Size (GPU)",
                             info="Higher = faster but uses more GPU memory",
                         )
+
+                        # Multi-augmentation controls (NEW)
+                        gr.Markdown("### 🔁 Multi-Augmentation (Optional)")
+                        with gr.Row():
+                            augmentation_multiplier = gr.Slider(
+                                minimum=1,
+                                maximum=10,
+                                value=3,
+                                step=1,
+                                label="Augmentation Multiplier",
+                                info="Number of augmented versions per file (1 = original only, 3 = recommended)",
+                            )
+                            enable_extraction_augmentation = gr.Checkbox(
+                                label="Enable Augmentation",
+                                value=True,
+                                info="Apply time stretch, pitch shift, noise during extraction",
+                            )
+
                         extract_output_dir = gr.Textbox(
                             label="Output Directory (Source for Splitter)",
                             value="data/npy",
@@ -567,10 +585,12 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
             hop_length: int,
             n_fft: int,
             batch_size: int,
+            augmentation_multiplier: int,  # NEW
+            enable_augmentation: bool,  # NEW
             output_dir: str,
             progress: gr.Progress = gr.Progress(),
         ) -> str:
-            """Batch extract features to NPY files"""
+            """Batch extract features to NPY files with optional multi-augmentation"""
             global _current_dataset_info
 
             try:
@@ -641,10 +661,43 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     progress_value = 0.1 + (current / total) * 0.8
                     progress(progress_value, desc=f"{message}")
 
+                # Determine effective augmentation multiplier
+                effective_multiplier = int(augmentation_multiplier) if enable_augmentation else 1
+
+                # Get augmentation config if enabled
+                aug_config = None
+                background_noise_dir = None
+                rir_dir = None
+
+                if effective_multiplier > 1:
+                    from src.config.defaults import AugmentationConfig
+
+                    aug_config = AugmentationConfig()  # Use defaults
+
+                    # Try to find background noise and RIR directories
+                    root_path_obj = Path(root_path)
+                    potential_bg_dirs = [root_path_obj / "background", root_path_obj.parent / "background"]
+                    potential_rir_dirs = [root_path_obj / "rirs", root_path_obj.parent / "rirs"]
+
+                    for bg_dir in potential_bg_dirs:
+                        if bg_dir.exists():
+                            background_noise_dir = bg_dir
+                            break
+
+                    for rir_dir_candidate in potential_rir_dirs:
+                        if rir_dir_candidate.exists():
+                            rir_dir = rir_dir_candidate
+                            break
+
+                    logger.info(
+                        f"Multi-augmentation enabled: multiplier={effective_multiplier}, "
+                        f"bg_noise={background_noise_dir}, rir={rir_dir}"
+                    )
+
                 # Extract features
                 progress(
                     0.15,
-                    desc=f"Extracting {len(all_files)} files (batch={batch_size})...",
+                    desc=f"Extracting {len(all_files)} files (batch={batch_size}, augx{effective_multiplier})...",
                 )
                 output_path = Path(output_dir)
                 results = extractor.extract_dataset(
@@ -653,6 +706,11 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                     batch_size=batch_size,
                     preserve_structure=True,
                     progress_callback=update_progress,
+                    # NEW: Multi-augmentation parameters
+                    augmentation_multiplier=effective_multiplier,
+                    augmentation_config=aug_config,
+                    background_noise_dir=background_noise_dir,
+                    rir_dir=rir_dir,
                 )
 
                 # Generate report
@@ -665,11 +723,15 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 report.append(f"Feature Type: {feature_type}")
                 report.append(f"Device: {device.upper()}")
                 report.append(f"Batch Size: {batch_size}")
+                report.append(f"Augmentation Multiplier: {effective_multiplier}x")
                 report.append(f"Output Directory: {output_path}")
                 report.append("")
+                report.append(f"📥 Original files: {results['total_files']}")
+                report.append(
+                    f"📊 Total versions (incl. augmented): {results.get('total_versions', results['total_files'])}"
+                )
                 report.append(f"✅ Successfully extracted: {results['success_count']}")
                 report.append(f"❌ Failed: {results['failed_count']}")
-                report.append(f"📊 Total processed: {results['total_files']}")
                 report.append("")
 
                 if results["failed_count"] > 0:
@@ -950,157 +1012,6 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 logger.error(traceback.format_exc())
                 return f"❌ Error: {str(e)}\n{traceback.format_exc()}"
 
-        def auto_start_handler(
-            root_path: str,
-            skip_val: bool,
-            move_unqualified: bool,
-            # Feature extraction params
-            # Feature extraction params
-            feature_type: str,
-            sample_rate: int,
-            audio_duration: float,
-            n_mels: int,
-            hop_length: int,
-            n_fft: int,
-            batch_size: int,
-            output_dir: str,
-            # Split params
-            train: float,
-            val: float,
-            test: float,
-            # Training params
-            use_cmvn: bool,
-            use_ema: bool,
-            ema_decay: float,
-            use_balanced_sampler: bool,
-            sampler_ratio_pos: int,
-            sampler_ratio_neg: int,
-            sampler_ratio_hard: int,
-            run_lr_finder: bool,
-            use_wandb: bool,
-            wandb_project: str,
-            wandb_api_key: str,  # Added API key
-            state: gr.State,
-            progress: gr.Progress = gr.Progress(),
-        ) -> str:
-            """Orchestrates the full pipeline: Scan -> Extract -> Split -> Config -> Train"""
-
-            logs = []
-
-            def log(msg: str) -> str:
-                logs.append(msg)
-                logger.info(msg)
-                return "\n".join(logs)
-
-            try:
-                # 1. Scan Datasets
-                progress(0.0, desc="Step 1/5: Scanning Datasets...")
-                log("--- STEP 1: SCANNING DATASETS ---")
-                stats, scan_msg, _ = scan_datasets_handler(root_path, skip_val, move_unqualified, False)
-                if "error" in stats:
-                    return log(f"❌ Scan Failed: {stats['error']}")
-                log(scan_msg)
-
-                # 2. Feature Extraction
-                progress(0.2, desc="Step 2/5: Extracting Features...")
-                log("\n--- STEP 2: EXTRACTING FEATURES ---")
-                log(f"Extracting {feature_type} features to {output_dir}...")
-                extract_report = batch_extract_handler(
-                    root_path,
-                    feature_type,
-                    sample_rate,
-                    audio_duration,
-                    n_mels,
-                    hop_length,
-                    n_fft,
-                    batch_size,
-                    output_dir,
-                )
-                if "❌ Error" in extract_report:
-                    return log(f"❌ Extraction Failed:\n{extract_report}")
-                log("Feature extraction completed.")
-
-                # 3. Split Dataset
-                progress(0.5, desc="Step 3/5: Splitting Datasets...")
-                log("\n--- STEP 3: SPLITTING DATASETS ---")
-                split_msg, _ = split_datasets_handler(root_path, train, val, test, output_dir)
-                if "❌" in split_msg:
-                    return log(f"❌ Split Failed: {split_msg}")
-                log(split_msg)
-
-                # 4. Load Config
-                progress(0.7, desc="Step 4/5: Loading Configuration...")
-                log("\n--- STEP 4: PREPARING CONFIGURATION ---")
-
-                from src.config.defaults import DataConfig, WakewordConfig
-
-                # Create config matching UI parameters
-                config = WakewordConfig()
-                config.data = DataConfig(
-                    sample_rate=int(sample_rate),
-                    audio_duration=float(audio_duration),
-                    n_mels=int(n_mels),
-                    n_fft=int(n_fft),
-                    hop_length=int(hop_length),
-                    feature_type=feature_type,
-                    use_precomputed_features_for_training=True,
-                    npy_feature_dir=output_dir,
-                )
-
-                # Try to load saved config if exists to preserve model params
-                config_path = Path("configs/wakeword_config.yaml")
-                if config_path.exists():
-                    try:
-                        loaded_config = WakewordConfig.load(config_path)
-                        # Update data params to match UI but keep model params
-                        loaded_config.data = config.data
-                        config = loaded_config
-                        log(f"Loaded saved configuration from {config_path}")
-                    except Exception as e:
-                        log(f"⚠️ Failed to load saved config, using defaults: {e}")
-
-                # Update state with config
-                if state is None:
-                    state = {}
-                state["config"] = config
-
-                # 5. Start Training
-                progress(0.9, desc="Step 5/5: Starting Training...")
-                log("\n--- STEP 5: STARTING TRAINING ---")
-
-                from src.ui.panel_training import start_training
-
-                # Call start_training with the state containing our config
-                train_msg, _, _, _, _, _ = start_training(
-                    state,
-                    use_cmvn,
-                    use_ema,
-                    ema_decay,
-                    use_balanced_sampler,
-                    sampler_ratio_pos,
-                    sampler_ratio_neg,
-                    sampler_ratio_hard,
-                    run_lr_finder,
-                    use_wandb,
-                    wandb_project,
-                    wandb_api_key,
-                )
-
-                log(f"Training Launch Result: {train_msg}")
-
-                if "✅" in train_msg:
-                    log("\n✅ PIPELINE STARTED SUCCESSFULLY!")
-                    log("Switch to 'Model Training' tab to view progress.")
-                else:
-                    log("\n❌ FAILED TO START TRAINING")
-
-                return log(f"Pipeline Finished.\nLast status: {train_msg}")
-
-            except Exception as e:
-                err = traceback.format_exc()
-                logger.error(err)
-                return log(f"❌ CRITICAL ERROR IN AUTO-START:\n{str(e)}\n{err}")
-
         # Connect event handlers
         scan_button.click(
             fn=scan_datasets_handler,
@@ -1131,6 +1042,8 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
                 extract_hop_length,
                 extract_n_fft,
                 extract_batch_size,
+                augmentation_multiplier,  # NEW
+                enable_extraction_augmentation,  # NEW
                 extract_output_dir,
             ],
             outputs=[batch_extraction_log],
@@ -1160,15 +1073,8 @@ def create_dataset_panel(data_root: str = "data", state: Optional[gr.State] = No
             fn=vad_filter_handler, inputs=[dataset_root, vad_energy_threshold, vad_min_duration], outputs=[vad_log]
         )
 
-        gr.Markdown("---")
-        with gr.Row():
-            auto_start_btn = gr.Button("🚀 AUTO-START TRAINING (Full Pipeline)", variant="primary", scale=2)
-            auto_log = gr.Textbox(label="Pipeline Log", lines=10, interactive=False)
-
     # Expose components for app.py wiring
-    panel.auto_start_btn = auto_start_btn
-    panel.auto_start_handler = auto_start_handler
-    panel.auto_log = auto_log
+
     panel.inputs = {
         "root_path": dataset_root,
         "skip_val": skip_validation,

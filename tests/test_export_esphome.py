@@ -1,6 +1,7 @@
 """
 Integration tests for ESPHome export compatibility
 """
+
 from pathlib import Path
 
 import pytest

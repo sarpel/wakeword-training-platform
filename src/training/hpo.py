@@ -44,7 +44,7 @@ import math
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast 
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import optuna

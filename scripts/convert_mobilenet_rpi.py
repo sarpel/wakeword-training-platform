@@ -5,11 +5,10 @@ Safe, logging-enabled, and using project utilities.
 """
 
 import argparse
-import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 import torch
@@ -17,12 +16,11 @@ import torch
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
 
-from src.config.logger import setup_logger
+from src.config.logger import get_logger
 from src.models.architectures import create_model
-from src.export.onnx_exporter import ONNXExporter
 
 # Initialize logger
-logger = setup_logger(__name__)
+logger = get_logger(__name__)
 
 # --- CONFIGURATION ---
 # Default settings (can be overridden by arguments)
@@ -53,11 +51,11 @@ def load_checkpoint_safely(model: torch.nn.Module, checkpoint_path: Path) -> Non
         sys.exit(1)
 
     logger.info(f"Loading checkpoint: {checkpoint_path}")
-    
+
     try:
         # Security: Use weights_only=True to prevent pickle exploits
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-        
+
         # Handle different checkpoint structures
         if "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
@@ -76,19 +74,19 @@ def load_checkpoint_safely(model: torch.nn.Module, checkpoint_path: Path) -> Non
             # Skip QAT observer/fake_quant keys for inference/export
             if "activation_post_process" in k or "_observer" in k or "fake_quant" in k:
                 continue
-            
+
             # Remove prefixes if they were saved wrapped in another module
             k = k.replace("model.", "").replace("mobilenet.", "")
             clean_state_dict[k] = v
 
         # Load weights
         missing, unexpected = model.load_state_dict(clean_state_dict, strict=False)
-        
+
         if missing:
             logger.warning(f"Missing keys (usually fine for QAT/Aux layers): {missing[:5]}...")
         if unexpected:
             logger.warning(f"Unexpected keys: {unexpected[:5]}...")
-            
+
         logger.info("✅ Weights loaded successfully.")
 
     except Exception as e:
@@ -101,31 +99,37 @@ def convert_to_tflite(onnx_path: Path, output_dir: Path, calib_data_path: Path) 
     Convert ONNX to TFLite using onnx2tf via subprocess.
     """
     logger.info("⏳ Converting to TFLite (via onnx2tf)...")
-    
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Construct command securely
     # -oiqt: Output integer quantized TFLite
     # -cind: Custom input node data (for calibration)
     cmd = [
         "onnx2tf",
-        "-i", str(onnx_path),
-        "-o", str(output_dir),
+        "-i",
+        str(onnx_path),
+        "-o",
+        str(output_dir),
         "-oiqt",
-        "-cind", "input", str(calib_data_path), "0", "1"
+        "-cind",
+        "input",
+        str(calib_data_path),
+        "0",
+        "1",
     ]
-    
+
     try:
         # Security: Use subprocess.run with shell=False (default)
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         logger.info(result.stdout)
-        
-        tflite_path = output_dir / f"{onnx_path.stem}_dynamic_range_quant.tflite"
-        logger.info("\n" + "="*40)
-        logger.info(f"🎉 RPi Model Ready!")
+
+        _tflite_path = output_dir / f"{onnx_path.stem}_dynamic_range_quant.tflite"
+        logger.info("\n" + "=" * 40)
+        logger.info("🎉 RPi Model Ready!")
         logger.info(f"📂 Output: {output_dir}")
-        logger.info("="*40)
-        
+        logger.info("=" * 40)
+
     except subprocess.CalledProcessError as e:
         logger.error("❌ onnx2tf command failed.")
         logger.error(e.stderr)
@@ -157,12 +161,12 @@ def main():
     # 3. Export to ONNX
     onnx_path = args.output / ONNX_FILENAME
     args.output.mkdir(parents=True, exist_ok=True)
-    
+
     logger.info(f"🔄 Exporting to ONNX: {onnx_path}")
-    
+
     # Create dummy input with batch size 1
     dummy_input = torch.randn(1, 1, N_MELS, N_FRAMES)
-    
+
     try:
         # Use project's ONNXExporter if possible, or direct export with our config
         # Here we use direct export tailored for this specific RPi conversion needs
@@ -170,10 +174,10 @@ def main():
             model,
             dummy_input,
             str(onnx_path),
-            input_names=['input'],
-            output_names=['output'],
+            input_names=["input"],
+            output_names=["output"],
             opset_version=13,
-            dynamic_axes=None 
+            dynamic_axes=None,
         )
         logger.info(f"✅ ONNX exported.")
     except Exception as e:

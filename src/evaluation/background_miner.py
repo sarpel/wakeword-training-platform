@@ -1,19 +1,16 @@
-
 import json
-import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
-import numpy as np
 import structlog
-import torch
 
 from src.evaluation.evaluator import ModelEvaluator
 from src.evaluation.mining import HardNegativeMiner
 from src.evaluation.types import EvaluationResult
 
 logger = structlog.get_logger(__name__)
+
 
 class BackgroundMiner:
     """
@@ -53,19 +50,20 @@ class BackgroundMiner:
         hop_duration_s: float = 0.5,
         threshold: float = 0.4,
         resume: bool = True,
-        progress_callback: Optional[callable] = None,
+        progress_callback: Optional[Callable[[float], None]] = None,
     ) -> Dict[str, Any]:
         """
         Process a long audio file in windows.
         """
         file_path = Path(file_path)
         file_id = str(file_path.absolute())
-        
+
         # Load audio
         import librosa
+
         audio, sr = librosa.load(file_path, sr=self.evaluator.sample_rate)
         duration = len(audio) / sr
-        
+
         start_sec = 0.0
         if resume and file_id in self.sessions:
             start_sec = self.sessions[file_id].get("last_processed_sec", 0.0)
@@ -73,21 +71,21 @@ class BackgroundMiner:
 
         window_samples = int(window_duration_s * sr)
         hop_samples = int(hop_duration_s * sr)
-        
+
         current_sample = int(start_sec * sr)
         total_samples = len(audio)
-        
+
         found_count = 0
         results = []
 
         while current_sample + window_samples <= total_samples:
             window = audio[current_sample : current_sample + window_samples]
-            
+
             # Predict
             # We wrap window in EvaluationResult logic or similar
             # ModelEvaluator.evaluate_audio returns (confidence, is_positive)
             confidence, is_positive = self.evaluator.evaluate_audio(window, threshold=threshold)
-            
+
             if confidence >= threshold:
                 # Potential False Positive found
                 # Create a result object for the miner
@@ -97,48 +95,48 @@ class BackgroundMiner:
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 chunk_name = f"chunk_{file_path.stem}_{int(current_sample/sr)}s_{timestamp_str}.wav"
                 chunk_path = temp_dir / chunk_name
-                
+
                 import soundfile as sf
+
                 sf.write(chunk_path, window, sr)
-                
+
                 res = EvaluationResult(
                     filename=chunk_name,
                     prediction="Positive",
-                    confidence=float(confidence),
-                    label=0, # It's background, so label is definitely Negative
+                    confidence=confidence,
                     full_path=str(chunk_path.absolute()),
-                    logits=None, # Not needed for miner
-                    raw_audio=window,
-                    latency_ms=0.0
+                    logits=None,  # Logits optional now
+                    latency_ms=0.0,
                 )
                 results.append(res)
                 found_count += 1
 
             current_sample += hop_samples
-            
+
             # Update session frequently
             processed_sec = current_sample / sr
+            found_this_time = 1 if confidence >= threshold else 0
             self.sessions[file_id] = {
                 "last_processed_sec": processed_sec,
                 "total_duration": duration,
-                "found_count": self.sessions.get(file_id, {}).get("found_count", 0) + (1 if confidence >= threshold else 0)
+                "found_count": self.sessions.get(file_id, {}).get("found_count", 0) + found_this_time,
             }
             if found_count % 10 == 0:
                 self._save_sessions()
-                
+
             if progress_callback:
-                progress_callback(processed_sec / duration, f"Processing {file_path.name}: {processed_sec:.1f}s / {duration:.1f}s")
+                progress_callback(processed_sec / duration)
 
         # Finalize
         if results:
             self.miner.mine_from_results(results)
-            
+
         self.sessions[file_id]["status"] = "completed" if current_sample + window_samples >= total_samples else "paused"
         self._save_sessions()
-        
+
         return {
             "file": file_path.name,
             "found": found_count,
             "processed_sec": current_sample / sr,
-            "total_sec": duration
+            "total_sec": duration,
         }

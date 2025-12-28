@@ -1,4 +1,5 @@
 """Performance benchmarks for model inference speed."""
+
 import time
 from pathlib import Path
 

@@ -1,6 +1,7 @@
 """
 Tests for TinyConv V2 Configuration
 """
+
 import pytest
 
 from src.config.defaults import ModelConfig

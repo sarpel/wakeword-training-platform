@@ -20,6 +20,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
+from torch.utils.data import DataLoader
 
 from src.config.defaults import DistillationConfig, WakewordConfig
 from src.data.dataset import WakewordDataset
@@ -27,11 +28,8 @@ from src.models.factory import create_model
 from src.training.checkpoint_manager import CheckpointManager
 from src.training.distillation_trainer import DistillationTrainer
 from src.training.trainer import Trainer
-from torch.utils.data import DataLoader
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -75,10 +73,7 @@ def load_datasets(config, data_root="data"):
     val_manifest = data_root / "splits" / "val.json"
 
     if not train_manifest.exists():
-        raise FileNotFoundError(
-            f"Training manifest not found: {train_manifest}\n"
-            f"Please run data scanning first."
-        )
+        raise FileNotFoundError(f"Training manifest not found: {train_manifest}\n" f"Please run data scanning first.")
 
     # Training dataset
     train_dataset = WakewordDataset(
@@ -137,11 +132,7 @@ def load_datasets(config, data_root="data"):
 
 def create_student_model(config):
     """Create fresh student model."""
-    time_steps = (
-        int(config.data.sample_rate * config.data.audio_duration)
-        // config.data.hop_length
-        + 1
-    )
+    time_steps = int(config.data.sample_rate * config.data.audio_duration) // config.data.hop_length + 1
     input_size = config.data.n_mels
 
     model = create_model(
@@ -307,9 +298,7 @@ def compare_results(baseline, distillation):
     print(
         f"{'Validation Loss':<30} {baseline['best_val_loss']:<15.4f} {distillation['best_val_loss']:<15.4f} {loss_improvement:+.4f}"
     )
-    print(
-        f"{'Best Epoch':<30} {baseline['best_epoch']:<15} {distillation['best_epoch']:<15}"
-    )
+    print(f"{'Best Epoch':<30} {baseline['best_epoch']:<15} {distillation['best_epoch']:<15}")
     print("=" * 70)
 
     # Interpretation
@@ -428,9 +417,7 @@ def main():
     baseline_results = train_baseline(config, train_loader, val_loader)
 
     # Experiment 2: With distillation
-    distillation_results = train_with_distillation(
-        config, train_loader, val_loader, alpha=0.6, temperature=3.0
-    )
+    distillation_results = train_with_distillation(config, train_loader, val_loader, alpha=0.6, temperature=3.0)
 
     # Compare
     compare_results(baseline_results, distillation_results)

@@ -1,6 +1,7 @@
 """
 Tests for StreamingDetector stability features (hysteresis, smoothing).
 """
+
 import pytest
 
 from src.config.defaults import StreamingConfig

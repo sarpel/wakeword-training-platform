@@ -287,17 +287,30 @@ def validate_exported_model(output_filename: str) -> Tuple[Dict, pd.DataFrame]:
         # Load weights
         state_dict = checkpoint["model_state_dict"]
 
-        # Handle QAT checkpoints loaded into FP32 models
-        # Filter out quantization keys that are not in the model
-        model_keys = set(pytorch_model.state_dict().keys())
-        checkpoint_keys = set(state_dict.keys())
-        unexpected_keys = checkpoint_keys - model_keys
+        # Prepare for QAT if enabled (Critical for matching fused checkpoint)
+        if hasattr(config, "qat") and getattr(config.qat, "enabled", False):
+            try:
+                logger.info(
+                    f"Detected QAT training (backend: {config.qat.backend}). Fusing model layers for validation..."
+                )
+                from src.training.qat_utils import prepare_model_for_qat
 
-        if unexpected_keys:
-            # Check if these are quantization keys
-            quant_keys = [
-                k for k in unexpected_keys if "fake_quant" in k or "activation_post_process" in k or "observer" in k
-            ]
+                # Prepare/Fuse model to match checkpoint structure
+                pytorch_model = prepare_model_for_qat(pytorch_model, config.qat)
+            except ImportError:
+                logger.warning("Could not import prepare_model_for_qat.")
+            except Exception as e:
+                logger.warning(f"Failed to prepare model for QAT: {e}")
+
+        # Load weights
+        state_dict = checkpoint["model_state_dict"]
+
+        # Load state dict (strict=True usually works if fusion is correct)
+        try:
+            pytorch_model.load_state_dict(state_dict, strict=True)
+        except RuntimeError as e:
+            logger.warning(f"Strict loading failed: {e}. Trying strict=False...")
+            pytorch_model.load_state_dict(state_dict, strict=False)
 
             if quant_keys:
                 logger.warning(f"Filtering out {len(quant_keys)} quantization keys from state_dict for FP32 loading")

@@ -194,7 +194,7 @@ class DistillationConfig(BaseModel):
     teacher_on_cpu: bool = False
     teacher_mixed_precision: bool = True
     log_memory_usage: bool = False
-    teacher_architecture: Literal["wav2vec2", "conformer", "dual"] = "dual"
+    teacher_architecture: Literal["wav2vec2", "whisper", "conformer", "dual"] = "dual"
     temperature: float = Field(2.0, ge=1.0, le=10.0)
     alpha: float = Field(0.5, ge=0.0, le=1.0)
 
@@ -221,9 +221,7 @@ class StreamingConfig(BaseModel):
         low = values.get("hysteresis_low")
         high = values.get("hysteresis_high")
         if low is not None and high is not None and low >= high:
-            raise ValueError(
-                f"hysteresis_low ({low}) must be less than hysteresis_high ({high})"
-            )
+            raise ValueError(f"hysteresis_low ({low}) must be less than hysteresis_high ({high})")
         return values
 
 

@@ -2,6 +2,7 @@
 Unit Tests for Model Architectures
 Tests all model architectures for correct output shapes and basic functionality
 """
+
 import pytest
 import torch
 import torch.nn as nn

@@ -1,6 +1,7 @@
 """
 Tests for newly added configuration parameters (CMVN, Streaming, Size Targets, Calibration).
 """
+
 import pytest
 
 from src.config.defaults import get_default_config

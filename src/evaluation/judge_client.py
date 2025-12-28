@@ -1,13 +1,14 @@
-
-import requests
 import io
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import numpy as np
+import requests
 import soundfile as sf
 import structlog
 
 logger = structlog.get_logger(__name__)
+
 
 class JudgeClient:
     """
@@ -23,24 +24,24 @@ class JudgeClient:
         Send audio to the Judge server for secondary verification.
         """
         url = f"{self.base_url}/verify"
-        
+
         # Convert numpy audio to WAV in-memory
         buffer = io.BytesIO()
         sf.write(buffer, audio, sample_rate, format="WAV")
         buffer.seek(0)
-        
+
         headers = {}
         if self.api_key:
             headers["X-API-Key"] = self.api_key
-            
+
         start_time = time.perf_counter()
         try:
             files = {"file": ("audio.wav", buffer, "audio/wav")}
             response = requests.post(url, files=files, headers=headers, timeout=10)
-            
+
             end_time = time.perf_counter()
             network_latency = (end_time - start_time) * 1000
-            
+
             if response.status_code == 200:
                 result = response.json()
                 result["network_latency_ms"] = network_latency
@@ -49,7 +50,7 @@ class JudgeClient:
                 return {
                     "error": f"Judge server returned {response.status_code}",
                     "detail": response.text,
-                    "network_latency_ms": network_latency
+                    "network_latency_ms": network_latency,
                 }
         except Exception as e:
             logger.error(f"Failed to connect to Judge server: {e}")

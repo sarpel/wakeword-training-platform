@@ -1,6 +1,7 @@
 """
 Tests for Soft-Confidence (Dynamic) Weighting in Dual Distillation
 """
+
 from unittest.mock import MagicMock
 
 import pytest

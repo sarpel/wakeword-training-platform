@@ -1,8 +1,0 @@
-{
-  "track_id": "config_sync_esp32_opt_20251223",
-  "type": "feature",
-  "status": "completed",
-  "created_at": "2025-12-23T12:00:00Z",
-  "updated_at": "2025-12-23T14:30:00Z",
-  "description": "Connect main menu dataset feature extraction and shape configurations to actively loaded preset or a loaded saved config, differences between them will cause shape mismatches in some of the projects lifetime. Also change tiny_conv mcu profile preset according to the new calculations of models fitting probability into esp32s3 mcu. Increase most important parts of a high quality model training without crossing those calculations. Assume esphome atom echo firmware will be flashed to atom echos i have"
-}

@@ -130,8 +130,8 @@ class WakewordDataset(Dataset):
             if mined_path.exists():
                 mined_files = list(mined_path.glob("*.wav")) + list(mined_path.glob("*.mp3"))
                 logger.info(f"Adding {len(mined_files)} mined negatives to dataset")
-                for f in mined_files:
-                    self.files.append({"path": str(f), "category": "hard_negative", "label": 0})
+                for mined_file in mined_files:
+                    self.files.append({"path": str(mined_file), "category": "hard_negative", "label": 0})
 
         # Create label mapping
         self.label_map = self._create_label_map(class_mapping)
@@ -159,7 +159,7 @@ class WakewordDataset(Dataset):
                 n_mfcc=n_mfcc,
                 n_fft=n_fft,
                 hop_length=hop_length,
-                device=device,
+                device=self.device,  # Always CPU for DataLoader workers
             )
 
         # Initialize augmentation if enabled (Only if not returning raw audio)

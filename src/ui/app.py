@@ -3,21 +3,15 @@ Main Gradio Application
 Wakeword Training Platform with 6 panels
 """
 
-   
+import asyncio
+import sys
 import warnings
 from pathlib import Path
 from typing import Optional
 
 import gradio as gr
-import asyncio
-import sys
 
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-# Suppress specific warnings
-warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
-
-if sys.platform.startswith("win"):
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
@@ -122,7 +116,7 @@ def create_app() -> gr.Blocks:
     logger = get_data_logger("app")
     logger.info("Starting Wakeword Training Platform")
 
-    cuda_validator = enforce_cuda()
+    cuda_validator = enforce_cuda(allow_cpu=True)
     logger.info("CUDA validation passed")
 
     # Create main app with theme
@@ -150,13 +144,21 @@ def create_app() -> gr.Blocks:
 
         # Display GPU info
         gpu_info = cuda_validator.get_device_info()
-        gr.Markdown(
-            f"""
-        **GPU Status**: ✅ {gpu_info['device_count']} GPU(s) available |
-        **CUDA Version**: {gpu_info['cuda_version']} |
-        **Active Device**: {gpu_info['devices'][0]['name']} ({gpu_info['devices'][0]['total_memory_gb']} GB)
-        """
-        )
+        if gpu_info.get("cuda_available", False):
+            gr.Markdown(
+                f"""
+            **GPU Status**: ✅ {gpu_info['device_count']} GPU(s) available |
+            **CUDA Version**: {gpu_info['cuda_version']} |
+            **Active Device**: {gpu_info['devices'][0]['name']} ({gpu_info['devices'][0]['total_memory_gb']} GB)
+            """
+            )
+        else:
+            gr.Markdown(
+                """
+            **GPU Status**: ⚠️ CPU Mode (No CUDA GPU detected) |
+            **Performance**: Training will be significantly slower on CPU
+            """
+            )
 
         gr.Markdown("---")
 
@@ -263,7 +265,7 @@ def create_app() -> gr.Blocks:
 
 
 def launch_app(
-    server_name: str = "0.0.0.0",
+    server_name: str = "0.0.0.0",  # nosec B104 - Intentional for LAN access
     server_port: Optional[int] = None,
     share: bool = False,
     inbrowser: bool = True,

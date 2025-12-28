@@ -21,7 +21,7 @@ def evaluate_dataset(
     evaluator: Any,  # type: ignore[arg-type]
     dataset: Any,  # type: ignore[arg-type]
     threshold: float = 0.5,
-    batch_size: int = 32
+    batch_size: int = 32,
 ) -> Tuple[MetricResults, List[EvaluationResult]]:
     """
     Evaluate entire dataset with ground truth labels
@@ -37,7 +37,7 @@ def evaluate_dataset(
     from torch.utils.data import DataLoader
 
     def collate_fn(
-        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]],
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
@@ -83,7 +83,16 @@ def evaluate_dataset(
             # Inference
             start_time = time.time()
 
-            with torch.cuda.amp.autocast():
+            # Check if model has QAT layers (FakeQuantize)
+            # If so, we MUST run in FP32, as fake_quant operations don't support Half
+            has_qat = any("FakeQuantize" in m.__class__.__name__ for m in evaluator.model.modules())
+            use_autocast = not has_qat
+
+            # Ensure inputs are Float32 for QAT
+            if has_qat:
+                inputs = inputs.float()
+
+            with torch.cuda.amp.autocast(enabled=use_autocast):
                 logits = evaluator.model(inputs)
             # Convert to float32 immediately after inference to ensure compatibility
             logits = logits.float()
@@ -124,7 +133,7 @@ def evaluate_dataset(
                 )
 
     # Calculate overall metrics - accumulate in lists first
-    all_preds_raw = torch.stack([torch.tensor(r.logits) for r in results]) 
+    all_preds_raw = torch.stack([torch.tensor(r.logits) for r in results])
     all_targs_raw = torch.tensor([r.label for r in results])
 
     # Log label distribution for verification
@@ -155,7 +164,7 @@ def get_roc_curve_data(
     from torch.utils.data import DataLoader
 
     def collate_fn(
-        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+        batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]],
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Dict[str, Any]]]:
         """Custom collate function to handle metadata"""
         features, labels, metadata_list = zip(*batch)
@@ -177,8 +186,12 @@ def get_roc_curve_data(
         collate_fn=collate_fn,
     )
 
-    all_confidences = []
+    all_confidences: List[float] = []
     all_targets = []
+
+    # Check if model has QAT layers (FakeQuantize)
+    has_qat = any("FakeQuantize" in m.__class__.__name__ for m in evaluator.model.modules())
+    use_autocast = not has_qat
 
     # Collect predictions
     with torch.no_grad():
@@ -192,7 +205,11 @@ def get_roc_curve_data(
             # Apply memory format optimization
             inputs = inputs.to(memory_format=torch.channels_last)
 
-            with torch.cuda.amp.autocast():
+            # Ensure inputs are Float32 for QAT
+            if has_qat:
+                inputs = inputs.float()
+
+            with torch.cuda.amp.autocast(enabled=use_autocast):
                 logits = evaluator.model(inputs)
             # Convert to float32 immediately after inference to ensure compatibility
             logits = logits.float()
